@@ -44,11 +44,13 @@ import {
   enroll,
   enrollmentRow,
   executionsOf,
+  isNewChat,
   messageSequence,
   minutesFromNow,
   mockCalls,
   postJson,
   rand,
+  recipientOf,
   schedule,
   sendingOrg,
   type MockCall,
@@ -223,8 +225,7 @@ async function openBusinessHours(orgId: string, userId: string) {
 }
 
 async function newChatsTo(accountId: string, recipient: string): Promise<MockCall[]> {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'POST' && c.path === '/api/v1/chats'
-    && (c.body as Record<string, unknown>)?.attendees_ids === recipient);
+  return (await mockCalls(accountId)).filter((c) => isNewChat(c) && recipientOf(c) === recipient);
 }
 async function postsFrom(accountId: string): Promise<MockCall[]> {
   return (await mockCalls(accountId)).filter((c) => c.method === 'POST');

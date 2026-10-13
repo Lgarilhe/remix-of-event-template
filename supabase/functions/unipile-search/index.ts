@@ -1,262 +1,41 @@
-﻿/**
- * Unipile LinkedIn Search Edge Function
- * Supports: Classic, Sales Navigator, and Recruiter APIs
- * Based on Unipile API Reference: https://developer.unipile.com/docs/linkedin-search
+/**
+ * Recherche LinkedIn, profils et messagerie : point d'entrée de l'edge function.
+ *
+ * Les appels au prestataire passent tous par le client partagé
+ * (`_shared/unipile/index.ts`), sur l'API v2 seule : une clé globale, le compte
+ * dans le chemin. La clé est commune à toutes les organisations, donc la seule
+ * frontière entre elles est le rattachement du compte à l'organisation de
+ * l'appelant, contrôlé ici avant tout appel (`assertAccountOwnedByOrg`).
+ *
+ * Actions : search, get_parameters, search_from_url, list_recruiter_projects, get_profile, get_chats,
+ * get_messages, sync_chat_history, send_message, mark_as_read, get_user_posts, endorse_skill,
+ * list_sent_invitations, withdraw_invitation.
+ * Les gestionnaires vivent dans search.ts, search-url.ts, recruiter-projects.ts, profile.ts, chats.ts,
+ * send.ts et invitations.ts.
  */
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-};
-
-// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
-
-interface SearchParams {
-  api?: 'classic' | 'recruiter' | 'sales_navigator';
-  category?: 'people' | 'companies' | 'jobs' | 'posts';
-  keywords?: string;
-  limit?: number;
-  cursor?: string;
-  
-  // ID-based filters
-  location?: string[];
-  location_within_area?: number; // Search radius in miles (Recruiter only)
-  company?: { include?: string[]; exclude?: string[] } | Array<string | { id?: string; keywords?: string; priority?: string; scope?: string }>;
-  company_keywords?: Array<{ keywords: string; priority: string; scope: string }>; // Keywords-based (Recruiter only)
-  industry?: { include?: string[]; exclude?: string[] } | string[];
-  school?: string[] | Array<{ id: string; priority: string }>;
-  
-  // Priority filters (Recruiter/Sales Nav)
-  job_title?: Array<{ id: string; priority: string }>;
-  skills?: Array<{ id: string; priority: string }>;
-  
-  // Role filter (Recruiter)
-  role?: Array<{ keywords: string; priority: string; scope: string }>;
-  
-  // Function/Department filter (Recruiter/Sales Nav)
-  function?: { include?: string[]; exclude?: string[] } | string[];
-  
-  // Enum filters
-  seniority?: string[];
-  network_distance?: number[];
-  profile_language?: string[];
-  
-  // Range filters
-  years_of_experience?: { min?: number; max?: number };
-  tenure?: Array<{ min?: number; max?: number }>;
-  tenure_at_company?: Array<{ min?: number; max?: number }>;
-  tenure_at_role?: Array<{ min?: number; max?: number }>;
-  
-  // Boolean/enum filters
-  open_to_work?: boolean;
-  open_to?: string[];
-  
-  // Recruiter specific
-  hiring_project?: string;
-  // Unipile schema: `spotlights` is an array of strings (LinkedIn native filter)
-  spotlights?: string[];
-  // Backward compat (older frontend used singular)
-  spotlight?: string;
-  
-  // Recruiting activity filter (Recruiter)
-  recruiting_activity?: Array<{
-    id: 'messages' | 'tags' | 'notes' | 'projects' | 'resumes' | 'reviews';
-    priority: 'CAN_HAVE' | 'MUST_HAVE' | 'DOESNT_HAVE';
-    timespan?: number; // Days since today
-  }>;
-  
-  // Degree filter (Recruiter) - { include: string[], exclude: string[] }
-  degree?: { include?: string[]; exclude?: string[] };
-  
-  // Company filters (Sales Navigator)
-  company_headcount?: Array<{ min?: number; max?: number }> | string[];
-  company_type?: string[];
-  company_location?: { include?: string[]; exclude?: string[] };
-  
-  // Groups (Sales Navigator)
-  groups?: string[];
-  
-  // Past filters
-  past_company?: { include?: string[]; exclude?: string[] } | string[];
-  past_job_title?: Array<{ id: string; priority: string }>;
-  
-  // Advanced keywords (Classic)
-  advanced_keywords?: {
-    first_name?: string;
-    last_name?: string;
-    title?: string;
-    company?: string;
-    school?: string;
-  };
-  
-  // Saved/Recent searches (Sales Navigator)
-  saved_search_id?: string;
-  recent_search_id?: string;
-
-  // Advanced Recruiter filters (pass-through to Unipile)
-  spoken_languages?: Array<{ language: string; priority?: string; scope?: string }>;
-  employment_type?: string[];
-  graduation_year?: { min?: number; max?: number };
-  // Unipile schema: `{ timespan: number }` (days). Frontend sends the object directly.
-  hide_previously_viewed?: { timespan: number };
-  recently_joined?: Array<{ min?: number; max?: number }>;
-  // Direct pass-through variants (frontend may send these directly)
-  tenure_in_company?: { min?: number; max?: number };
-  tenure_in_position?: { min?: number; max?: number };
-}
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.1';
-import { enforceLinkedInAction, recordUsageSignal, parseUsagePct, type LinkedInActionType } from '../_shared/linkedin-quotas.ts';
-import { candidateRef, missionIdFrom, recordOutbound, type CandidateRef } from '../_shared/candidate-stage-events.ts';
-import { isCandidateErasedForOrg } from '../_shared/get-or-fetch-contact.ts';
+import { enforceLinkedInAction, type LinkedInActionType } from '../_shared/linkedin-quotas.ts';
 import { assertContinuousOperationContext } from '../_shared/continuous-sourcing.ts';
-import { searchBooleanIssue } from '../_shared/search-boolean.ts';
-
-/**
- * Resolve Unipile credentials: try org-specific first, then fall back to env vars.
- */
-async function resolveUnipileCredentials(organizationId?: string): Promise<{ apiKey: string; dsn: string } | null> {
-  // Try org-specific credentials
-  if (organizationId) {
-    try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
-      const sb = createClient(supabaseUrl, serviceKey);
-      
-      const { data } = await sb
-        .from('organization_integrations')
-        .select('unipile_api_key, unipile_dsn, unipile_connected')
-        .eq('organization_id', organizationId)
-        .single();
-      
-      if (data?.unipile_connected && data?.unipile_api_key && data?.unipile_dsn) {
-        const rawDsn = data.unipile_dsn;
-        const dsn = rawDsn.startsWith('http') ? rawDsn.replace(/^https?:\/\//, '') : rawDsn;
-        console.log(`[unipile-search] Using org-specific credentials for org ${organizationId}`);
-        return { apiKey: data.unipile_api_key, dsn };
-      }
-    } catch (e) {
-      console.warn('[unipile-search] Failed to resolve org credentials:', e);
-    }
-  }
-  
-  // Unipile is a platform-level integration (one account shared by all orgs).
-  // Fall back to env vars for orgs that haven't configured org-specific credentials.
-  const envApiKey = Deno.env.get('UNIPILE_API_KEY');
-  const envDsn = Deno.env.get('UNIPILE_DSN');
-  if (envApiKey && envDsn) {
-    const dsn = envDsn.startsWith('http') ? envDsn.replace(/^https?:\/\//, '') : envDsn;
-    console.log(`[unipile-search] Using platform env var credentials (org ${organizationId} has no org-specific config)`);
-    return { apiKey: envApiKey, dsn };
-  }
-
-  return null;
-}
-
-/** Erreur d'entrée client → réponse 4xx (jamais 500). */
-class UnipileInputError extends Error {
-  status: number;
-  constructor(message: string, status = 400, public code?: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
-/**
- * Identifiant destiné à un segment de chemin ou un paramètre d'URL Unipile
- * (profile_id, chat_id, account_id). Sans encodage, profile_id = "../accounts"
- * transformait GET /users/../accounts en GET /accounts sur la clé plateforme
- * (SEC-007). Les slugs LinkedIn %-encodés envoyés par le front sont décodés
- * puis ré-encodés à l'identique.
- */
-/**
- * Reject incomplete Boolean input before consulting LinkedIn. A repair can
- * change an exclusion or a required group, so valid queries stay byte-for-byte
- * unchanged. Quoted phrases may contain parentheses and operator words.
- */
-function validateBooleanKeywords(input: string, label = 'Mots-clés'): string {
-  const issue = searchBooleanIssue(input);
-  if (issue === 'empty') {
-    throw new UnipileInputError(`Renseignez la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
-  }
-  if (issue === 'quotes' || issue === 'parentheses') {
-    throw new UnipileInputError(`Fermez les guillemets et les parenthèses de la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
-  }
-  if (issue === 'operators') {
-    throw new UnipileInputError(`Complétez les opérateurs de la requête « ${label} ».`, 400, 'INVALID_BOOLEAN_QUERY');
-  }
-  return input;
-}
-
-function unipileId(value: unknown, label: string): string {
-  let s = typeof value === 'string' ? value : value == null ? '' : String(value);
-  s = s.trim();
-  if (s.includes('%')) {
-    try { s = decodeURIComponent(s); } catch { /* valeur brute conservée */ }
-  }
-  if (!s || s.length > 512 || s === '.' || s.includes('..') || /[/\\?#]/.test(s)) {
-    throw new UnipileInputError(`${label} invalide`);
-  }
-  return encodeURIComponent(s);
-}
-
-/** Comptes LinkedIn rattachés à l'organisation (member_linkedin_accounts). */
-async function loadOrgLinkedInAccountIds(organizationId: string): Promise<Set<string>> {
-  const sb = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
-  );
-  const { data, error } = await sb
-    .from('member_linkedin_accounts')
-    .select('linkedin_account_id')
-    .eq('organization_id', organizationId);
-  if (error) throw new Error(`member_linkedin_accounts lookup failed: ${error.message}`);
-  return new Set(
-    ((data ?? []) as Array<{ linkedin_account_id: string | null }>)
-      .map((r) => r.linkedin_account_id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0),
-  );
-}
-
-const CHAT_ACCOUNT_CACHE_TTL_MS = 15 * 60 * 1000;
-const chatAccountCache = new Map<string, { accountId: string; expiresAt: number }>();
-
-/**
- * Compte propriétaire d'une conversation (GET /chats/{id} renvoie account_id),
- * vérifié contre les comptes de l'organisation : chat_id n'était lié à rien
- * (SEC-006). Cache mémoire 15 min par isolate pour ne pas doubler les appels
- * du polling inbox.
- */
-async function resolveChatAccount(
-  baseUrl: string,
-  apiKey: string,
-  organizationId: string,
-  chatIdEncoded: string,
-  orgAccountIds: Set<string>,
-): Promise<string> {
-  const cacheKey = `${organizationId}:${chatIdEncoded}`;
-  const now = Date.now();
-  const hit = chatAccountCache.get(cacheKey);
-  if (hit && hit.expiresAt > now && orgAccountIds.has(hit.accountId)) return hit.accountId;
-
-  const res = await fetchWithTimeout(`${baseUrl}/chats/${chatIdEncoded}`, {
-    headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
-  });
-  if (!res.ok) throw new UnipileInputError('Conversation introuvable', 404);
-  const chat = await res.json().catch(() => ({}));
-  const accountId = typeof chat?.account_id === 'string' ? chat.account_id : '';
-  if (!accountId || !orgAccountIds.has(accountId)) {
-    throw new UnipileInputError("Cette conversation n'appartient pas à un compte LinkedIn de votre organisation", 403);
-  }
-  if (chatAccountCache.size > 5000) chatAccountCache.clear();
-  chatAccountCache.set(cacheKey, { accountId, expiresAt: now + CHAT_ACCOUNT_CACHE_TTL_MS });
-  return accountId;
-}
+import {
+  AccountNotOwnedError,
+  assertAccountOwnedByOrg,
+  assertV2AccountId,
+  isUnipileConfigured,
+  isUnipileError,
+  OutdatedAccountIdError,
+  userSafeMessage,
+  type AccountOwnership,
+} from '../_shared/unipile/index.ts';
+import { canonicalUuid, collaboratorOwnAccountRefusal, ownerOnlyRefusal, sameId } from './account-rules.ts';
+import { handleGetChats, handleGetMessages, handleMarkAsRead, handleSyncChatHistory } from './chats.ts';
+import { handleListSentInvitations, handleWithdrawInvitation } from './invitations.ts';
+import { handleEndorseSkill, handleGetProfile, handleGetUserPosts } from './profile.ts';
+import { handleListRecruiterProjects } from './recruiter-projects.ts';
+import { corsHeaders, failureResponse, INTERNAL_ERROR_MESSAGE, json, UnipileInputError } from './responses.ts';
+import { handleSearchFromUrl } from './search-url.ts';
+import { handleGetParameters, prepareSearch, runSearch, type PreparedSearch, type SearchFailureRow } from './search.ts';
+import { handleSendMessage, planSend, type SendContext, type SendPlan } from './send.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -267,13 +46,13 @@ Deno.serve(async (req) => {
     // --- Auth: JWT + org membership, OR internal service-role (Mode B) ---
     // Mode B = appel interne edge→edge avec la clé service-role (ex. l'outil
     // copilot get_candidate_outreach qui lit le fil LinkedIn verbatim côté
-    // serveur). Cloisonnement org assuré par organization_id requis (les
-    // credentials sont résolus par org) + l'appelant a déjà vérifié l'accès
-    // au candidat (rôle/org). Même pattern éprouvé que retrieve-context /
-    // ingest-context / auto-ingest-context.
+    // serveur). Cloisonnement org assuré par organization_id requis + le
+    // rattachement du compte à cette organisation (plus bas) ; l'appelant a déjà
+    // vérifié l'accès au candidat (rôle/org). Même pattern éprouvé que
+    // retrieve-context / ingest-context / auto-ingest-context.
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return json({ error: 'Unauthorized' }, 401);
     }
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const _bearer = authHeader.replace('Bearer ', '').trim();
@@ -287,88 +66,94 @@ Deno.serve(async (req) => {
       });
       const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
       if (authError || !user) {
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return json({ error: 'Unauthorized' }, 401);
       }
       userId = user.id;
     }
 
-    const { action, account_id, organization_id, ...params } = await req.json();
+    const { action, account_id, organization_id: requestedOrganizationId, ...params } = await req.json();
+    // L'uuid de l'organisation est lu sous une seule forme (minuscules, tirets) avant tout usage : la base accepte aussi les
+    // majuscules, les accolades et l'absence de tirets, et la comparaison avec l'organisation de l'agent plus bas est une
+    // comparaison de chaînes.
+    const organization_id = typeof requestedOrganizationId === 'string' ? canonicalUuid(requestedOrganizationId) : requestedOrganizationId;
 
-    // organization_id OBLIGATOIRE pour tous les modes, ET membership vérifié pour
-    // tout appel user : sinon un user qui OMETTAIT organization_id sautait le
-    // check et resolveUnipileCredentials(undefined) retombait sur la clé Unipile
-    // partagée (env). Le fallback env reste légitime (org sans créds propres)
-    // mais n'est plus accessible sans appartenance vérifiée.
+    // organization_id OBLIGATOIRE pour tous les modes, ET membership vérifié pour tout appel user.
     if (!organization_id) {
-      return new Response(JSON.stringify({ error: 'organization_id required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return json({ error: 'organization_id required' }, 400);
     }
+    const admin = createClient(supabaseUrl, _serviceKey!);
+    // Rôle de l'appelant dans l'organisation, lu avec l'appartenance : il règle l'usage des comptes de l'équipe.
+    let callerRole: string | null = null;
     if (!isInternal) {
-      const sb = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
-      const { data: membership } = await sb.from('organization_members').select('id').eq('user_id', userId).eq('organization_id', organization_id).maybeSingle();
+      const { data: membership } = await admin.from('organization_members').select('id, role').eq('user_id', userId).eq('organization_id', organization_id).maybeSingle();
       if (!membership) {
-        return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        return json({ error: 'Forbidden' }, 403);
       }
+      callerRole = typeof membership.role === 'string' ? membership.role : null;
     }
 
     // --- Rate limiting: 60 req/min per user (skipped for internal service-role) ---
     if (!isInternal) {
-      const sbService = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
-      const { data: allowed } = await sbService.rpc('check_rate_limit', {
+      const { data: allowed } = await admin.rpc('check_rate_limit', {
         p_user_id: userId,
         p_action: 'unipile_search',
         p_max_requests: 60,
         p_window_seconds: 60,
       });
       if (allowed === false) {
-        return new Response(JSON.stringify({
+        return json({
           success: false,
-          error: 'Rate limit exceeded',
+          error: 'Trop de demandes. Patientez quelques secondes.',
           errorType: 'RATE_LIMIT',
           retryAfter: 60,
-        }), {
-          status: 429,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        }, 429);
       }
     }
 
-    const credentials = await resolveUnipileCredentials(organization_id);
-    if (!credentials) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unipile not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Clé de l'application absente : panne de configuration, dite sans nommer le prestataire.
+    if (!isUnipileConfigured()) {
+      console.error('[unipile-search] clé du prestataire absente (UNIPILE_V2_API_KEY)');
+      return json({ success: false, error: userSafeMessage('config'), errorType: 'NOT_CONFIGURED' }, 500);
     }
-
-    const { apiKey, dsn } = credentials;
 
     if (!account_id) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Account ID requis' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json({ success: false, error: 'Account ID requis' }, 400);
     }
 
-    const baseUrl = `https://${dsn}/api/v1`;
+    // Un identifiant qui n'est pas du format v2 est un ancien identifiant : le compte est à reconnecter.
+    const accountIdRaw = String(account_id).trim();
+    try {
+      assertV2AccountId(accountIdRaw);
+    } catch (e) {
+      if (!(e instanceof OutdatedAccountIdError)) throw e;
+      return json({ success: false, errorType: 'ACCOUNT_OUTDATED', error: userSafeMessage('account_disconnected') }, 403);
+    }
 
     // ─── Rattachement du compte LinkedIn à l'organisation (SEC-006) ────────
-    // La clé Unipile est partagée entre les orgs sans créds propres : sans ce
+    // La clé du prestataire est partagée entre toutes les organisations : sans ce
     // contrôle, un account_id d'une autre org donnait accès à sa boîte, à ses
     // recherches et à ses envois. Vaut aussi pour les appels internes
     // (organization_id est requis dans tous les modes).
-    const accountIdRaw = String(account_id).trim();
-    unipileId(accountIdRaw, 'account_id');
-    const orgAccountIds = await loadOrgLinkedInAccountIds(organization_id);
-    if (!orgAccountIds.has(accountIdRaw)) {
-      return new Response(JSON.stringify({
+    let ownership: AccountOwnership;
+    try {
+      ownership = await assertAccountOwnedByOrg(admin, String(organization_id), accountIdRaw, { kinds: ['linkedin'] });
+    } catch (e) {
+      if (!(e instanceof AccountNotOwnedError)) throw e;
+      return json({
         success: false,
         errorType: 'ACCOUNT_NOT_LINKED',
         error: "Ce compte LinkedIn n'est pas rattaché à votre organisation. Associez-le depuis Paramètres > Connecteurs.",
-      }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }, 403);
     }
+    // Règles de sécurité (SEC-006) et non conséquences de l'API v2 : un membre n'envoie et ne retire une invitation
+    // que depuis le compte qu'il a relié, et un collaborateur ne se sert, pour AUCUNE action, du compte d'un
+    // collègue (voir account-rules.ts : la règle ne liste pas d'actions, une action ajoutée plus tard est couverte).
+    const refusal = ownerOnlyRefusal(action, { isInternal, userId, accountOwnerId: ownership.userId })
+      ?? collaboratorOwnAccountRefusal({ isInternal, userId, accountOwnerId: ownership.userId, role: callerRole });
+    if (refusal) return json(refusal.body, refusal.status);
 
     // The cron worker has already reserved the automatic quota. Fence again
-    // immediately before the actual provider call, including retry delays.
+    // immediately before the actual provider call.
     let continuousGuard: (() => Promise<void>) | undefined;
     if (isInternal && params.continuous_agent_run === true) {
       if (!['search', 'get_profile'].includes(action)) {
@@ -381,7 +166,7 @@ Deno.serve(async (req) => {
         });
         const agent = Array.isArray(data) ? data[0] : data;
         if (error || !agent || !params.continuous_context_key
-          || agent.organization_id !== organization_id || agent.created_by !== params.user_id
+          || !sameId(agent.organization_id, organization_id) || !sameId(agent.created_by, params.user_id)
           || agent.account_id !== accountIdRaw || agent.api !== params.api
           || agent.context_snapshot?.context_key !== params.continuous_context_key) {
           throw new UnipileInputError('L’agent a été interrompu. Aucune nouvelle consultation LinkedIn n’a été lancée.', 409, 'AGENT_LEASE_CHANGED');
@@ -399,21 +184,36 @@ Deno.serve(async (req) => {
       };
     }
 
-    // Actions sur une conversation : le compte propriétaire du chat doit lui
-    // aussi appartenir à l'organisation. C'est ce compte qui porte le quota.
-    const chatScopedActions = new Set(['get_messages', 'send_message', 'mark_as_read', 'sync_chat_history']);
-    let gateAccountId = accountIdRaw;
-    if (chatScopedActions.has(action) && params?.chat_id) {
-      const chatIdEncoded = unipileId(params.chat_id, 'chat_id');
-      gateAccountId = await resolveChatAccount(baseUrl, apiKey, organization_id, chatIdEncoded, orgAccountIds);
+    // ─── Contrôles sans effet, AVANT le plafond ───────────────────────────
+    // Une recherche ou un envoi refusé (licence absente, page périmée, mots-clés trop longs, objet ou signature
+    // d'InMail manquant, conversation mal formée) ne consomme pas d'unité du plafond LinkedIn : le gate journalise
+    // l'usage dès qu'il laisse passer, et la nouvelle tentative de l'utilisateur coûterait une seconde unité.
+    // Correctif 4 : le destinataire d'un envoi est résolu et contrôlé ici aussi (planSend, checkSendRecipient) :
+    // un candidat effacé (RGPD, 403 CANDIDATE_ERASED) ou un registre illisible (503 GDPR_UNVERIFIED) refusent
+    // l'envoi avant le plafond, le marqueur et l'appel au prestataire. Le refus lève UnipileInputError, rendue
+    // plus bas avec son statut et son code.
+    const searchDeps = {
+      beforeProvider: continuousGuard,
+      recordFailure: async (row: SearchFailureRow) => { await admin.from('search_failure_log').insert(row); },
+    };
+    let preparedSearch: PreparedSearch | undefined;
+    let sendPlan: SendPlan | undefined;
+    const sendContext: SendContext = {
+      organizationId: String(organization_id),
+      userId,
+      isInternal,
+      accountOwnerId: ownership.userId,
+      admin: () => admin,
+    };
+    if (action === 'search') {
+      const step = await prepareSearch(accountIdRaw, params, searchDeps);
+      if ('response' in step) return step.response;
+      preparedSearch = step.prepared;
+    } else if (action === 'send_message') {
+      const checked = await planSend(accountIdRaw, params, sendContext);
+      if (!checked.ok) return checked.response;
+      sendPlan = checked.plan;
     }
-
-    // Correctif 4 (plan du lot 5) : destinataire d'un envoi et contrôle
-    // d'effacement avant le plafond LinkedIn (aucune place prise par un envoi
-    // refusé), le marqueur et le POST. Un refus lève UnipileInputError.
-    const sendRecipient = action === 'send_message'
-      ? await checkSendRecipient(baseUrl, apiKey, gateAccountId, params, String(organization_id))
-      : null;
 
     // ─── Gate quota LinkedIn (actions manuelles user) ─────────────────────
     // Conformité #260513-007211 : les vues de profil / recherches / envois
@@ -430,10 +230,9 @@ Deno.serve(async (req) => {
         : action === 'endorse_skill' ? 'endorse'
         : undefined;
       if (gatedType) {
-        const sbGate = createClient(supabaseUrl, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cross-version supabase-js client type mismatch (different import specifier than linkedin-quotas.ts)
-        const gate = await enforceLinkedInAction(sbGate as any, {
-          accountId: gateAccountId,
+        const gate = await enforceLinkedInAction(admin as any, {
+          accountId: accountIdRaw,
           actionType: gatedType,
           userId: userId || null,
           organizationId: organization_id || null,
@@ -441,2150 +240,69 @@ Deno.serve(async (req) => {
           mode: 'manual',
         });
         if (!gate.allowed) {
-          return new Response(JSON.stringify({
+          return json({
             success: false,
             error: gate.reason || 'Limite LinkedIn quotidienne atteinte. Réessayez demain.',
             errorType: 'QUOTA',
             scope: gate.scope,
-          }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }, 429);
         }
       }
     }
 
     switch (action) {
-      case 'search': {
-        return await handleSearch(baseUrl, apiKey, account_id, params, continuousGuard, continuousGuard ? 1 : 3);
-      }
+      case 'search':
+        return await runSearch(accountIdRaw, preparedSearch as PreparedSearch, searchDeps);
 
-      case 'get_parameters': {
-        return await handleGetParameters(baseUrl, apiKey, account_id, params);
-      }
+      case 'get_parameters':
+        return await handleGetParameters(accountIdRaw, params);
 
-      case 'get_profile': {
-        return await handleGetProfile(baseUrl, apiKey, account_id, params, continuousGuard);
-      }
+      case 'search_from_url':
+        return await handleSearchFromUrl(accountIdRaw, params);
 
-      case 'get_chats': {
-        return await handleGetChats(baseUrl, apiKey, account_id, params);
-      }
+      case 'list_recruiter_projects':
+        return await handleListRecruiterProjects(accountIdRaw, params);
 
-      case 'get_messages': {
-        return await handleGetMessages(baseUrl, apiKey, gateAccountId, params);
-      }
+      case 'list_sent_invitations':
+        return await handleListSentInvitations(accountIdRaw, params);
 
-      case 'sync_chat_history': {
-        return await handleSyncChatHistory(baseUrl, apiKey, gateAccountId, params);
-      }
+      case 'withdraw_invitation':
+        return await handleWithdrawInvitation(accountIdRaw, params, { organizationId: String(organization_id), userId, admin: () => admin });
 
-      case 'send_message': {
-        return await handleSendMessage(baseUrl, apiKey, gateAccountId, params, {
-          organizationId: String(organization_id),
-          userId,
-          isInternal,
-        }, sendRecipient);
-      }
+      case 'get_profile':
+        return await handleGetProfile(accountIdRaw, params, continuousGuard);
 
-      case 'mark_as_read': {
-        return await handleMarkAsRead(baseUrl, apiKey, params);
-      }
+      case 'get_chats':
+        return await handleGetChats(accountIdRaw, params);
 
-      case 'get_user_posts': {
-        return await handleGetUserPosts(baseUrl, apiKey, account_id, params);
-      }
+      case 'get_messages':
+        return await handleGetMessages(accountIdRaw, params);
 
-      case 'endorse_skill': {
-        return await handleEndorseSkill(baseUrl, apiKey, account_id, params);
-      }
+      case 'sync_chat_history':
+        return await handleSyncChatHistory(accountIdRaw, params);
+
+      case 'send_message':
+        return await handleSendMessage(accountIdRaw, params, sendContext, sendPlan);
+
+      case 'mark_as_read':
+        return await handleMarkAsRead(accountIdRaw, params);
+
+      case 'get_user_posts':
+        return await handleGetUserPosts(accountIdRaw, params);
+
+      case 'endorse_skill':
+        return await handleEndorseSkill(accountIdRaw, params);
 
       default:
-        return new Response(
-          JSON.stringify({ success: false, error: 'Action non reconnue' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return json({ success: false, error: 'Action non reconnue' }, 400);
     }
   } catch (error) {
-    console.error('Error:', error);
     if (error instanceof UnipileInputError) {
-      return new Response(
-        JSON.stringify({ success: false, error: error.message, ...(error.code ? { error_code: error.code } : {}) }),
-        { status: error.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json({ success: false, error: error.message, ...(error.code ? { error_code: error.code } : {}) }, error.status);
     }
-    return new Response(
-      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur interne' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    if (isUnipileError(error)) return failureResponse(error, 'request');
+    // Le texte d'une exception inattendue ne va jamais à l'utilisateur : il reste dans les journaux.
+    console.error('Error:', error);
+    return json({ success: false, error: INTERNAL_ERROR_MESSAGE, errorType: 'INTERNAL' }, 500);
   }
 });
-
-/**
- * Handle LinkedIn Search
- * Supports all three APIs: classic, recruiter, sales_navigator
- */
-async function handleSearch(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: SearchParams,
-  beforeProvider?: () => Promise<void>,
-  maxAttempts = 3,
-): Promise<Response> {
-  const {
-    api = 'recruiter',
-    category = 'people',
-    keywords,
-    limit = 25,
-    cursor,
-    location,
-    location_within_area,
-    company,
-    company_keywords,
-    industry,
-    school,
-    job_title,
-    skills,
-    role,
-    function: functionFilter,
-    seniority,
-    network_distance,
-    profile_language,
-    years_of_experience,
-    tenure,
-    tenure_at_company,
-    tenure_at_role,
-    open_to_work,
-    open_to,
-    hiring_project,
-    spotlights,
-    spotlight,
-    degree,
-    company_headcount,
-    company_type,
-    company_location,
-    groups,
-    past_company,
-    past_job_title,
-    advanced_keywords,
-    saved_search_id,
-    recent_search_id,
-    spoken_languages,
-    employment_type,
-    graduation_year,
-    hide_previously_viewed,
-    recently_joined,
-    tenure_in_company: directTenureInCompany,
-    tenure_in_position: directTenureInPosition,
-  } = params;
-
-  // Build request body based on API type
-  const searchBody: Record<string, unknown> = {
-    api: api.toLowerCase(),
-    category,
-    limit,
-  };
-
-  // Normalise seniority values per API type.
-  // Each API has different valid enum values:
-  // - Classic Jobs: intern | entry | associate | mid_senior | director | executive
-  // - Recruiter People: owner | partner | cxo | vp | director | manager | senior | entry | training | unpaid
-  // - Sales Navigator People: owner/partner | cxo | vice_president | director | experienced_manager | entry_level_manager | strategic | senior | entry_level | in_training
-  const normaliseSeniority = (value: string, apiType: string): string | null => {
-    const v = String(value).trim().toLowerCase();
-    if (!v) return null;
-
-    if (apiType === 'recruiter') {
-      // Recruiter valid: owner, partner, cxo, vp, director, manager, senior, entry, training, unpaid
-      const RECRUITER_MAP: Record<string, string> = {
-        owner: 'owner', partner: 'partner', cxo: 'cxo', vp: 'vp',
-        director: 'director', directeur: 'director', manager: 'manager',
-        senior: 'senior', entry: 'entry', junior: 'entry', training: 'training',
-        intern: 'training', unpaid: 'unpaid',
-        'c-level': 'cxo', executive: 'cxo', 'mid-senior': 'senior', mid_senior: 'senior',
-        'mid senior': 'senior', mid: 'senior', associate: 'entry',
-        débutant: 'entry', debutant: 'entry',
-      };
-      return RECRUITER_MAP[v] || null;
-    }
-
-    if (apiType === 'sales_navigator') {
-      // Sales Nav valid: owner/partner, cxo, vice_president, director, experienced_manager, entry_level_manager, strategic, senior, entry_level, in_training
-      const SN_MAP: Record<string, string> = {
-        'owner/partner': 'owner/partner', owner: 'owner/partner', partner: 'owner/partner',
-        cxo: 'cxo', 'c-level': 'cxo', executive: 'cxo',
-        vp: 'vice_president', vice_president: 'vice_president',
-        director: 'director', directeur: 'director',
-        manager: 'experienced_manager', experienced_manager: 'experienced_manager',
-        entry_level_manager: 'entry_level_manager',
-        strategic: 'strategic', senior: 'senior', 'mid-senior': 'senior', mid_senior: 'senior', mid: 'senior',
-        entry: 'entry_level', entry_level: 'entry_level', junior: 'entry_level',
-        associate: 'entry_level', débutant: 'entry_level', debutant: 'entry_level',
-        intern: 'in_training', in_training: 'in_training', training: 'in_training',
-      };
-      return SN_MAP[v] || null;
-    }
-
-    // Classic Jobs: intern | entry | associate | mid_senior | director | executive
-    const CLASSIC_MAP: Record<string, string> = {
-      intern: 'intern', entry: 'entry', junior: 'entry', débutant: 'entry', debutant: 'entry',
-      associate: 'associate',
-      mid: 'mid_senior', senior: 'mid_senior', 'mid-senior': 'mid_senior', mid_senior: 'mid_senior', 'mid senior': 'mid_senior',
-      manager: 'director', director: 'director', directeur: 'director',
-      vp: 'executive', cxo: 'executive', 'c-level': 'executive', executive: 'executive', partner: 'executive', owner: 'executive',
-    };
-    return CLASSIC_MAP[v] || null;
-  };
-
-  // Pagination cursor
-  if (cursor) searchBody.cursor = cursor;
-
-  // Saved/Recent search IDs (Sales Navigator) - overrides other filters
-  if (api === 'sales_navigator') {
-    if (saved_search_id) {
-      searchBody.saved_search_id = saved_search_id;
-    }
-    if (recent_search_id) {
-      searchBody.recent_search_id = recent_search_id;
-    }
-  }
-
-  // Preserve every Boolean group. The app's Classic/Sales limit is explicit;
-  // Recruiter does not inherit it and provider limits are reported unchanged.
-  if (keywords) {
-    if (api !== 'recruiter' && keywords.length > 200) {
-      throw new UnipileInputError(`La requête « Mots-clés » contient ${keywords.length} caractères. Cette recherche accepte actuellement jusqu’à 200 caractères pour cette licence. Raccourcissez-la ou utilisez Recruiter.`, 400, 'KEYWORDS_TOO_LONG');
-    }
-    searchBody.keywords = validateBooleanKeywords(keywords);
-  }
-
-  // Advanced keywords (Classic only)
-  if (api === 'classic' && advanced_keywords) {
-    const advKw: Record<string, string> = {};
-    if (advanced_keywords.first_name) advKw.first_name = advanced_keywords.first_name;
-    if (advanced_keywords.last_name) advKw.last_name = advanced_keywords.last_name;
-    if (advanced_keywords.title) advKw.title = advanced_keywords.title;
-    if (advanced_keywords.company) advKw.company = advanced_keywords.company;
-    if (advanced_keywords.school) advKw.school = advanced_keywords.school;
-    if (Object.keys(advKw).length > 0) {
-      searchBody.advanced_keywords = advKw;
-    }
-  }
-
-  // Location - different format per API:
-  // - Classic: "location" as simple array of IDs
-  // - Recruiter: "location" as array of objects with id, priority, scope (sent from frontend)
-  // - Sales Navigator: "location" with { include: [...], exclude: [...] }
-  if (location?.length) {
-    if (api === 'recruiter') {
-      // Recruiter expects array of objects: { id, priority, scope }
-      // Frontend sends objects with id, priority, scope - or strings for backward compat
-      searchBody.location = location.map((loc: string | { id: string; priority?: string; scope?: string }) => {
-        if (typeof loc === 'object' && loc.id) {
-          return {
-            id: loc.id,
-            priority: loc.priority || 'MUST_HAVE',
-            scope: loc.scope || 'CURRENT_OR_OPEN_TO_RELOCATE'
-          };
-        }
-        // Fallback for string IDs
-        return {
-          id: loc as string,
-          priority: 'MUST_HAVE',
-          scope: 'CURRENT_OR_OPEN_TO_RELOCATE'
-        };
-      });
-    } else if (api === 'sales_navigator') {
-      // Sales Navigator expects include array of IDs
-      const locationIds = location.map((loc: string | { id: string }) => 
-        typeof loc === 'object' ? loc.id : loc
-      );
-      searchBody.location = { include: locationIds };
-    } else {
-      // Classic uses simple array of IDs
-      const locationIds = location.map((loc: string | { id: string }) => 
-        typeof loc === 'object' ? loc.id : loc
-      );
-      searchBody.location = locationIds;
-    }
-  }
-
-  // Location within area (radius in miles) - Recruiter only
-  if (api === 'recruiter' && location_within_area !== undefined && location_within_area !== null) {
-    searchBody.location_within_area = location_within_area;
-  }
-
-  // Company filter - different format per API:
-  // - Classic: simple array of string IDs
-  // - Recruiter: array of objects [{ id, name?, priority?, scope? }] or [{ keywords, priority?, scope? }]
-  // - Sales Navigator: { include: string[], exclude?: string[] }
-  if (company) {
-    if (Array.isArray(company)) {
-      if (company.length > 0) {
-        if (api === 'recruiter') {
-          // Recruiter expects array of objects with id, priority, scope
-          searchBody.company = company.map((c: string | { id?: string; keywords?: string; priority?: string; scope?: string }) => {
-            if (typeof c === 'object') {
-              return {
-                ...c,
-                ...(c.keywords !== undefined ? { keywords: validateBooleanKeywords(c.keywords, 'Entreprise') } : {}),
-                priority: c.priority || 'CAN_HAVE',
-                scope: c.scope || 'CURRENT_OR_PAST',
-              };
-            }
-            return { id: c, priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' };
-          });
-        } else if (api === 'sales_navigator') {
-          searchBody.company = { include: company };
-        } else {
-          searchBody.company = company;
-        }
-      }
-    } else if (company.include?.length || company.exclude?.length) {
-      if (api === 'recruiter') {
-        // Recruiter doesn't use { include, exclude } - convert to array of objects
-        const items = [
-          ...(company.include || []).map((id: string) => ({ id, priority: 'CAN_HAVE', scope: 'CURRENT_OR_PAST' })),
-          ...(company.exclude || []).map((id: string) => ({ id, priority: 'DOESNT_HAVE', scope: 'CURRENT_OR_PAST' })),
-        ];
-        if (items.length > 0) searchBody.company = items;
-      } else {
-        searchBody.company = company;
-      }
-    }
-  }
-
-  // Company keywords filter (Recruiter only) - keywords-based with priority and scope
-  if (api === 'recruiter' && company_keywords?.length) {
-    // Recruiter accepts IDs and keywords in the same array. Append the clauses
-    // without losing targets, exclusions, priorities or scopes already set.
-    const keywordCompanies = company_keywords.map(c => ({
-      keywords: validateBooleanKeywords(c.keywords, 'Entreprise'),
-      priority: c.priority,
-      scope: c.scope,
-    }));
-    searchBody.company = [...(Array.isArray(searchBody.company) ? searchBody.company : []), ...keywordCompanies];
-  }
-
-  // Industry - with include structure for Recruiter/SalesNav
-  if (industry) {
-    const needsInclude = api === 'recruiter' || api === 'sales_navigator';
-    if (Array.isArray(industry)) {
-      if (industry.length > 0) {
-        searchBody.industry = needsInclude ? { include: industry } : industry;
-      }
-    } else if (industry.include?.length || industry.exclude?.length) {
-      searchBody.industry = industry;
-    }
-  }
-
-  // School - different format per API:
-  // - Classic: simple array of IDs
-  // - Sales Navigator: { include: [...], exclude: [...] }
-  // - Recruiter: array of objects with id and priority
-  if (school?.length) {
-    if (api === 'classic') {
-      searchBody.school = school;
-    } else if (api === 'sales_navigator') {
-      // Check if it's already formatted with priority
-      if (typeof school[0] === 'object' && 'id' in school[0]) {
-        searchBody.school = { include: (school as Array<{ id: string }>).map(s => s.id) };
-      } else {
-        searchBody.school = { include: school };
-      }
-    } else if (api === 'recruiter') {
-      // Recruiter uses priority format: [{ id: "123", priority: "MUST_HAVE" }]
-      if (typeof school[0] === 'object' && 'id' in school[0]) {
-        searchBody.school = school;
-      } else {
-        searchBody.school = (school as string[]).map((id: string) => ({
-          id,
-          priority: 'MUST_HAVE',
-        }));
-      }
-    }
-  }
-
-  // Job title - different handling per API
-  // - Recruiter: uses `role` with array of objects { id, is_selection, priority?, scope? } or { keywords, priority?, scope? }
-  // - Sales Navigator: uses `role` with { include: [...], exclude: [...] }
-  // - Classic: no direct job_title filter
-  if (job_title?.length) {
-    if (api === 'recruiter') {
-      // Recruiter uses `role` (not current_job_title)
-      searchBody.role = job_title.map((t: { id?: string; keywords?: string; priority?: string; scope?: string; is_selection?: boolean }) => {
-        if (t.keywords) {
-          return { keywords: validateBooleanKeywords(t.keywords, 'Poste'), priority: t.priority || 'MUST_HAVE', scope: t.scope || 'CURRENT_OR_PAST' };
-        }
-        return {
-          id: t.id,
-          is_selection: t.is_selection ?? false,
-          priority: t.priority || 'MUST_HAVE',
-          scope: t.scope || 'CURRENT_OR_PAST',
-        };
-      });
-    } else if (api === 'sales_navigator') {
-      // Sales Navigator uses `role` with { include, exclude }
-      const includeIds = job_title.filter(t => t.priority !== 'DOESNT_HAVE').map(t => t.id);
-      const excludeIds = job_title.filter(t => t.priority === 'DOESNT_HAVE').map(t => t.id);
-      const roleObj: Record<string, string[]> = {};
-      if (includeIds.length) roleObj.include = includeIds;
-      if (excludeIds.length) roleObj.exclude = excludeIds;
-      if (Object.keys(roleObj).length) searchBody.role = roleObj;
-    }
-  }
-
-  // Skills with priority (Recruiter only - not supported in Sales Navigator)
-  // Supports both id-based ({ id, priority }) and keywords-based ({ keywords, priority })
-  if (skills?.length && api === 'recruiter') {
-    searchBody.skills = skills.map((s: Record<string, unknown>) => {
-      if (s.keywords) {
-        return { keywords: validateBooleanKeywords(s.keywords as string, 'Compétence'), priority: s.priority };
-      }
-      return { id: s.id, priority: s.priority };
-    });
-  }
-
-  // Role filter - Recruiter specific with keywords, priority, scope
-  // Note: if job_title already set `role`, append keyword-based roles
-  if (role?.length && api === 'recruiter') {
-    const keywordRoles = role.map(r => ({
-      keywords: validateBooleanKeywords(r.keywords, 'Poste'),
-      priority: r.priority || 'MUST_HAVE',
-      scope: r.scope || 'CURRENT_OR_PAST',
-    }));
-    // Merge with ID-based roles from job_title if any
-    if (Array.isArray(searchBody.role)) {
-      (searchBody.role as unknown[]).push(...keywordRoles);
-    } else {
-      searchBody.role = keywordRoles;
-    }
-  }
-
-  // Function/Department filter
-  // - Recruiter: simple array of string IDs
-  // - Sales Navigator: { include: [...], exclude: [...] }
-  if (functionFilter) {
-    if (api === 'recruiter') {
-      // Recruiter: function is a simple string[] of department IDs
-      if (Array.isArray(functionFilter)) {
-        if (functionFilter.length > 0) searchBody.function = functionFilter;
-      } else if (functionFilter.include?.length) {
-        searchBody.function = functionFilter.include;
-      }
-    } else if (api === 'sales_navigator') {
-      // Sales Navigator: function is { include: [...], exclude: [...] }
-      if (Array.isArray(functionFilter)) {
-        if (functionFilter.length > 0) searchBody.function = { include: functionFilter };
-      } else if (functionFilter.include?.length || functionFilter.exclude?.length) {
-        searchBody.function = functionFilter;
-      }
-    }
-  }
-
-  // Degree filter (Recruiter) - Doc: { include: string[], exclude: string[] }
-  if (degree && api === 'recruiter') {
-    const hasInclude = degree.include?.length;
-    const hasExclude = degree.exclude?.length;
-    if (hasInclude || hasExclude) {
-      searchBody.degree = {
-        ...(hasInclude && { include: degree.include }),
-        ...(hasExclude && { exclude: degree.exclude }),
-      };
-    }
-  }
-
-  // Seniority - different format per API:
-  // - Classic Jobs: simple array of strings
-  // - Recruiter People: { include: [...], exclude: [...] } with recruiter-specific enums
-  // - Sales Navigator People: { include: [...], exclude: [...] } with SN-specific enums
-  if (seniority?.length) {
-    const normalised = seniority.map(s => normaliseSeniority(s, api)).filter((v): v is string => Boolean(v));
-    console.log('Seniority received:', seniority, '→ normalised:', normalised, 'API:', api, 'category:', category);
-    if (normalised.length) {
-      if (category === 'jobs') {
-        // Classic Jobs: simple array
-        searchBody.seniority = normalised;
-      } else if (api === 'recruiter' || api === 'sales_navigator') {
-        // People searches: { include: [...] }
-        searchBody.seniority = { include: normalised };
-      }
-    }
-  }
-
-  // Network distance (all APIs)
-  if (network_distance?.length) {
-    searchBody.network_distance = network_distance;
-  }
-
-  // Profile language
-  if (profile_language?.length) {
-    searchBody.profile_language = profile_language;
-  }
-
-  // Years of experience / Tenure - different per API
-  // - Recruiter: `tenure` as { min, max } object
-  // - Sales Navigator: `tenure` as array of { min, max } ranges
-  if (api === 'recruiter') {
-    // Recruiter uses `tenure` as a single object { min, max }
-    // Frontend may send as years_of_experience or tenure
-    const tenureSource = years_of_experience || (tenure?.length ? tenure[0] : null);
-    if (tenureSource && (tenureSource.min !== undefined || tenureSource.max !== undefined)) {
-      searchBody.tenure = tenureSource;
-    }
-  } else if (api === 'sales_navigator') {
-    // Sales Navigator uses tenure as array of { min, max } ranges
-    if (tenure?.length) {
-      searchBody.tenure = tenure;
-    } else if (years_of_experience && (years_of_experience.min !== undefined || years_of_experience.max !== undefined)) {
-      // Fallback: convert single object to array
-      searchBody.tenure = [years_of_experience];
-    }
-  }
-
-  // Tenure at company - different per API:
-  // - Recruiter: `tenure_in_company` as { min, max } object
-  // - Sales Navigator: `tenure_at_company` as array of { min, max }
-  if (tenure_at_company?.length) {
-    if (api === 'recruiter') {
-      searchBody.tenure_in_company = tenure_at_company[0]; // single object
-    } else if (api === 'sales_navigator') {
-      searchBody.tenure_at_company = tenure_at_company;
-    }
-  }
-
-  // Tenure at role - different per API:
-  // - Recruiter: `tenure_in_position` as { min, max } object
-  // - Sales Navigator: `tenure_at_role` as array of { min, max }
-  if (tenure_at_role?.length) {
-    if (api === 'recruiter') {
-      searchBody.tenure_in_position = tenure_at_role[0]; // single object
-    } else if (api === 'sales_navigator') {
-      searchBody.tenure_at_role = tenure_at_role;
-    }
-  }
-
-  // Open to work / Open to
-  if (api === 'classic') {
-    // Classic only supports proBono, boardMember
-    if (open_to?.length) {
-      searchBody.open_to = open_to;
-    }
-  } else if (api === 'recruiter') {
-    // Unipile Recruiter API supports spotlights with these valid values:
-    // OPEN_TO_WORK, ACTIVE_TALENT, REDISCOVERED_CANDIDATES, INTERNAL_CANDIDATES,
-    // INTERESTED_IN_YOUR_COMPANY, HAVE_COMPANY_CONNECTIONS
-    const VALID_RECRUITER_SPOTLIGHTS = new Set([
-      'OPEN_TO_WORK', 'ACTIVE_TALENT', 'REDISCOVERED_CANDIDATES',
-      'INTERNAL_CANDIDATES', 'INTERESTED_IN_YOUR_COMPANY', 'HAVE_COMPANY_CONNECTIONS',
-    ]);
-
-    const mergedSpotlights = Array.from(
-      new Set(
-        [
-          ...(Array.isArray(spotlights) ? spotlights : []),
-          ...(spotlight ? [spotlight] : []),
-          ...(open_to_work === true ? ['OPEN_TO_WORK'] : []),
-        ].filter(Boolean)
-      )
-    ).filter(s => VALID_RECRUITER_SPOTLIGHTS.has(s as string)) as string[];
-
-    if (mergedSpotlights.length) {
-      searchBody.spotlights = mergedSpotlights;
-      console.log('[Search] Applied spotlights:', mergedSpotlights);
-    }
-    // Note: Recruiter has no `open_to` field in the Unipile schema — "Open to Work"
-    // is exposed via `spotlights: ['OPEN_TO_WORK']` (merged above). The `open_to`
-    // values (proBono / boardMember) only exist on Classic.
-  }
-
-  // Recruiter specific filters
-  if (api === 'recruiter') {
-    if (hiring_project) searchBody.hiring_projects = { include: [hiring_project] };
-    // NOTE: spotlights are handled above (merged from open_to_work + spotlight + spotlights)
-    
-    // Recruiting activity (messages, notes, tags, etc.)
-    if (params.recruiting_activity?.length) {
-      searchBody.recruiting_activity = params.recruiting_activity.map(activity => {
-        const item: Record<string, unknown> = {
-          id: activity.id,
-          priority: activity.priority,
-        };
-        if (activity.timespan !== undefined && activity.timespan !== null) {
-          item.timespan = activity.timespan;
-        }
-        return item;
-      });
-    }
-
-    // --- Advanced Recruiter filters (pass-through to Unipile) ---
-
-    // Spoken languages with proficiency level
-    if (spoken_languages?.length) {
-      searchBody.spoken_languages = spoken_languages;
-      console.log('[Search] Applied spoken_languages:', JSON.stringify(spoken_languages));
-    }
-
-    // Employment type (FULL_TIME, CONTRACT, etc.)
-    if (employment_type?.length) {
-      searchBody.employment_type = employment_type;
-      console.log('[Search] Applied employment_type:', employment_type);
-    }
-
-    // Graduation year range
-    if (graduation_year && (graduation_year.min !== undefined || graduation_year.max !== undefined)) {
-      searchBody.graduation_year = graduation_year;
-      console.log('[Search] Applied graduation_year:', JSON.stringify(graduation_year));
-    }
-
-    // Hide previously viewed profiles — Unipile schema: { timespan: number } (days)
-    if (hide_previously_viewed && typeof hide_previously_viewed.timespan === 'number' && hide_previously_viewed.timespan > 0) {
-      searchBody.hide_previously_viewed = hide_previously_viewed;
-      console.log('[Search] Applied hide_previously_viewed:', JSON.stringify(hide_previously_viewed));
-    }
-
-    // Recently joined LinkedIn
-    if (recently_joined?.length) {
-      searchBody.recently_joined = recently_joined;
-      console.log('[Search] Applied recently_joined:', JSON.stringify(recently_joined));
-    }
-
-    // Direct tenure_in_company pass-through (when frontend sends it directly, not via tenure_at_company)
-    if (directTenureInCompany && !searchBody.tenure_in_company && (directTenureInCompany.min !== undefined || directTenureInCompany.max !== undefined)) {
-      searchBody.tenure_in_company = directTenureInCompany;
-      console.log('[Search] Applied direct tenure_in_company:', JSON.stringify(directTenureInCompany));
-    }
-
-    // Direct tenure_in_position pass-through (when frontend sends it directly, not via tenure_at_role)
-    if (directTenureInPosition && !searchBody.tenure_in_position && (directTenureInPosition.min !== undefined || directTenureInPosition.max !== undefined)) {
-      searchBody.tenure_in_position = directTenureInPosition;
-      console.log('[Search] Applied direct tenure_in_position:', JSON.stringify(directTenureInPosition));
-    }
-  }
-
-  // Company headcount - supported by both Recruiter and Sales Navigator
-  // Both use array of { min, max } objects
-  if (company_headcount?.length) {
-    if (api === 'sales_navigator' || api === 'recruiter') {
-      const headcountMap: Record<string, { min: number; max?: number }> = {
-        'A': { min: 1, max: 1 },
-        'B': { min: 1, max: 10 },
-        'C': { min: 11, max: 50 },
-        'D': { min: 51, max: 200 },
-        'E': { min: 201, max: 500 },
-        'F': { min: 501, max: 1000 },
-        'G': { min: 1001, max: 5000 },
-        'H': { min: 5001, max: 10000 },
-        'I': { min: 10001 },
-      };
-      
-      if (typeof company_headcount[0] === 'string') {
-        const ranges = company_headcount
-          .map(h => headcountMap[h as string])
-          .filter(Boolean);
-        if (ranges.length > 0) {
-          searchBody.company_headcount = ranges;
-        }
-      } else {
-        searchBody.company_headcount = company_headcount;
-      }
-    }
-  }
-
-  // Company type (Sales Navigator)
-  if (company_type?.length && api === 'sales_navigator') {
-    // Map our values to API format
-    const typeMap: Record<string, string> = {
-      'C': 'public_company',
-      'O': 'privately_held',
-      'E': 'non_profit',
-      'S': 'educational_institution',
-      'P': 'partnership',
-      'G': 'self_employed',
-      'D': 'government_agency',
-    };
-    
-    const mappedTypes = company_type.map(t => typeMap[t] || t);
-    searchBody.company_type = mappedTypes;
-  }
-
-  // Company location (Sales Navigator)
-  if (company_location && api === 'sales_navigator') {
-    if (company_location.include?.length || company_location.exclude?.length) {
-      searchBody.company_location = company_location;
-    }
-  }
-
-  // Groups (Sales Navigator + Recruiter)
-  if (groups?.length && (api === 'sales_navigator' || api === 'recruiter')) {
-    searchBody.groups = groups;
-  }
-
-  // Past company
-  // Past company - different per API:
-  // - Classic: simple array of string IDs
-  // - Recruiter: array of objects [{ id, priority }]
-  // - Sales Navigator: { include: [...], exclude: [...] }
-  if (past_company) {
-    if (Array.isArray(past_company)) {
-      if (past_company.length > 0) {
-        if (api === 'recruiter') {
-          searchBody.past_company = past_company.map((c: string | { id: string; priority?: string }) => {
-            if (typeof c === 'object') return c;
-            return { id: c, priority: 'CAN_HAVE' };
-          });
-        } else if (api === 'sales_navigator') {
-          searchBody.past_company = { include: past_company };
-        } else {
-          searchBody.past_company = past_company;
-        }
-      }
-    } else if (past_company.include?.length || past_company.exclude?.length) {
-      if (api === 'recruiter') {
-        // Convert include/exclude to array of objects
-        const items = [
-          ...(past_company.include || []).map((id: string) => ({ id, priority: 'CAN_HAVE' })),
-          ...(past_company.exclude || []).map((id: string) => ({ id, priority: 'DOESNT_HAVE' })),
-        ];
-        if (items.length > 0) searchBody.past_company = items;
-      } else {
-        searchBody.past_company = past_company;
-      }
-    }
-  }
-
-  // Past job title - different per API:
-  // - Recruiter: merged into `role` with scope: 'PAST' (not a separate param)
-  // - Sales Navigator: `past_role` with { include: [...], exclude: [...] }
-  if (past_job_title?.length) {
-    if (api === 'recruiter') {
-      // Recruiter doesn't have a separate past_job_title. Past titles go into `role` with scope: 'PAST'
-      const pastRoles = past_job_title.map(t => ({
-        id: t.id,
-        is_selection: false,
-        priority: t.priority || 'MUST_HAVE',
-        scope: 'PAST',
-      }));
-      if (Array.isArray(searchBody.role)) {
-        (searchBody.role as unknown[]).push(...pastRoles);
-      } else {
-        searchBody.role = pastRoles;
-      }
-    } else if (api === 'sales_navigator') {
-      // Sales Navigator uses `past_role` with { include, exclude }
-      const includeIds = past_job_title.filter(t => t.priority !== 'DOESNT_HAVE').map(t => t.id);
-      const excludeIds = past_job_title.filter(t => t.priority === 'DOESNT_HAVE').map(t => t.id);
-      const pastRoleObj: Record<string, string[]> = {};
-      if (includeIds.length) pastRoleObj.include = includeIds;
-      if (excludeIds.length) pastRoleObj.exclude = excludeIds;
-      if (Object.keys(pastRoleObj).length) searchBody.past_role = pastRoleObj;
-    }
-  }
-
-  const searchUrl = `${baseUrl}/linkedin/search?account_id=${encodeURIComponent(accountId)}`;
-  console.log('Search URL:', searchUrl);
-  console.log('Search body:', JSON.stringify(searchBody));
-
-  // Retry logic for multiple_sessions errors (server-side)
-  const MAX_RETRIES = maxAttempts;
-  const RETRY_DELAYS = [0, 6000, 15000]; // ms: immediate, 6s, 15s
-  let response: globalThis.Response | null = null;
-  let data: Record<string, unknown> = {};
-  let invalidBody = false;
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (attempt > 0) {
-      console.log(`[search] Retry attempt ${attempt + 1}/${MAX_RETRIES}, waiting ${RETRY_DELAYS[attempt]}ms`);
-      await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
-    }
-
-    if (beforeProvider) await beforeProvider();
-    response = await fetchWithTimeout(searchUrl, {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': apiKey,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(searchBody),
-    });
-
-    // La passerelle LinkedIn peut renvoyer une page HTML (502/504,
-    // maintenance) : response.json() lèverait « Unexpected token '<' » qui
-    // remontait brut jusqu'au toast user. Parse défensif + retry (transitoire).
-    const rawBody = await response.text().catch(() => '');
-    try {
-      data = rawBody ? JSON.parse(rawBody) : {};
-      invalidBody = false;
-    } catch {
-      console.error(`[search] Non-JSON response (HTTP ${response.status}): ${rawBody.slice(0, 300)}`);
-      data = {
-        type: 'invalid_response',
-        detail: 'Le service LinkedIn a renvoyé une réponse invalide (maintenance possible). Réessayez dans un instant.',
-      };
-      invalidBody = true;
-      continue;
-    }
-
-    // If success or non-retryable error, break
-    if (response.ok) break;
-    
-    const isMultipleSessions = data.type?.toString().includes('multiple_sessions') || 
-      data.detail?.toString().includes('multiple sessions') ||
-      data.message?.toString().includes('multiple sessions');
-    
-    if (!isMultipleSessions) break; // non-retryable error
-    
-    console.log(`[search] multiple_sessions error on attempt ${attempt + 1}`);
-  }
-
-  if (invalidBody || !response!.ok) {
-    console.error('Search error:', JSON.stringify(data, null, 2));
-    console.error('Request body was:', JSON.stringify(searchBody, null, 2));
-
-    // Boîte noire : persiste l'échec (payload exact + erreur provider brute)
-    // pour diagnostic SQL — les logs console edge ne sont pas requêtables.
-    try {
-      const sbDiag = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
-      );
-      await sbDiag.from('search_failure_log').insert({
-        account_id: accountId,
-        http_status: response!.status,
-        error_type: String(data.type ?? ''),
-        error_detail: String(data.detail ?? data.message ?? '').slice(0, 1000),
-        search_body: searchBody,
-      });
-    } catch (_e) { /* diagnostic non bloquant */ }
-
-    // Handle content_too_large (400) - payload rejected by LinkedIn
-    if (response!.status === 400 && data.type?.toString().includes('content_too_large')) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'La requête est trop volumineuse. Essayez de réduire les mots-clés ou les filtres.',
-          errorType: 'CONTENT_TOO_LARGE',
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // Handle rate limiting (429) and server errors (500)
-    if (response!.status === 429 || response!.status === 500) {
-      const isRateLimit = response!.status === 429 || 
-        (data.detail && String(data.detail).toLowerCase().includes('limit')) ||
-        (data.detail && String(data.detail).toLowerCase().includes('quota'));
-      
-      if (isRateLimit) {
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Limite LinkedIn atteinte. Espacez vos requêtes et réessayez plus tard.',
-            errorType: 'RATE_LIMIT',
-            retryAfter: 60,
-          }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-    
-    // Try to extract more useful error info
-    let errorMessage = 'Erreur de recherche';
-    if (data.detail) {
-      const detailMatch = String(data.detail).match(/^([^\n{]+)/);
-      errorMessage = detailMatch ? detailMatch[1].trim() : String(data.detail).substring(0, 200);
-    } else if (data.message) {
-      errorMessage = String(data.message);
-    }
-    
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: errorMessage,
-        errorType: data.type,
-        debug: { status: response!.status, body: searchBody }
-      }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  return new Response(
-    JSON.stringify({
-      success: true,
-      results: data.items || [],
-      cursor: data.cursor,
-      total: data.paging?.total_count || data.total,
-      config: data.config,
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-/**
- * Handle Get Parameters (autocomplete for filters)
- * Used to get IDs for location, company, job_title, skills, etc.
- */
-async function handleGetParameters(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: Record<string, unknown>
-): Promise<Response> {
-  const { type, keywords, service = 'RECRUITER', limit = 100 } = params;
-
-  if (!type) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Type de paramètre requis' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Service must be uppercase for this endpoint
-  const serviceType = String(service).toUpperCase();
-  
-  const queryParams = new URLSearchParams();
-  queryParams.set('account_id', accountId);
-  queryParams.set('type', String(type));
-  queryParams.set('service', serviceType);
-  queryParams.set('limit', String(limit));
-  
-  if (keywords) {
-    queryParams.set('keywords', String(keywords));
-  }
-
-  const url = `${baseUrl}/linkedin/search/parameters?${queryParams.toString()}`;
-  console.log('Get parameters URL:', url);
-
-  const response = await fetchWithTimeout(url, {
-    headers: {
-      'X-API-KEY': apiKey,
-      'Accept': 'application/json',
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('Parameters error:', data);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: data.detail || data.message || 'Erreur de récupération',
-        items: [] 
-      }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Map API response to consistent format
-  const items = (data.items || []).map((item: { id: string; title: string }) => ({
-    id: item.id,
-    title: item.title,
-  }));
-
-  return new Response(
-    JSON.stringify({ success: true, items }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-/**
- * Handle Get Profile details
- */
-async function handleGetProfile(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: Record<string, unknown>,
-  beforeProvider?: () => Promise<void>,
-): Promise<Response> {
-  let { profile_id, profile_url } = params as { profile_id?: string; profile_url?: string };
-
-  // If profile_url is provided but not profile_id, extract the slug from the URL
-  if (!profile_id && profile_url) {
-    const slug = String(profile_url).replace(/\/+$/, '').split('/').pop();
-    if (slug) {
-      profile_id = slug;
-    }
-  }
-
-  if (!profile_id) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Profile ID requis' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  if (beforeProvider) await beforeProvider();
-  let profileUrl = `${baseUrl}/users/${unipileId(profile_id, 'profile_id')}?account_id=${encodeURIComponent(accountId)}`;
-  if (params.include_details === true) {
-    // The provider otherwise returns identity only. Ask for the sections used
-    // by the candidate profile without notifying the person of this read.
-    for (const section of ['about', 'experience', 'education', 'skills', 'languages']) {
-      profileUrl += `&linkedin_sections=${section}`;
-    }
-    profileUrl += '&notify=false';
-  }
-  const response = await fetchWithTimeout(profileUrl, {
-    headers: {
-      'X-API-KEY': apiKey,
-      'Accept': 'application/json',
-    },
-  });
-
-  const data = response.ok ? await response.json() : await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    let status = response.status === 503 ? 503 : 502;
-    let errorType = 'PROFILE_UNAVAILABLE';
-    let error = 'LinkedIn ne répond pas pour le moment. Réessayez dans quelques instants.';
-    const detail = typeof data?.detail === 'string' ? data.detail : data?.message;
-    // A missing account or route is not a missing candidate. Only the documented
-    // user absence permits the client to retry this identity using its public URL.
-    const profileNotFound = response.status === 404
-      && (!data?.type || data.type === 'errors/resource_not_found')
-      && typeof detail === 'string' && /^(?:User|Profile) not found\.?$/i.test(detail.trim());
-    if (profileNotFound) {
-      status = 404;
-      errorType = 'PROFILE_NOT_FOUND';
-      error = 'Ce profil est introuvable sur LinkedIn. Vérifiez le lien du candidat.';
-    } else if (response.status === 401) {
-      // Provider credentials are distinct from the authenticated Konekt session.
-      status = 403;
-      errorType = 'LINKEDIN_CONNECTION_REQUIRED';
-      error = 'Reconnectez votre compte LinkedIn dans les paramètres pour consulter ce profil.';
-    } else if (response.status === 403) {
-      status = 403;
-      errorType = 'ACCOUNT_ACCESS';
-      error = 'Votre compte LinkedIn ne permet pas de consulter ce profil.';
-    } else if (response.status === 429) {
-      status = 429;
-      errorType = 'RATE_LIMIT';
-      error = 'La limite de consultation des profils LinkedIn est atteinte. Réessayez plus tard.';
-    }
-    return new Response(
-      JSON.stringify({ success: false, error, errorType }),
-      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Normalize profile data to match search result format
-  const normalized = normalizeProfileData(data);
-
-  return new Response(
-    JSON.stringify({ success: true, profile: normalized }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-/**
- * Handle Get Chats - List conversations for an account
- * If attendee_provider_id is provided, use the dedicated endpoint to find chats for that specific attendee
- * Otherwise list all chats for the account
- * 
- * API Docs: 
- * - List all chats: GET /chats?account_id={account_id}
- * - List chats by attendee: GET /chat_attendees/{attendee_id}/chats?account_id={account_id}
- * - Get chat details with attendees: GET /chats/{chat_id}
- */
-async function handleGetChats(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: Record<string, unknown>
-): Promise<Response> {
-  const { attendee_provider_id, limit = 100, cursor, folder, cursors } = params;
-
-  // If we have an attendee_provider_id, use the dedicated endpoint
-  if (attendee_provider_id) {
-    const queryParams = new URLSearchParams();
-    queryParams.set('account_id', accountId);
-    queryParams.set('limit', String(Math.min(Number(limit), 250)));
-    if (cursor) queryParams.set('cursor', String(cursor));
-    
-    const url = `${baseUrl}/chat_attendees/${encodeURIComponent(String(attendee_provider_id))}/chats?${queryParams.toString()}`;
-    console.log('Get chats by attendee URL:', url);
-    
-    const response = await fetchWithTimeout(url, {
-      headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
-    });
-    
-    const data = await response.json();
-    if (!response.ok) {
-      // The attendee lookup returns 404 before this person has a conversation.
-      // Only this documented absence is empty: account/route errors and a
-      // disappearing attendee during pagination still report an unavailable read.
-      const detail = typeof data.detail === 'string' ? data.detail : data.message;
-      if (response.status === 404 && !cursor && typeof detail === 'string'
-        && /(?:^|\n)Attendee not found\.?\s*$/i.test(detail.trim())) {
-        return new Response(
-          JSON.stringify({ success: true, chats: [], cursor: null }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      console.warn('Chats attendee lookup failed (status', response.status, '):', data.detail || data.message);
-      // Preserve real lookup failures; an unavailable history is not an empty one.
-      return new Response(
-        JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur', chats: [] }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    // Return directly for attendee-based queries (simpler case)
-    const attendeeChats = data.items || [];
-    console.log('Chats fetched by attendee:', attendeeChats.length);
-    
-    // Quick enrichment for attendee-based query
-    const enrichedAttendeeChats = attendeeChats.map((chat: Record<string, unknown>) => ({
-      ...chat,
-      attendees: chat.attendees || [],
-    }));
-    
-    return new Response(
-      JSON.stringify({ success: true, chats: enrichedAttendeeChats, cursor: data.cursor }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // For inbox: fetch LinkedIn Classic, Recruiter, AND generic INBOX folders in parallel
-  // Support per-folder cursors for proper pagination across merged folders
-  const folderNames = ['INBOX_LINKEDIN_CLASSIC', 'INBOX_LINKEDIN_RECRUITER', 'INBOX'];
-  
-  // Parse per-folder cursors: { INBOX_LINKEDIN_CLASSIC: "xxx", INBOX_LINKEDIN_RECRUITER: null, INBOX: "yyy" }
-  // A cursor value of null means that folder is exhausted. undefined means first fetch.
-  const folderCursors = (cursors as Record<string, string | null> | undefined) || {};
-  
-  console.log('Fetching chats from folders:', folderNames, '| Account:', accountId, '| Cursors:', JSON.stringify(folderCursors));
-  
-  const fetchFromFolder = async (folderName: string): Promise<{ items: Record<string, unknown>[]; cursor: string | null; succeeded: boolean | null }> => {
-    // If cursor is explicitly null (not undefined), this folder is exhausted
-    if (folderCursors[folderName] === null && Object.prototype.hasOwnProperty.call(folderCursors, folderName)) {
-      console.log(`Folder ${folderName}: exhausted (cursor=null), skipping`);
-      return { items: [], cursor: null, succeeded: null };
-    }
-    
-    const folderCursor = folderCursors[folderName]; // undefined on first fetch, string on subsequent
-    
-    const queryParams = new URLSearchParams();
-    queryParams.set('account_id', accountId);
-    queryParams.set('limit', String(Math.min(Number(limit), 125)));
-    queryParams.set('folder', folderName);
-    if (folderCursor) queryParams.set('cursor', String(folderCursor));
-    
-    const url = `${baseUrl}/chats?${queryParams.toString()}`;
-    console.log(`Fetching folder ${folderName}:`, url);
-    
-    try {
-      const response = await fetchWithTimeout(url, {
-        headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
-      });
-      
-      const data = await response.json();
-      if (!response.ok) {
-        console.error(`Error fetching ${folderName}:`, data);
-        return { items: [], cursor: null, succeeded: false };
-      }
-      
-      const items = data.items || [];
-      console.log(`Folder ${folderName}: ${items.length} chats, cursor: ${data.cursor || 'null'}`);
-      return { items, cursor: data.cursor || null, succeeded: true };
-    } catch (error) {
-      console.error(`Exception fetching ${folderName}:`, error);
-      return { items: [], cursor: null, succeeded: false };
-    }
-  };
-  
-  // Fetch all folders in parallel
-  const [classicResult, recruiterResult, genericResult] = await Promise.all([
-    fetchFromFolder('INBOX_LINKEDIN_CLASSIC'),
-    fetchFromFolder('INBOX_LINKEDIN_RECRUITER'),
-    fetchFromFolder('INBOX'),
-  ]);
-
-  const requestedFolders = [classicResult, recruiterResult, genericResult].filter(result => result.succeeded !== null);
-  if (requestedFolders.length && !requestedFolders.some(result => result.succeeded)) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Les conversations LinkedIn sont temporairement indisponibles.' }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-  
-  // Build next cursors object
-  const nextCursors: Record<string, string | null> = {
-    INBOX_LINKEDIN_CLASSIC: classicResult.cursor,
-    INBOX_LINKEDIN_RECRUITER: recruiterResult.cursor,
-    INBOX: genericResult.cursor,
-  };
-  
-  // hasMore = at least one folder still has a cursor
-  const hasMore = Object.values(nextCursors).some(c => c !== null);
-  
-  // Merge and dedupe by chat ID, then sort by timestamp (most recent first)
-  const chatMap = new Map<string, Record<string, unknown>>();
-  
-  [...classicResult.items, ...recruiterResult.items, ...genericResult.items].forEach((chat: Record<string, unknown>) => {
-    const chatId = chat.id as string;
-    if (!chatMap.has(chatId)) {
-      chatMap.set(chatId, chat);
-    }
-  });
-  
-  const chats = Array.from(chatMap.values()).sort((a, b) => {
-    const timeA = new Date(a.timestamp as string).getTime();
-    const timeB = new Date(b.timestamp as string).getTime();
-    return timeB - timeA; // Most recent first
-  });
-
-  // Lightweight path (internal copilot tool get_linkedin_thread). The raw
-  // /chats list only carries attendee_provider_id + chat id (NO name, NO
-  // last_message). To resolve a conversation BY ATTENDEE NAME we do a
-  // names-ONLY enrichment: one /chat_attendees/{id} call per chat (cached,
-  // batched), SKIPPING the always-on fetchLastMessage half of the normal
-  // enrichment storm. Capped to the recent-sorted top N (limit) → bounded
-  // (~N small calls) instead of ~2×AllChats.
-  if (params.raw) {
-    const capped = chats.slice(0, Math.min(Number(limit) || 40, 60));
-    const attCache = new Map<string, Record<string, unknown> | null>();
-    const enrichName = async (chat: Record<string, unknown>) => {
-      const apid = chat.attendee_provider_id as string | undefined;
-      const base = {
-        id: chat.id,
-        attendee_provider_id: apid ?? null,
-        name: chat.name ?? null,
-        timestamp: chat.timestamp ?? null,
-        folder: chat.folder ?? null,
-      };
-      if (!apid) return { ...base, attendees: [] };
-      if (!attCache.has(apid)) {
-        try {
-          const r = await fetchWithTimeout(
-            `${baseUrl}/chat_attendees/${encodeURIComponent(apid)}`,
-            { headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' } },
-          );
-          attCache.set(apid, r.ok ? await r.json() : null);
-        } catch {
-          attCache.set(apid, null);
-        }
-      }
-      const att = attCache.get(apid) || null;
-      return {
-        ...base,
-        attendees: att
-          ? [{
-              name: (att as Record<string, unknown>).name ?? null,
-              provider_id: (att as Record<string, unknown>).provider_id ?? apid,
-              id: (att as Record<string, unknown>).id ?? null,
-              is_self: (att as Record<string, unknown>).is_self ?? 0,
-            }]
-          : [],
-      };
-    };
-    const out: Record<string, unknown>[] = [];
-    const RAW_BATCH = 10;
-    for (let i = 0; i < capped.length; i += RAW_BATCH) {
-      const batch = capped.slice(i, i + RAW_BATCH);
-      out.push(...await Promise.all(batch.map(enrichName)));
-    }
-    return new Response(
-      JSON.stringify({ success: true, chats: out, cursors: nextCursors, cursor: hasMore ? '__has_more__' : null }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  console.log(`Total merged chats: ${chats.length} (Classic: ${classicResult.items.length}, Recruiter: ${recruiterResult.items.length}, Generic: ${genericResult.items.length})`);
-
-  // Log folder distribution for debugging
-  const folderCounts: Record<string, number> = {};
-  chats.forEach((chat: Record<string, unknown>) => {
-    const folders = (chat.folder as string[]) || [];
-    folders.forEach((f: string) => {
-      folderCounts[f] = (folderCounts[f] || 0) + 1;
-    });
-  });
-  console.log('Chats fetched:', chats.length, '| Folder distribution:', JSON.stringify(folderCounts));
-  
-  // Cache for attendee info to avoid duplicate fetches
-  const attendeeCache = new Map<string, Record<string, unknown>>();
-  
-  // Enrich chats with attendee details (name/picture) for ALL returned chats.
-  // The list endpoint returns attendee_provider_id but not the full attendee info,
-  // so we fetch /chat_attendees/{id} (cached by attendee_provider_id).
-  // NOTE: We do this in small batches to avoid flooding the upstream API.
-  // Helper: fetch last message for a chat to determine is_sender
-  const fetchLastMessage = async (chatId: string): Promise<{ is_sender: boolean; text?: string; timestamp?: string } | null> => {
-    try {
-      const msgUrl = `${baseUrl}/chats/${encodeURIComponent(chatId)}/messages?limit=1`;
-      const msgResponse = await fetchWithTimeout(msgUrl, {
-        headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
-      });
-      if (msgResponse.ok) {
-        const msgData = await msgResponse.json();
-        const items = msgData.items || msgData || [];
-        const lastMsg = Array.isArray(items) ? items[0] : null;
-        if (lastMsg) {
-          return {
-            is_sender: !!lastMsg.is_sender,
-            text: lastMsg.text || lastMsg.text_content || '',
-            timestamp: lastMsg.timestamp,
-          };
-        }
-      }
-    } catch (e) {
-      console.error('Error fetching last message for chat', chatId, e);
-    }
-    return null;
-  };
-
-  const enrichChat = async (chat: Record<string, unknown>) => {
-    try {
-      // Parallel: fetch attendee info + last message
-      const attendeeProviderId = chat.attendee_provider_id as string | undefined;
-      const providedAttendees = (chat.attendees as Record<string, unknown>[] | undefined) || [];
-      
-      const promises: Promise<unknown>[] = [];
-      
-      // Attendee fetch (if needed)
-      // Fetch attendee info if we don't have attendees, or if existing attendees lack an `id` field
-      let needsAttendeeFetch = attendeeProviderId && !attendeeCache.has(attendeeProviderId) && 
-        (providedAttendees.length === 0 || (providedAttendees.length > 0 && !providedAttendees[0].id));
-      if (needsAttendeeFetch) {
-        promises.push(
-          fetchWithTimeout(`${baseUrl}/chat_attendees/${encodeURIComponent(attendeeProviderId!)}`, {
-            headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
-          }).then(r => r.ok ? r.json() : null).catch(() => null)
-        );
-      } else {
-        promises.push(Promise.resolve(null));
-      }
-      
-      // Last message fetch
-      promises.push(fetchLastMessage(chat.id as string));
-      
-      const [attendeeResult, lastMsgResult] = await Promise.all(promises) as [Record<string, unknown> | null, { is_sender: boolean; text?: string; timestamp?: string } | null];
-      
-      // Build attendees — ensure each attendee has its `id` field
-      let attendees = providedAttendees;
-      if (attendees.length === 0 && attendeeProviderId) {
-        if (attendeeCache.has(attendeeProviderId)) {
-          attendees = [attendeeCache.get(attendeeProviderId)!];
-        } else if (attendeeResult) {
-          attendeeCache.set(attendeeProviderId, attendeeResult);
-          attendees = [attendeeResult];
-        }
-      }
-      // If attendees were already provided but don't have an `id` field,
-      // and we fetched attendee data, merge in the id
-      if (attendees.length > 0 && !attendees[0].id && attendeeResult?.id) {
-        attendees = [{ ...attendees[0], id: attendeeResult.id }];
-      }
-      // If we still don't have attendee id but have attendee_provider_id, set it as id fallback
-      if (attendees.length > 0 && !attendees[0].id && attendeeProviderId) {
-        // Try to get from cache
-        const cached = attendeeCache.get(attendeeProviderId);
-        if (cached?.id) {
-          attendees = [{ ...attendees[0], id: cached.id }];
-        }
-      }
-      
-      // Build last_message info
-      const existingLastMessage = (chat.last_message as Record<string, unknown>) || {};
-      const enrichedLastMessage = lastMsgResult
-        ? { ...existingLastMessage, is_sender: lastMsgResult.is_sender, text: lastMsgResult.text, timestamp: lastMsgResult.timestamp }
-        : existingLastMessage;
-      
-      return {
-        ...chat,
-        attendees,
-        last_message: enrichedLastMessage,
-      };
-    } catch (error) {
-      console.error('Error enriching chat:', chat.id, error);
-      return chat;
-    }
-  };
-
-  const enrichedChats: Record<string, unknown>[] = [];
-  const BATCH_SIZE = 10;
-  for (let i = 0; i < chats.length; i += BATCH_SIZE) {
-    const batch = chats.slice(i, i + BATCH_SIZE);
-    const enrichedBatch = await Promise.all(batch.map(enrichChat));
-    enrichedChats.push(...enrichedBatch);
-  }
-
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      chats: enrichedChats,
-      cursors: nextCursors,
-      cursor: hasMore ? '__has_more__' : null,
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-/**
- * Handle Get Messages - Get message history from a specific chat
- */
-async function handleGetMessages(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: Record<string, unknown>
-): Promise<Response> {
-  const { chat_id, limit = 50, cursor } = params;
-
-  if (!chat_id) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Chat ID requis' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const queryParams = new URLSearchParams();
-  if (cursor) {
-    queryParams.set('cursor', String(cursor));
-  }
-  queryParams.set('limit', String(limit));
-
-  const url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}/messages?${queryParams.toString()}`;
-  console.log('Get messages URL:', url);
-
-  const response = await fetchWithTimeout(url, {
-    headers: {
-      'X-API-KEY': apiKey,
-      'Accept': 'application/json',
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('Messages error:', data);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: data.detail || data.message || 'Erreur de récupération des messages',
-        messages: [] 
-      }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  return new Response(
-    JSON.stringify({ 
-      success: true, 
-      messages: data.items || [],
-      cursor: data.cursor,
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-/** Appelant d'un envoi : organisation vérifiée, utilisateur (vide en appel interne). */
-interface SendContext {
-  organizationId: string;
-  userId: string;
-  isInternal: boolean;
-}
-
-const SEND_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function sendText(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
-}
-
-/** Candidat d'une conversation déjà liée à une mission sur ce compte (lien conversation–mission). */
-async function linkedChatCandidate(
-  // deno-lint-ignore no-explicit-any
-  admin: any,
-  organizationId: string,
-  accountId: string,
-  chatId: string,
-): Promise<CandidateRef | null> {
-  const { data, error } = await admin
-    .from('mission_conversations')
-    .select('candidate_id, candidate_ids, candidate_slug')
-    .eq('organization_id', organizationId)
-    .eq('account_id', accountId)
-    .eq('chat_id', chatId)
-    .order('last_mission_send_at', { ascending: false, nullsFirst: false })
-    .limit(1);
-  if (error) {
-    console.warn('[unipile-search] send_message: lien de conversation illisible:', error.message);
-    return null;
-  }
-  const row = (data ?? [])[0] as { candidate_id: string | null; candidate_ids: string[] | null; candidate_slug: string | null } | undefined;
-  if (!row) return null;
-  const ref = candidateRef({ ids: [row.candidate_id, ...(row.candidate_ids ?? [])], slug: row.candidate_slug });
-  return ref.ids.length > 0 ? ref : null;
-}
-
-/**
- * Candidat d'une conversation lu auprès du prestataire : le seul participant
- * qui n'est pas le compte. Aucun ou plusieurs (groupe) : null.
- */
-async function fetchChatCandidate(baseUrl: string, apiKey: string, chatId: string): Promise<CandidateRef | null> {
-  try {
-    const res = await fetchWithTimeout(`${baseUrl}/chats/${encodeURIComponent(chatId)}/attendees`, {
-      headers: { 'X-API-KEY': apiKey, 'Accept': 'application/json' },
-    });
-    if (!res.ok) {
-      await res.text();
-      console.warn(`[unipile-search] send_message: participants indisponibles (statut ${res.status})`);
-      return null;
-    }
-    const body = await res.json();
-    const items: unknown[] = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
-    const others = items.filter((a) => {
-      if (!a || typeof a !== 'object') return false;
-      const att = a as Record<string, unknown>;
-      return !(att.is_self === true || att.is_self === 1 || att.role === 'self');
-    }) as Array<Record<string, unknown>>;
-    if (others.length !== 1) return null;
-    const other = others[0];
-    const specifics = other.specifics as Record<string, unknown> | null | undefined;
-    const ref = candidateRef({
-      ids: [sendText(other.provider_id)],
-      slug: sendText(other.public_identifier) ?? sendText(specifics?.public_identifier),
-      profileUrl: sendText(other.profile_url),
-      name: sendText(other.name),
-    });
-    return ref.ids.length > 0 ? ref : null;
-  } catch (e) {
-    console.warn('[unipile-search] send_message: lecture des participants impossible:', e instanceof Error ? e.message : e);
-    return null;
-  }
-}
-
-/** Destinataire d'un envoi, résolu et contrôlé avant le plafond LinkedIn, le marqueur et le POST. */
-interface SendRecipient {
-  // deno-lint-ignore no-explicit-any
-  admin: any;
-  candidate: CandidateRef;
-}
-
-const SEND_ERASED_MESSAGE = "Ce candidat a demandé l'effacement de ses données : aucun message ne peut lui être envoyé.";
-const SEND_GDPR_UNVERIFIED_MESSAGE =
-  "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié : le message n'est pas parti. Réessayez dans un instant.";
-
-/**
- * Correctif 4 (plan du lot 5) : destinataire d'un envoi et contrôle
- * d'effacement, pour tout appelant (fiche, messagerie, fenêtre de message,
- * assistant). Candidat : pour une conversation existante, celui du lien,
- * sinon le participant de la conversation, même si recipient_id est fourni ;
- * sinon recipient_id et recipient_profile_url. Candidat effacé (RGPD) dans
- * l'organisation : refus 403
- * CANDIDATE_ERASED. Registre illisible : refus 503 GDPR_UNVERIFIED (échec
- * fermé, comme isGdprBlocked). Candidat inconnu (groupe, participants
- * illisibles) : null, le message part sans enregistrement, comme avant.
- */
-async function checkSendRecipient(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: Record<string, unknown>,
-  organizationId: string,
-): Promise<SendRecipient | null> {
-  // Même conversation que celle de l'envoi : chat_id lu comme handleSendMessage
-  // le lit (unipileId : valeur non textuelle ou encodée ramenée à l'identifiant).
-  const chatId = params.chat_id ? decodeURIComponent(unipileId(params.chat_id, 'chat_id')) : null;
-  const admin = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!,
-  );
-
-  // Avec chat_id, le message part dans la conversation et recipient_id ne sert
-  // pas au routage (handleSendMessage) : le destinataire est le participant de
-  // la conversation, quel que soit recipient_id, sinon un recipient_id choisi
-  // par l'appelant ferait passer l'envoi à un candidat effacé. recipient_id et
-  // recipient_profile_url seulement sans conversation, ou si son participant
-  // est inconnu.
-  let candidate = candidateRef({
-    ids: [sendText(params.recipient_id)],
-    profileUrl: sendText(params.recipient_profile_url),
-  });
-  if (chatId) {
-    candidate = (await linkedChatCandidate(admin, organizationId, accountId, chatId))
-      ?? (await fetchChatCandidate(baseUrl, apiKey, chatId))
-      ?? candidate;
-  }
-  if (candidate.ids.length === 0) {
-    console.warn('[unipile-search] send_message: candidat inconnu, aucun lien ni étape');
-    return null;
-  }
-
-  let erased: boolean;
-  try {
-    // Client esm.sh, type attendu npm : même API.
-    // deno-lint-ignore no-explicit-any
-    erased = await isCandidateErasedForOrg(admin as any, {
-      organizationId,
-      linkedinIds: candidate.ids,
-      linkedinUrl: candidate.profile_url ?? (candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null),
-    });
-  } catch (e) {
-    console.warn('[unipile-search] send_message: registre d\'effacement illisible, envoi refusé:', e instanceof Error ? e.message : e);
-    throw new UnipileInputError(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED');
-  }
-  if (erased) {
-    console.log('[unipile-search] send_message: candidat effacé, envoi refusé');
-    throw new UnipileInputError(SEND_ERASED_MESSAGE, 403, 'CANDIDATE_ERASED');
-  }
-  return { admin, candidate };
-}
-
-/** Envoi manuel à enregistrer : candidat, mission et auteur, résolus avant le POST. */
-interface ManualSendTarget extends SendRecipient {
-  projectId: string | null;
-  createdBy: string | null;
-  source: 'manual' | 'assistant';
-  sendKind: 'message' | 'inmail';
-}
-
-/**
- * Refonte mission, lot 0b-2a (S14), avant le POST : mission et auteur de
- * l'envoi, puis marqueur (record_candidate_outbound, p_pending) pour que
- * l'écho de ce message au webhook ne soit pas pris pour un message écrit hors
- * Konekt (décision 5a). Mission : project_id s'il a la forme d'un uuid
- * (préfixe project: accepté), sinon résolue par le serveur. Candidat : celui
- * de checkSendRecipient, déjà contrôlé (un candidat effacé ou un registre
- * illisible refuse l'envoi avant le plafond LinkedIn, correctif 4) ; inconnu,
- * rien n'est enregistré. source et created_by ne sont lus que sur un appel
- * interne (assistant). Au mieux : jamais d'erreur rendue.
- */
-async function prepareManualSend(
-  accountId: string,
-  params: Record<string, unknown>,
-  ctx: SendContext,
-  recipient: SendRecipient | null,
-): Promise<ManualSendTarget | null> {
-  if (!recipient) return null;
-  try {
-    const rawProjectId = params.project_id;
-    const projectId = missionIdFrom(rawProjectId);
-    if (!projectId && rawProjectId != null && rawProjectId !== '') {
-      console.warn('[unipile-search] send_message: project_id ignoré (forme invalide)');
-    }
-    const chatId = sendText(params.chat_id);
-    const { admin, candidate } = recipient;
-
-    const internalCreatedBy = sendText(params.created_by);
-    const target: ManualSendTarget = {
-      admin,
-      candidate,
-      projectId,
-      createdBy: ctx.isInternal
-        ? (internalCreatedBy && SEND_UUID_RE.test(internalCreatedBy) ? internalCreatedBy : null)
-        : (ctx.userId || null),
-      source: ctx.isInternal && params.source === 'assistant' ? 'assistant' : 'manual',
-      // is_inmail ne vaut que pour une nouvelle conversation (voir l'envoi).
-      sendKind: !params.chat_id && params.is_inmail ? 'inmail' : 'message',
-    };
-    const marker = await recordOutbound(admin, {
-      organizationId: ctx.organizationId,
-      accountId,
-      candidate,
-      source: target.source,
-      projectId,
-      chatId,
-      createdBy: target.createdBy,
-      pending: true,
-      sendKind: target.sendKind,
-    });
-    if (!marker.ok) console.error('[unipile-search] send_message: marqueur non posé:', marker.fn, marker.kind, marker.error);
-    return target;
-  } catch (e) {
-    console.error('[unipile-search] send_message: préparation de l\'enregistrement impossible:', e instanceof Error ? e.message : e);
-    return null;
-  }
-}
-
-/**
- * Après un envoi réussi : lien conversation–mission et « Contacté »
- * (record_candidate_outbound), au mieux. Un échec est journalisé et n'est
- * jamais renvoyé : le message est parti.
- */
-async function recordManualSend(
-  target: ManualSendTarget,
-  accountId: string,
-  params: Record<string, unknown>,
-  sent: Record<string, unknown>,
-  ctx: SendContext,
-): Promise<void> {
-  try {
-    const res = await recordOutbound(target.admin, {
-      organizationId: ctx.organizationId,
-      accountId,
-      candidate: target.candidate,
-      source: target.source,
-      projectId: target.projectId,
-      chatId: sendText(params.chat_id) ?? sendText(sent?.chat_id),
-      messageId: sendText(sent?.message_id),
-      createdBy: target.createdBy,
-      sendKind: target.sendKind,
-    });
-    if (!res.ok) {
-      console.error('[unipile-search] send_message:', res.fn, res.kind, res.error);
-    } else if ('reason' in res.data) {
-      console.log(`[unipile-search] send_message: aucun lien (${res.data.reason})`);
-    } else {
-      console.log(`[unipile-search] send_message: mission ${res.data.project_id} (${res.data.via}), ${res.data.rows.length} ligne(s)`);
-    }
-  } catch (e) {
-    console.error('[unipile-search] send_message: enregistrement de l\'envoi impossible:', e instanceof Error ? e.message : e);
-  }
-}
-
-/**
- * Send message to a LinkedIn user
- * Supports both direct messages (for 1st degree) and InMails (for 2nd/3rd degree)
- * Uses multipart/form-data format required by Unipile
- */
-async function handleSendMessage(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: Record<string, unknown>,
-  ctx: SendContext,
-  recipient: SendRecipient | null,
-): Promise<Response> {
-  const { chat_id, recipient_id, text, message, subject, is_inmail } = params;
-  const messageText = (text || message) as string;
-
-  // Need either chat_id (existing conversation) or recipient_id (new message)
-  if (!chat_id && !recipient_id) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Chat ID ou Recipient ID requis' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  if (!messageText || typeof messageText !== 'string' || messageText.trim().length === 0) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Message vide' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Build multipart form data
-  const formData = new FormData();
-  formData.append('text', messageText.trim());
-
-  let url: string;
-
-  if (chat_id) {
-    // Send to existing chat
-    url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}/messages`;
-  } else {
-    // Create new chat/message to recipient
-    // For InMails (2nd/3rd degree), we need to use the LinkedIn Recruiter API format
-    url = `${baseUrl}/chats`;
-    formData.append('account_id', accountId);
-    formData.append('attendees_ids', recipient_id as string);
-    
-    // Add LinkedIn-specific options for InMail
-    if (is_inmail) {
-      formData.append('linkedin[api]', 'recruiter');
-      formData.append('linkedin[inmail]', 'true');
-      if (subject) {
-        formData.append('subject', subject as string);
-      }
-    }
-  }
-
-  console.log('Send message URL:', url, 'is_inmail:', is_inmail);
-
-  const manualSend = await prepareManualSend(accountId, params, ctx, recipient);
-
-  const response = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: {
-      'X-API-KEY': apiKey,
-      'Accept': 'application/json',
-    },
-    body: formData,
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('Send message error:', data);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: data.detail || data.message || "Erreur lors de l'envoi du message",
-        code: data.status_code || response.status,
-      }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  console.log('Message sent successfully:', data);
-
-  // Capture provider usage % (LinkedIn signals proximity to its own limit) and
-  // pause the account at ≥90%. accountId == member_linkedin_accounts.linkedin_account_id.
-  try {
-    const sbUsage = createClient(Deno.env.get('SUPABASE_URL')!, (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!);
-    // cross-version supabase-js client type mismatch (different import specifier than linkedin-quotas.ts)
-    await recordUsageSignal(sbUsage as any, accountId, parseUsagePct(data), undefined);
-  } catch (_e) { /* non-fatal */ }
-
-  if (manualSend) await recordManualSend(manualSend, accountId, params, data, ctx);
-
-  return new Response(
-    JSON.stringify({
-      success: true,
-      message: data,
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-/**
- * Force la re-synchronisation de l'historique d'une conversation depuis
- * le début (utile pour les vieilles conv où Unipile a perdu le cache).
- *
- * GET /api/v1/chats/{chat_id}/sync
- * API Docs: https://developer.unipile.com/reference/chatscontroller_syncchathistory
- *
- * Comportement :
- * - 1er appel → démarre le sync (status: SYNC_STARTED)
- * - Polls suivants → SYNC_RUNNING → SYNC_DONE / SYNC_ERROR
- * - Côté frontend : on poll toutes les 2-3s jusqu'à SYNC_DONE puis on
- *   re-fetch get_messages pour avoir l'historique complet.
- *
- * Réponse: { object: "ChatHistorySync", chat_id, status: "SYNC_STARTED"|"SYNC_RUNNING"|"SYNC_DONE"|"SYNC_ERROR"|"CHAT_DELETED" }
- */
-async function handleSyncChatHistory(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string | undefined,
-  params: Record<string, unknown>
-): Promise<Response> {
-  const { chat_id } = params;
-  if (!chat_id) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'chat_id is required' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // Per Unipile docs: account_id is mandatory if chat_id is a provider_id
-  // (i.e. LinkedIn's native chat ID rather than Unipile's internal ID).
-  // We pass it whenever we have it for safety — Unipile ignores it if the
-  // chat_id is already an internal one.
-  const qs = accountId ? `?account_id=${encodeURIComponent(String(accountId))}` : '';
-  // baseUrl already includes /api/v1 — don't double-prefix.
-  const url = `${baseUrl}/chats/${encodeURIComponent(String(chat_id))}/sync${qs}`;
-  console.log(`[unipile-search] sync_chat_history → ${url}`);
-
-  try {
-    const response = await fetchWithTimeout(
-      url,
-      {
-        method: 'GET',
-        headers: {
-          'X-API-KEY': apiKey,
-          'Accept': 'application/json',
-        },
-      },
-      15000
-    );
-    const data = await response.json();
-    if (!response.ok) {
-      console.error('[unipile-search] sync_chat_history error:', response.status, data);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: data?.title || data?.detail || `Sync failed (${response.status})`,
-          status: data?.status,
-        }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    return new Response(
-      JSON.stringify({ success: true, ...data }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ success: false, error: msg }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-}
-
-/**
- * Mark a chat as read via Unipile PATCH /chats/{chat_id}
- * API Docs: https://developer.unipile.com/reference/chatscontroller_patchchat
- */
-async function handleMarkAsRead(
-  baseUrl: string,
-  apiKey: string,
-  params: Record<string, unknown>
-): Promise<Response> {
-  const { chat_id } = params;
-
-  if (!chat_id) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Chat ID requis' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  try {
-    const url = `${baseUrl}/chats/${unipileId(chat_id, 'chat_id')}`;
-    console.log('Mark as read URL:', url);
-
-    const response = await fetchWithTimeout(url, {
-      method: 'PATCH',
-      headers: {
-        'X-API-KEY': apiKey,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'setReadStatus',
-        value: true,
-      }),
-    });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      console.error('Mark as read error:', data);
-      return new Response(
-        JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('Chat marked as read:', chat_id);
-    return new Response(
-      JSON.stringify({ success: true }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Mark as read exception:', error);
-    return new Response(
-      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-}
-
-/**
- * Handle fetching user posts
- */
-async function handleGetUserPosts(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: any
-): Promise<Response> {
-  try {
-    const { identifier, limit = 5 } = params;
-    if (!identifier) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'identifier requis' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const url = `${baseUrl}/users/${unipileId(identifier, 'identifier')}/posts?account_id=${encodeURIComponent(accountId)}&limit=${Math.min(Math.max(Number(limit) || 5, 1), 50)}`;
-    console.log('Fetching user posts:', url);
-
-    const response = await fetchWithTimeout(url, {
-      method: 'GET',
-      headers: {
-        'X-API-KEY': apiKey,
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      console.error('Posts fetch error:', data);
-      return new Response(
-        JSON.stringify({ success: false, error: data.detail || data.message || 'Erreur récupération posts' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const data = await response.json();
-    return new Response(
-      JSON.stringify({ success: true, items: data.items || [] }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Get user posts exception:', error);
-    return new Response(
-      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Erreur' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-}
-
-/**
- * Parse a Unipile date value (string like "2019-01" or "2019") into {year, month} object.
- * Profile API returns strings, Search API returns objects — this normalizes both.
- */
-function parseDateValue(value: unknown): { year?: number; month?: number } | null {
-  if (!value) return null;
-  if (typeof value === 'object' && value !== null) {
-    const obj = value as Record<string, unknown>;
-    if (obj.year) return { year: Number(obj.year), month: obj.month ? Number(obj.month) : undefined };
-    return null;
-  }
-  if (typeof value === 'string') {
-    const parts = value.split('-');
-    const year = parseInt(parts[0], 10);
-    if (isNaN(year) || year < 1900) return null;
-    const month = parts[1] ? parseInt(parts[1], 10) : undefined;
-    return { year, month: month && !isNaN(month) ? month : undefined };
-  }
-  return null;
-}
-
-/**
- * Normalize a Unipile profile response (from /users/{id}) to match our frontend interface.
- * Key differences from search results:
- * - work_experience uses "position" instead of "role"
- * - work_experience.skills is string[] instead of {name, endorsement_count}[]
- * - dates are strings instead of {year, month} objects
- * - boolean flags use "is_" prefix (is_open_to_work, is_premium, is_open_profile)
- * - network_distance uses FIRST_DEGREE format instead of DISTANCE_1
- */
-function normalizeProfileData(raw: Record<string, unknown>): Record<string, unknown> {
-  const result = { ...raw };
-
-  // Normalize boolean flags: is_open_to_work → open_to_work, etc.
-  if (raw.is_open_to_work !== undefined && raw.open_to_work === undefined) {
-    result.open_to_work = raw.is_open_to_work;
-  }
-  if (raw.is_premium !== undefined && raw.premium === undefined) {
-    result.premium = raw.is_premium;
-  }
-  if (raw.is_open_profile !== undefined && raw.open_profile === undefined) {
-    result.open_profile = raw.is_open_profile;
-  }
-
-  // Normalize network_distance: FIRST_DEGREE → DISTANCE_1
-  if (typeof raw.network_distance === 'string') {
-    const distMap: Record<string, string> = {
-      'FIRST_DEGREE': 'DISTANCE_1',
-      'SECOND_DEGREE': 'DISTANCE_2',
-      'THIRD_DEGREE': 'DISTANCE_3',
-    };
-    result.network_distance = distMap[raw.network_distance as string] || raw.network_distance;
-  }
-
-  // Normalize work_experience
-  if (Array.isArray(raw.work_experience)) {
-    result.work_experience = (raw.work_experience as Record<string, unknown>[]).map(exp => {
-      const normalized: Record<string, unknown> = { ...exp };
-      
-      // position → role
-      if (exp.position && !exp.role) {
-        normalized.role = exp.position;
-      }
-      
-      // skills: string[] → {name, endorsement_count}[]
-      if (Array.isArray(exp.skills)) {
-        normalized.skills = (exp.skills as unknown[]).map(s => 
-          typeof s === 'string' ? { name: s, endorsement_count: 0 } : s
-        );
-      }
-
-      // Normalize dates: string → {year, month}
-      normalized.start = parseDateValue(exp.start);
-      normalized.end = parseDateValue(exp.end);
-
-      // current boolean → infer from end being null
-      if (exp.current === true && normalized.end) {
-        // keep end if explicitly set
-      }
-
-      return normalized;
-    });
-  }
-
-  // Normalize education dates
-  if (Array.isArray(raw.education)) {
-    result.education = (raw.education as Record<string, unknown>[]).map(edu => ({
-      ...edu,
-      start: parseDateValue(edu.start),
-      end: parseDateValue(edu.end),
-    }));
-  }
-
-  // Normalize volunteering_experience dates
-  if (Array.isArray(raw.volunteering_experience)) {
-    result.volunteering_experience = (raw.volunteering_experience as Record<string, unknown>[]).map(vol => ({
-      ...vol,
-      start: parseDateValue(vol.start),
-      end: parseDateValue(vol.end),
-    }));
-  }
-
-  // Normalize projects dates
-  if (Array.isArray(raw.projects)) {
-    result.projects = (raw.projects as Record<string, unknown>[]).map(proj => ({
-      ...proj,
-      start: parseDateValue(proj.start),
-      end: parseDateValue(proj.end),
-    }));
-  }
-
-  // Ensure contact_info is preserved
-  // provider_id -> keep for reference
-
-  return result;
-}
-
-/**
- * Handle LinkedIn Skill Endorsement
- * Uses POST /api/v1/linkedin/profile/endorse
- */
-async function handleEndorseSkill(
-  baseUrl: string,
-  apiKey: string,
-  accountId: string,
-  params: Record<string, unknown>
-): Promise<Response> {
-  const { profile_id, skill_endorsement_id } = params;
-
-  if (!profile_id || !skill_endorsement_id) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'profile_id et skill_endorsement_id requis' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const response = await fetchWithTimeout(`${baseUrl}/linkedin/profile/endorse`, {
-    method: 'POST',
-    headers: {
-      'X-API-KEY': apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      account_id: accountId,
-      profile_id: String(profile_id),
-      skill_endorsement_id: Number(skill_endorsement_id),
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    console.error('[endorse_skill] Error:', response.status, data);
-    return new Response(
-      JSON.stringify({ success: false, error: data?.message || data?.error || `Erreur ${response.status}` }),
-      { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  return new Response(
-    JSON.stringify({ success: true, ...data }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}

@@ -1,0 +1,46 @@
+{
+  "_note": "Corps d'erreur ASSUMES du fournisseur (API v2). La specification OpenAPI ne decrit aucun corps d'erreur : la forme reprend celle de l'ancienne API (status, type, title, detail). A remplacer par de vraies captures des qu'elles existent. Le nom du fournisseur, son hote et son en-tete d'authentification figurent dans title et detail A DESSEIN : un test verifie qu'aucun de ces mots n'arrive jusqu'a un utilisateur. Source unique : lue par e2e/local-stack/vendor-mock.mjs et par e2e/helpers/sequence-engine.ts.",
+  "presets": {
+    "rate_limited": {
+      "status": 429,
+      "headers": { "retry-after": "1" },
+      "body": { "status": 429, "type": "errors/too_many_requests", "title": "Too many requests", "detail": "Unipile rate limit reached for this X-API-KEY on api.unipile.com" }
+    },
+    "credits_exhausted": {
+      "status": 429,
+      "body": { "status": 429, "type": "errors/too_many_requests", "title": "Too many requests", "detail": "Not enough InMail credits on this Unipile account" }
+    },
+    "already_invited": {
+      "status": 422,
+      "body": { "status": 422, "type": "errors/unprocessable_entity", "title": "Unprocessable", "detail": "User already invited (Unipile relation request)" }
+    },
+    "validation": {
+      "status": 400,
+      "body": { "status": 400, "type": "errors/invalid_parameters", "title": "Bad request", "detail": "invalid user_id rejected by api.unipile.com" }
+    },
+    "unauthorized": {
+      "status": 401,
+      "body": { "status": 401, "type": "errors/invalid_credentials", "title": "Invalid credentials", "detail": "Unipile refused the X-API-KEY or the account credentials" }
+    },
+    "forbidden": {
+      "status": 403,
+      "body": { "status": 403, "type": "errors/forbidden", "title": "Forbidden", "detail": "Please reconnect this account on Unipile" }
+    },
+    "not_found": {
+      "status": 404,
+      "body": { "status": 404, "type": "errors/resource_not_found", "title": "Attendee not found", "detail": "No such user for this Unipile account" }
+    },
+    "server_error": {
+      "status": 500,
+      "body": { "status": 500, "type": "errors/internal_error", "title": "Internal error", "detail": "boom from api.unipile.com" }
+    },
+    "bad_gateway": {
+      "status": 502,
+      "body": { "status": 502, "type": "errors/bad_gateway", "title": "Bad Gateway", "detail": "Unipile upstream unreachable" }
+    },
+    "unavailable": {
+      "status": 503,
+      "body": { "status": 503, "type": "errors/service_unavailable", "title": "Service Unavailable", "detail": "Unipile is temporarily unavailable" }
+    }
+  }
+}

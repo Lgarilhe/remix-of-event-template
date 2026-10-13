@@ -33,6 +33,7 @@ import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
 import { detectSequenceViolations, hasTimeForAiCorrection } from "../_shared/sequence-send-rules.ts";
 import { getAnthropicModelId } from "../_shared/ai-config.ts";
 import { loadWritingSettings } from "../_shared/writing-settings.ts";
+import { fetchRecentPosts } from "./recent-posts.ts";
 import {
   AI_LEVEL_LABELS,
   INVITATION_NOTE_HARD_MAX,
@@ -56,7 +57,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+// Timeout wrapper for the external fetch calls (Anthropic, RAG)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -383,75 +384,6 @@ function tryParseModelJson(content: string): ModelJson | null {
   return null;
 }
 
-// Fetch recent LinkedIn posts for a candidate via Unipile
-async function fetchRecentPosts(
-  accountId: string,
-  profileId: string,
-  maxPosts = 5,
-  maxAgeDays = 90,
-  unipileCreds?: { dsn: string; apiKey: string } | null,
-): Promise<{ text: string; date: string; reactions?: number }[]> {
-  const creds = unipileCreds || (() => {
-    const d = Deno.env.get("UNIPILE_DSN");
-    const k = Deno.env.get("UNIPILE_API_KEY");
-    return d && k ? { dsn: d, apiKey: k } : null;
-  })();
-
-  if (!creds || !accountId || !profileId) {
-    return [];
-  }
-
-  try {
-    const baseDsn = creds.dsn.startsWith('http') ? creds.dsn : `https://${creds.dsn}`;
-    const url = `${baseDsn}/api/v1/users/${encodeURIComponent(profileId)}/posts?account_id=${encodeURIComponent(accountId)}&limit=${maxPosts}`;
-    console.log('[generate-outreach-message] Fetching posts:', url);
-
-    const response = await fetchWithTimeout(url, {
-      headers: {
-        'X-API-KEY': creds.apiKey,
-        'accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      console.warn('[generate-outreach-message] Posts fetch failed:', response.status);
-      return [];
-    }
-
-    const data = await response.json();
-    const items = data?.items || data?.data || (Array.isArray(data) ? data : []);
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
-
-    const posts: { text: string; date: string; reactions?: number }[] = [];
-    for (const post of items) {
-      const text = post.text || post.body || post.content || '';
-      if (!text || text.length < 20) continue;
-
-      const postDate = post.created_at || post.date || post.timestamp || '';
-      if (postDate) {
-        const d = new Date(postDate);
-        if (d < cutoffDate) continue;
-      }
-
-      const reactions = post.reactions_count || post.likes_count || post.num_likes || 0;
-
-      posts.push({
-        text: text.slice(0, 500),
-        date: postDate ? new Date(postDate).toLocaleDateString('fr-FR') : 'récent',
-        reactions: reactions || undefined,
-      });
-
-      if (posts.length >= 3) break;
-    }
-
-    console.log(`[generate-outreach-message] Found ${posts.length} recent posts`);
-    return posts;
-  } catch (err) {
-    console.warn('[generate-outreach-message] Posts fetch error:', err);
-    return [];
-  }
-}
 // Fetch RAG context for a candidate from the Knowledge Lake
 async function fetchRAGContext(
   orgId: string,
@@ -709,15 +641,6 @@ Deno.serve(async (req) => {
     // « Ton imposé » : le vouvoiement et le style de la rédaction priment.
     const aiContext = await loadAndBuildAiContext(svc, { userId, orgId, omitTone: true });
 
-    // Resolve Unipile credentials from org_integrations with env fallback
-    let resolvedUnipile: { dsn: string; apiKey: string } | null = null;
-    try {
-      const { resolveUnipileCredentials } = await import("../_shared/resolve-org-credentials.ts");
-      resolvedUnipile = await resolveUnipileCredentials(orgId, svc);
-    } catch (e) {
-      console.warn('[generate-outreach-message] Org Unipile resolution failed:', e);
-    }
-
     // Build RAG query text from job context + candidate name for better matching
     const ragCandidateName = profile?.name || '';
     const ragCandidateHeadline = profile?.headline || (profile as any)?.current_title || '';
@@ -725,7 +648,7 @@ Deno.serve(async (req) => {
 
     // Fetch posts in parallel with RAG context (non-blocking)
     const postsPromise = (accountId && profileId)
-      ? fetchRecentPosts(accountId, profileId, 5, 90, resolvedUnipile)
+      ? fetchRecentPosts({ admin: svc, organizationId: orgId, userId }, accountId, profileId, 90)
       : Promise.resolve([]);
 
     const ragPromise = (orgId && profileId)

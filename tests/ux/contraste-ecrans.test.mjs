@@ -94,7 +94,7 @@ test('barre latérale : icônes de la rangée basse et des têtes de ligne à la
 
 test('rétrogradations : contour aux actions qui font avancer, discret pour l\'entretien et les retraits', () => {
   const email = read('src/components/settings/MyEmailAccount.tsx');
-  assert.match(buttonBefore(email, 'Rafraîchir les comptes'), /variant="ghost" size="sm" className="max-md:h-11"/, 'plus de troisième contour pleine largeur');
+  assert.match(buttonBefore(email, '{CARD_COMMON.refreshAccounts}'), /variant="ghost" size="sm" className="max-md:h-11"/, 'plus de troisième contour pleine largeur');
   assert.match(buttonBefore(read('src/components/settings/LinkedInSafetySettings.tsx'), 'Rétablir les valeurs par défaut'), /variant="ghost"/);
   const calendar = read('src/pages/Calendar.tsx');
   for (const name of ['onClick={goPrev}', 'onClick={goNext}', 'onClick={() => refetch()}']) {

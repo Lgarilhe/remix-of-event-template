@@ -450,7 +450,7 @@ function isNumericId(s: unknown): s is string {
 }
 
 // Valide/type le curseur opaque reçu du client. Retourne null si le curseur est
-// altéré ou d'une autre source (ex. curseur Unipile envoyé à la Base Konekt) →
+// altéré ou d'une autre source (ex. curseur de la recherche LinkedIn envoyé à la Base Konekt) →
 // l'appelant renvoie un 400 explicite au lieu de repartir silencieusement page 1
 // (ce qui masquerait le bug ET re-facturerait une page déjà vue).
 function parseCursor(raw: string): DbPageCursor | null {

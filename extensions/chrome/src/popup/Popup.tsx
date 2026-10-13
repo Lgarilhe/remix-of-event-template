@@ -29,7 +29,7 @@ async function sendMessage(msg: Message): Promise<MessageResponse> {
 
 export function Popup() {
   const [status, setStatus] = useState<Status>('loading');
-  const [activeTab, setActiveTab] = useState<'reconnect' | 'add' | 'settings'>('reconnect');
+  const [activeTab, setActiveTab] = useState<'reconnect' | 'add' | 'settings'>('add');
 
   useEffect(() => {
     (async () => {
@@ -142,67 +142,26 @@ function KonektLogo({ className }: { className?: string }) {
 
 // ─── Tab : Reconnect ──────────────────────────────────────────────────────────
 
+/**
+ * La connexion directe du compte LinkedIn est fermée en production : le serveur répond par
+ * un message neutre à `connect_cookie`, et l'extension n'a aucun moyen de savoir si elle
+ * est rouverte (l'état se lit avec la session Konekt, pas avec le jeton de l'extension).
+ * L'onglet renvoie donc vers la connexion standard, sans bouton qui échouerait.
+ */
 function ReconnectTab({ onLogout: _onLogout }: { onLogout: () => void }) {
-  const [reconnecting, setReconnecting] = useState(false);
-  const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [lastReconnect, setLastReconnect] = useState<number | null>(null);
-
-  useEffect(() => {
-    storage.getLastReconnectAt().then(setLastReconnect);
-  }, [result]);
-
-  const handleReconnect = async () => {
-    setReconnecting(true);
-    setResult(null);
-    try {
-      const response = await sendMessage({ type: 'RECONNECT_LINKEDIN' });
-      if (response.ok) {
-        setResult({ type: 'success', message: 'Compte LinkedIn reconnecté ✓ — vous pouvez retourner sur Konekt' });
-      } else {
-        setResult({ type: 'error', message: response.error || 'Erreur de reconnexion' });
-      }
-    } finally {
-      setReconnecting(false);
-    }
-  };
-
   return (
     <div className="space-y-3">
-      <div className="text-xs text-muted-foreground">
-        En 1 clic, l'extension capture votre cookie LinkedIn actuel et l'envoie à Konekt pour reconnecter votre compte (status CREDENTIALS → OK).
-      </div>
-
-      <div className="bg-muted/30 border border-border p-2.5 text-[11px] text-muted-foreground">
-        <div className="font-medium text-foreground mb-1">⚠️ Avant de cliquer :</div>
-        <ul className="space-y-0.5 ml-3 list-disc">
-          <li>Soyez connecté à <strong>linkedin.com</strong> dans CE navigateur</li>
-          <li>Idéalement utilisez un <strong>profil Chrome dédié</strong> à Konekt pour éviter les conflits avec votre LinkedIn Recruiter quotidien</li>
-        </ul>
-      </div>
-
-      <button
-        onClick={handleReconnect}
-        disabled={reconnecting}
-        className="w-full h-11 bg-foreground text-background font-bold uppercase tracking-wider text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+      <p className="text-xs text-muted-foreground">
+        Pour reconnecter votre compte LinkedIn, ouvrez Konekt, puis Paramètres › Connexions.
+      </p>
+      <a
+        href={`${KONEKT_APP_URL}/settings/account/connections`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex w-full h-11 items-center justify-center bg-foreground text-background font-bold uppercase tracking-wider text-sm hover:opacity-90 transition-opacity"
       >
-        {reconnecting ? 'Connexion en cours…' : '🔌 Reconnecter mon compte LinkedIn'}
-      </button>
-
-      {result && (
-        <div className={`p-2.5 border text-xs ${
-          result.type === 'success'
-            ? 'bg-success/5 border-success text-success'
-            : 'bg-destructive/5 border-destructive text-destructive'
-        }`}>
-          {result.message}
-        </div>
-      )}
-
-      {lastReconnect && (
-        <p className="text-[10px] text-muted-foreground/70 text-center">
-          Dernière reconnexion : {new Date(lastReconnect).toLocaleString('fr-FR')}
-        </p>
-      )}
+        Ouvrir Paramètres › Connexions
+      </a>
     </div>
   );
 }

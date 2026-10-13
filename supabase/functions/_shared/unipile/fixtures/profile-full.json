@@ -1,0 +1,449 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "GET /v2/{account_id}/users/{user_id}?with_sections=linkedin_* (UserProfile, spec users-social.md)",
+    "inferred": [
+      "headline sits in root `description` (the spec names no headline field in a GET response)",
+      "throttled_sections value `interests` is an enum member in the spec, its presence here is an example"
+    ]
+  },
+  "input": {
+    "object": "UserProfile",
+    "id": "ACoAAB1234567",
+    "type": "individual",
+    "public_identifier": "marie-dupont-123",
+    "display_name": "Marie Dupont",
+    "first_name": "Marie",
+    "last_name": "Dupont",
+    "profile_url": "https://www.linkedin.com/in/marie-dupont-123",
+    "public_picture_url": "https://media.licdn.com/dms/image/marie.jpg",
+    "public_picture_url_large": "https://media.licdn.com/dms/image/marie-large.jpg",
+    "background_picture_url": "https://media.licdn.com/dms/image/bg.jpg",
+    "description": "Directrice Produit chez Acme | SaaS B2B",
+    "bio": "Dix ans dans le produit, du premier prototype à la mise à l’échelle.",
+    "location": "Paris, Île-de-France, France",
+    "emails": [
+      "marie@example.com"
+    ],
+    "phone_numbers": [
+      "+33600000000"
+    ],
+    "addresses": [
+      "1 rue de Rivoli, Paris"
+    ],
+    "websites": [
+      "https://marie.example.com"
+    ],
+    "social_handles": {
+      "github": {
+        "name": "mariedupont",
+        "url": "https://github.com/mariedupont"
+      }
+    },
+    "followers_count": 1200,
+    "relations_count": 500,
+    "shared_relations_count": 12,
+    "following_count": 3,
+    "is_blocked": false,
+    "is_verified": true,
+    "is_premium": true,
+    "language": "fr",
+    "provider": "linkedin",
+    "specifics": {
+      "member_id": "123456789",
+      "industry": "Software Development",
+      "can_send_inmail": true,
+      "network_distance": "SECOND_DEGREE",
+      "relation_request": {
+        "object": "RelationRequest",
+        "type": "sent",
+        "id": "inv_1"
+      },
+      "relation_request_status": "PENDING",
+      "pronoun": "she/her",
+      "default_locale": "fr_FR",
+      "notify_visit_token": "tok_abc",
+      "is_open_profile": true,
+      "is_premium": true,
+      "is_influencer": false,
+      "is_creator": false,
+      "is_hiring": true,
+      "is_open_to_work": true,
+      "skills": [
+        {
+          "name": "Product Management",
+          "endorsement_count": 42,
+          "endorsement_id": 111,
+          "endorsed": false,
+          "insights": [
+            "Endorsed by colleagues"
+          ]
+        },
+        {
+          "name": "SaaS",
+          "endorsement_count": 7
+        }
+      ],
+      "experience": [
+        {
+          "id": "e1",
+          "company": {
+            "name": "Acme",
+            "id": "1234",
+            "public_identifier": "acme",
+            "picture_url": "https://media.licdn.com/acme.png",
+            "profile_url": "https://www.linkedin.com/company/acme",
+            "industries": [
+              "Software"
+            ]
+          },
+          "job_title": "Directrice Produit",
+          "started_on": "03/15/2019",
+          "location": "Paris",
+          "description": "Pilote la roadmap produit.",
+          "employment_type": "PERMANENT",
+          "workplace_type": "HYBRID",
+          "skills": [
+            "Roadmap",
+            "OKR"
+          ]
+        },
+        {
+          "id": "e2",
+          "company": {
+            "name": "Beta SAS",
+            "id": null
+          },
+          "job_title": "Cheffe de produit",
+          "started_on": "09/01/2014",
+          "ended_on": "02/28/2019"
+        }
+      ],
+      "education": [
+        {
+          "id": "d1",
+          "school": {
+            "id": "55",
+            "name": "HEC Paris",
+            "profile_url": "https://www.linkedin.com/school/hec"
+          },
+          "degree": "Master",
+          "fields_of_study": [
+            "Management",
+            "Finance"
+          ],
+          "started_on": "09/01/2008",
+          "ended_on": "06/30/2011",
+          "grade": "Mention bien",
+          "activities": "BDE"
+        }
+      ],
+      "languages": [
+        {
+          "language": "Français",
+          "proficiency": "NATIVE_OR_BILINGUAL"
+        },
+        {
+          "language": "Anglais",
+          "proficiency": "FULL_PROFESSIONAL"
+        }
+      ],
+      "certifications": [
+        {
+          "title": "PSPO I",
+          "organization": {
+            "id": "9",
+            "name": "Scrum.org"
+          },
+          "issued_on": "05/10/2020",
+          "url": "https://scrum.org/c"
+        }
+      ],
+      "volunteer_experience": [
+        {
+          "organization": {
+            "id": "8",
+            "name": "Croix-Rouge"
+          },
+          "role": "Bénévole",
+          "cause": "Social",
+          "description": "Aide aux sans-abri",
+          "started_on": "01/01/2018"
+        }
+      ],
+      "projects": [
+        {
+          "name": "Lancement V2",
+          "description": "Refonte complète",
+          "contributors": [],
+          "skills": [
+            "UX"
+          ],
+          "started_on": "01/05/2021",
+          "ended_on": "12/20/2021"
+        }
+      ],
+      "recommendations": {
+        "received": [
+          {
+            "text": "Une cheffe de produit remarquable, rigoureuse et à l’écoute.",
+            "caption": "Manager",
+            "created_on": "01/01/2022",
+            "user": {
+              "id": "ACoAAXYZ",
+              "object": "User",
+              "type": "individual",
+              "display_name": "Paul Martin",
+              "first_name": "Paul",
+              "last_name": "Martin",
+              "public_identifier": "paul-martin",
+              "profile_url": "https://www.linkedin.com/in/paul-martin",
+              "description": "CEO chez Acme"
+            }
+          }
+        ],
+        "given": []
+      },
+      "throttled_sections": [
+        "interests"
+      ]
+    }
+  },
+  "expected": {
+    "id": "ACoAAB1234567",
+    "provider_id": "ACoAAB1234567",
+    "public_identifier": "marie-dupont-123",
+    "member_id": "123456789",
+    "member_urn": "urn:li:member:123456789",
+    "recruiter_candidate_id": null,
+    "type": "individual",
+    "name": "Marie Dupont",
+    "first_name": "Marie",
+    "last_name": "Dupont",
+    "headline": "Directrice Produit chez Acme | SaaS B2B",
+    "summary": "Dix ans dans le produit, du premier prototype à la mise à l’échelle.",
+    "location": "Paris, Île-de-France, France",
+    "industry": "Software Development",
+    "profile_url": "https://www.linkedin.com/in/marie-dupont-123",
+    "public_profile_url": "https://www.linkedin.com/in/marie-dupont-123",
+    "profile_picture_url": "https://media.licdn.com/dms/image/marie.jpg",
+    "profile_picture_url_large": "https://media.licdn.com/dms/image/marie-large.jpg",
+    "background_picture_url": "https://media.licdn.com/dms/image/bg.jpg",
+    "network_distance": "DISTANCE_2",
+    "network_degree": "SECOND_DEGREE",
+    "can_send_inmail": true,
+    "open_to_work": true,
+    "is_open_to_work": true,
+    "premium": true,
+    "is_premium": true,
+    "open_profile": true,
+    "is_open_profile": true,
+    "is_hiring": true,
+    "is_influencer": false,
+    "is_creator": false,
+    "verified": true,
+    "pronoun": "she/her",
+    "connections_count": 500,
+    "followers_count": 1200,
+    "shared_connections_count": 12,
+    "primary_locale": {
+      "language": "fr",
+      "country": "FR"
+    },
+    "contact_info": {
+      "emails": [
+        "marie@example.com"
+      ],
+      "phones": [
+        "+33600000000"
+      ],
+      "adresses": [
+        "1 rue de Rivoli, Paris"
+      ],
+      "socials": [
+        {
+          "type": "github",
+          "name": "mariedupont"
+        }
+      ]
+    },
+    "websites": [
+      "https://marie.example.com"
+    ],
+    "pending_invitation": true,
+    "invitation": {
+      "type": "SENT",
+      "status": "PENDING"
+    },
+    "work_experience": [
+      {
+        "id": "e1",
+        "company": "Acme",
+        "company_id": "1234",
+        "company_url": "https://www.linkedin.com/company/acme",
+        "company_picture_url": "https://media.licdn.com/acme.png",
+        "industry": [
+          "Software"
+        ],
+        "location": "Paris",
+        "role": "Directrice Produit",
+        "description": "Pilote la roadmap produit.",
+        "employment_type": "PERMANENT",
+        "workplace_type": "HYBRID",
+        "current": true,
+        "skills": [
+          {
+            "name": "Roadmap",
+            "endorsement_count": 0
+          },
+          {
+            "name": "OKR",
+            "endorsement_count": 0
+          }
+        ],
+        "start": {
+          "year": 2019,
+          "month": 3
+        },
+        "end": null
+      },
+      {
+        "id": "e2",
+        "company": "Beta SAS",
+        "company_id": null,
+        "company_url": null,
+        "company_picture_url": null,
+        "industry": null,
+        "location": null,
+        "role": "Cheffe de produit",
+        "description": null,
+        "employment_type": null,
+        "workplace_type": null,
+        "current": false,
+        "skills": null,
+        "start": {
+          "year": 2014,
+          "month": 9
+        },
+        "end": {
+          "year": 2019,
+          "month": 2
+        }
+      }
+    ],
+    "education": [
+      {
+        "id": "d1",
+        "school": "HEC Paris",
+        "school_id": "55",
+        "school_url": "https://www.linkedin.com/school/hec",
+        "school_picture_url": null,
+        "degree": "Master",
+        "grade": "Mention bien",
+        "description": null,
+        "activities": "BDE",
+        "field_of_study": "Management, Finance",
+        "skills": null,
+        "start": {
+          "year": 2008,
+          "month": 9
+        },
+        "end": {
+          "year": 2011,
+          "month": 6
+        }
+      }
+    ],
+    "skills": [
+      {
+        "name": "Product Management",
+        "endorsement_count": 42,
+        "endorsement_id": 111,
+        "endorsed": false,
+        "insights": [
+          "Endorsed by colleagues"
+        ]
+      },
+      {
+        "name": "SaaS",
+        "endorsement_count": 7,
+        "endorsement_id": null,
+        "endorsed": null,
+        "insights": null
+      }
+    ],
+    "languages": [
+      {
+        "name": "Français",
+        "proficiency": "native_or_bilingual"
+      },
+      {
+        "name": "Anglais",
+        "proficiency": "full_professional"
+      }
+    ],
+    "certifications": [
+      {
+        "name": "PSPO I",
+        "organization": "Scrum.org",
+        "url": "https://scrum.org/c"
+      }
+    ],
+    "projects": [
+      {
+        "name": "Lancement V2",
+        "description": "Refonte complète",
+        "skills": [
+          "UX"
+        ],
+        "start": {
+          "year": 2021,
+          "month": 1
+        },
+        "end": {
+          "year": 2021,
+          "month": 12
+        }
+      }
+    ],
+    "volunteering_experience": [
+      {
+        "company": "Croix-Rouge",
+        "description": "Aide aux sans-abri",
+        "role": "Bénévole",
+        "cause": "Social",
+        "start": {
+          "year": 2018,
+          "month": 1
+        },
+        "end": null
+      }
+    ],
+    "recommendations": {
+      "received": [
+        {
+          "text": "Une cheffe de produit remarquable, rigoureuse et à l’écoute.",
+          "caption": "Manager",
+          "actor": {
+            "first_name": "Paul",
+            "last_name": "Martin",
+            "provider_id": "ACoAAXYZ",
+            "headline": "CEO chez Acme",
+            "public_identifier": "paul-martin",
+            "public_profile_url": "https://www.linkedin.com/in/paul-martin"
+          }
+        }
+      ],
+      "received_total_count": 1,
+      "given": [],
+      "given_total_count": 0
+    },
+    "tags": null,
+    "notes": null,
+    "recruiting_activity": null,
+    "throttled_sections": [
+      "interests"
+    ]
+  }
+}

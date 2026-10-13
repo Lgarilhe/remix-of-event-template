@@ -16,15 +16,18 @@ import { ErrorBox } from '@/components/layout/ErrorBox';
 import { useOrganizationIntegrations } from '@/hooks/useOrganizationIntegrations';
 import { useAircallConnectionActions, useTelephonyStatus } from '@/hooks/useTelephonyStatus';
 import { AircallConnectionPanel } from './AircallConnectionPanel';
-import { useOrganization } from '@/hooks/useOrganization';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
+import { useMemberName } from '@/hooks/useTeamMembers';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
-import { classifyLinkedInStatus, type LinkedInHealth } from '@/lib/linkedinStatus';
+import { classifyConnectionHealth, classifyLinkedInStatus } from '@/lib/linkedinStatus';
+import { ORG_LINKEDIN_CARD, REMOVE_ACCOUNT, readableConnectionName } from '@/lib/connectionCopy';
+import { viewOfHealth } from '@/components/connections/connectionView';
+import { SETTINGS_PATHS } from '@/lib/settingsRoutes';
+import { Link } from 'react-router-dom';
 import { plural } from '@/lib/plural';
 import {
   Check,
   ChevronDown,
-  ExternalLink,
   Plus,
   RefreshCw,
   Trash2,
@@ -84,11 +87,12 @@ const INTEGRATIONS: IntegrationConfig[] = [
     ],
   },
   {
-    id: 'unipile',
+    id: 'linkedin-accounts',
     name: 'Comptes LinkedIn de l\'organisation',
-    description: 'Gérez tous les comptes LinkedIn connectés par les membres : statut, proxys par compte, dissociation admin. Pour connecter votre propre compte, allez dans Connexions.',
+    description: ORG_LINKEDIN_CARD.description,
     logoSrc: linkedinLogo,
-    connectedKey: 'unipile_connected',
+    // Carte de l'état des comptes : rien n'est lu dans les réglages d'intégration de l'organisation.
+    connectedKey: '',
     hostedAuth: true,
     fields: [],
   },
@@ -108,9 +112,10 @@ const INTEGRATIONS: IntegrationConfig[] = [
 /* ──────────────────────────────────────────────
  *  État et en-tête communs aux cartes
  * ────────────────────────────────────────────── */
-type StatusTone = 'success' | 'warning' | 'danger' | 'muted';
+type StatusTone = 'success' | 'info' | 'warning' | 'danger' | 'muted';
 const DOT: Record<StatusTone, string> = {
   success: 'bg-success',
+  info: 'bg-info',
   warning: 'bg-warning',
   danger: 'bg-danger',
   muted: 'bg-muted-foreground',
@@ -123,14 +128,6 @@ const StatusText = ({ tone, children }: { tone: StatusTone; children: ReactNode 
     {children}
   </span>
 );
-
-/** Même lecture du statut que la carte « Mon compte LinkedIn » (src/lib/linkedinStatus.ts), jamais le code brut. */
-const LINKEDIN_HEALTH: Record<LinkedInHealth, { label: string; tone: StatusTone }> = {
-  connected: { label: 'Connecté', tone: 'success' },
-  connecting: { label: 'Connexion en cours', tone: 'warning' },
-  needs_reconnect: { label: 'À reconnecter', tone: 'danger' },
-  unknown: { label: 'État à vérifier', tone: 'muted' },
-};
 
 /**
  * En-tête repliable d'une carte d'outil. Revue design (F-15, F-24) : titre de
@@ -174,12 +171,11 @@ const LinkedInHostedAuthCard = ({
   isSaving: boolean;
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const {
     accounts: linkedInAccounts, loading: loadingAccounts, ready: accountsReady, loadError: accountsError, reload: loadAccounts,
   } = useLinkedInAccounts();
-  const { organization } = useOrganization();
   const { mappings, getMappingForAccount } = useMemberLinkedInAccounts();
+  const memberName = useMemberName();
   const [proxyCache, setProxyCache] = useState<Record<string, { country: string | null; mode: string | null }>>({});
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   // Liste jamais reçue : ni « Aucun compte » ni « Non connecté », qui seraient faux.
@@ -194,30 +190,6 @@ const LinkedInHostedAuthCard = ({
     });
     setProxyCache(cache);
   }, [mappingsKey]);
-  const handleConnectLinkedIn = async () => {
-    setGenerating(true);
-    try {
-      const currentUrl = window.location.href;
-      const { data } = await invokeEdgeFunction<{ url?: string }>('unipile-accounts', {
-        action: 'hosted_auth_link',
-        success_redirect_url: currentUrl,
-        failure_redirect_url: currentUrl,
-        org_name: organization?.name || undefined,
-      });
-
-      if (data?.success && data.url) {
-        window.open(data.url, '_blank', 'noopener,noreferrer');
-        toast.info('Une fenêtre de connexion LinkedIn s\'est ouverte. Revenez ici une fois la connexion effectuée.');
-      } else {
-        throw new Error(data?.error || 'Le lien de connexion n\'a pas pu être créé. Réessayez.');
-      }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error && e.message ? e.message : 'La connexion n\'a pas pu démarrer. Réessayez.');
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const handleDisconnectAccount = async (accountId: string) => {
     setDisconnecting(accountId);
     try {
@@ -226,13 +198,15 @@ const LinkedInHostedAuthCard = ({
         account_id: accountId,
       });
       if (data?.success) {
-        toast.success('Compte LinkedIn déconnecté');
+        toast.success(ORG_LINKEDIN_CARD.removedToast);
         await loadAccounts();
       } else {
-        throw new Error(data?.error || 'Le compte n\'a pas pu être déconnecté. Réessayez.');
+        throw new Error('retrait refusé');
       }
     } catch (e: unknown) {
-      toast.error(e instanceof Error && e.message ? e.message : 'Le compte n\'a pas pu être déconnecté. Réessayez.');
+      // Le texte du serveur n'est jamais montré tel quel : phrase de Konekt, détail dans la console.
+      console.error('[IntegrationsSettings] retrait du compte impossible :', e);
+      toast.error(ORG_LINKEDIN_CARD.removeFailed);
     } finally {
       setDisconnecting(null);
     }
@@ -241,15 +215,15 @@ const LinkedInHostedAuthCard = ({
   // Un compte à reconnecter est l'écart à signaler : il prend le pas sur le nombre de comptes.
   const toReconnect = linkedInAccounts.filter((a) => classifyLinkedInStatus(a.status) === 'needs_reconnect').length;
   const status = loadingAccounts && linkedInAccounts.length === 0 ? (
-    <StatusText tone="muted">Vérification…</StatusText>
+    <StatusText tone="muted">{ORG_LINKEDIN_CARD.statusChecking}</StatusText>
   ) : listFailed ? (
-    <StatusText tone="muted">État indisponible</StatusText>
+    <StatusText tone="muted">{ORG_LINKEDIN_CARD.statusUnavailable}</StatusText>
   ) : toReconnect > 0 ? (
     <StatusText tone="danger">{plural(toReconnect, 'compte à reconnecter', 'comptes à reconnecter')}</StatusText>
   ) : linkedInAccounts.length > 0 ? (
     <StatusText tone="success">{plural(linkedInAccounts.length, 'compte connecté', 'comptes connectés')}</StatusText>
   ) : (
-    <StatusText tone="muted">Non connecté</StatusText>
+    <StatusText tone="muted">{ORG_LINKEDIN_CARD.statusNone}</StatusText>
   );
 
   return (
@@ -261,17 +235,21 @@ const LinkedInHostedAuthCard = ({
           {/* Connected accounts list */}
           {loadingAccounts && linkedInAccounts.length === 0 ? (
             <div className="space-y-2">
-              <p role="status" className="sr-only">Chargement des comptes LinkedIn…</p>
+              <p role="status" className="sr-only">{ORG_LINKEDIN_CARD.loading}</p>
               <Skeleton className="h-14 w-full rounded-lg" aria-hidden="true" />
               <Skeleton className="h-14 w-full rounded-lg" aria-hidden="true" />
             </div>
           ) : listFailed ? (
-            <ErrorBox title="Impossible de charger les comptes LinkedIn." onRetry={() => { void loadAccounts(); }} />
+            <ErrorBox title={ORG_LINKEDIN_CARD.loadErrorTitle} onRetry={() => { void loadAccounts(); }} />
           ) : linkedInAccounts.length > 0 ? (
             <div className="space-y-2">
               {linkedInAccounts.map((account) => {
-                const health = LINKEDIN_HEALTH[classifyLinkedInStatus(account.status)];
-                const accountName = account.name || 'Compte LinkedIn';
+                const health = viewOfHealth(
+                  classifyConnectionHealth({ status: account.status, isLocked: account.is_locked, sync: account.initial_sync_status }),
+                  'linkedin',
+                );
+                const accountName = readableConnectionName(account.name, 'linkedin');
+                const owner = memberName(getMappingForAccount(account.id)?.user_id);
                 return (
                 <div key={account.id} className="space-y-2 rounded-lg bg-muted/50 p-3">
                   <div className="flex items-center justify-between gap-3">
@@ -286,6 +264,7 @@ const LinkedInHostedAuthCard = ({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{accountName}</p>
                         <StatusText tone={health.tone}>{health.label}</StatusText>
+                        {owner && <p className="truncate text-xs text-muted-foreground">{ORG_LINKEDIN_CARD.ownedBy(owner)}</p>}
                       </div>
                     </div>
                     <AlertDialog>
@@ -299,28 +278,29 @@ const LinkedInHostedAuthCard = ({
                               className="shrink-0 text-muted-foreground hover:text-danger max-md:h-11 max-md:w-11"
                               disabled={disconnecting === account.id}
                               loading={disconnecting === account.id}
-                              aria-label={`Déconnecter le compte ${accountName}`}
+                              aria-label={ORG_LINKEDIN_CARD.removeAria(accountName)}
                             >
                               {disconnecting !== account.id && <Trash2 aria-hidden="true" />}
                             </Button>
                           </AlertDialogTrigger>
                         </TooltipTrigger>
-                        <TooltipContent>Déconnecter</TooltipContent>
+                        <TooltipContent>{ORG_LINKEDIN_CARD.removeTooltip}</TooltipContent>
                       </Tooltip>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Déconnecter ce compte LinkedIn ?</AlertDialogTitle>
+                          <AlertDialogTitle>{REMOVE_ACCOUNT.title}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Le compte <strong>{accountName}</strong> sera supprimé de la plateforme. Vous pourrez le reconnecter ultérieurement.
+                            <strong>{accountName}</strong>. {REMOVE_ACCOUNT.body}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogCancel className="max-md:h-11">{REMOVE_ACCOUNT.cancel}</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() => handleDisconnectAccount(account.id)}
-                            className="bg-destructive"
+                            variant="destructive"
+                            className="max-md:h-11"
                           >
-                            Déconnecter
+                            {REMOVE_ACCOUNT.confirm}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -354,22 +334,14 @@ const LinkedInHostedAuthCard = ({
             </div>
           ) : (
             <p className="py-2 text-center text-sm text-muted-foreground">
-              Aucun compte LinkedIn connecté.
+              {ORG_LINKEDIN_CARD.empty}
             </p>
           )}
 
-          {/* Connect button */}
+          {/* Chacun connecte son propre compte dans Connexions : un seul chemin pour la connexion. */}
           <div className="flex gap-2">
-            <Button
-              type="button"
-              onClick={handleConnectLinkedIn}
-              disabled={generating}
-              loading={generating}
-              className="flex-1 max-md:h-11"
-              size="sm"
-            >
-              {!generating && <ExternalLink aria-hidden="true" />}
-              Connecter un compte LinkedIn
+            <Button asChild type="button" variant="outline" className="flex-1 max-md:h-11" size="sm">
+              <Link to={`${SETTINGS_PATHS.connections}#linkedin`}>{ORG_LINKEDIN_CARD.goToConnections}</Link>
             </Button>
             {linkedInAccounts.length > 0 && (
               <Tooltip>
@@ -381,7 +353,7 @@ const LinkedInHostedAuthCard = ({
                     className="max-md:h-11 max-md:w-11"
                     onClick={() => { void loadAccounts(); }}
                     disabled={loadingAccounts}
-                    aria-label="Actualiser la liste des comptes"
+                    aria-label={ORG_LINKEDIN_CARD.refreshAria}
                   >
                     <RefreshCw className={cn(loadingAccounts && 'animate-spin')} aria-hidden="true" />
                   </Button>

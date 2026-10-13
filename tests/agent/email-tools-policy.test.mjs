@@ -38,7 +38,7 @@ const mutationTools = readFileSync(
   'utf8',
 );
 const unipileAccounts = readFileSync(
-  new URL('../../supabase/functions/unipile-accounts/index.ts', import.meta.url),
+  new URL('../../supabase/functions/unipile-accounts/handler.ts', import.meta.url),
   'utf8',
 );
 const unipileWebhook = readFileSync(
@@ -112,9 +112,11 @@ test('personal email tools are server-scoped and never expose account_id as mode
   assert.match(emailTools, /name: 'get_email_thread'/);
   assert.match(emailTools, /\.eq\('organization_id', ctx\.organizationId\)/);
   assert.match(emailTools, /\.eq\('user_id', ctx\.userId\)/);
-  assert.match(emailTools, /resolveUnipileCredentials\(ctx\.organizationId, ctx\.adminClient\)/);
-  assert.match(emailTools, /\/api\/v1\/emails\?/);
-  assert.match(emailTools, /method: 'GET'/);
+  // The account is proven the member's own before any read, then read on its path through the shared client.
+  assert.match(emailTools, /assertAccountOwnedByOrg\(ctx\.adminClient, ctx\.organizationId, accountId, \{ userId: ctx\.userId, kinds: \['email'\] \}\)/);
+  assert.match(emailTools, /listEmails\(accountId, \{/);
+  assert.match(emailTools, /getThread\(accountId, read\.threadId/);
+  assert.doesNotMatch(emailTools, /api\/v1|resolveUnipileCredentials|\.dsn|X-API-KEY/);
   assert.match(emailTools, /untrusted_external_content: true/);
   assert.doesNotMatch(emailTools, /account_id:\s*\{\s*type:/);
   assert.doesNotMatch(emailTools, /resolveOrgLinkedInAccounts/);
@@ -154,9 +156,19 @@ test('email mappings are service-write-only and hosted auth routes email account
   const emailMappingHook = readFileSync(new URL('../../src/hooks/useMemberEmailAccounts.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(emailMappingHook, /\.upsert\(|\.insert\(|\.update\(|\.delete\(/);
   assert.match(emailMappingHook, /action: 'unlink_email_account'/);
-  assert.match(unipileWebhook, /EMAIL_ACCOUNT_TYPES/);
+  // Le récepteur ne rattache plus lui-même : le code partagé le fait pour la tentative de connexion.
+  // Il route par fournisseur (google, outlook, imap) vers la liaison e-mail et refuse de la réaffecter.
+  assert.match(unipileWebhook, /claimForAttempt\(supabase, \{ attemptId: payload\.state, account \}\)/);
   assert.match(unipileWebhook, /\.from\('member_email_accounts'\)/);
-  assert.match(unipileWebhook, /Refusing to reassign an email account to another user/);
+  const claimSource = readFileSync(
+    new URL('../../supabase/functions/_shared/connection-claim.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(claimSource, /case 'google':\s*case 'outlook':\s*case 'imap':\s*return 'email';/);
+  const claimEmail = claimSource.slice(claimSource.indexOf('async function claimEmail('), claimSource.indexOf('async function claimWhatsApp('));
+  assert.match(claimEmail, /\.from\('member_email_accounts'\)/);
+  assert.match(claimEmail, /existing\.user_id !== userId\) return failure\('email', 'other_member'\)/);
+  assert.match(claimEmail, /known\.some\(\(r\) => r\.organization_id !== organizationId\)\) return failure\('email', 'cross_tenant'\)/);
 });
 
 test('email tool activity renders the provider logo and stays transient on success', () => {

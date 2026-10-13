@@ -49,9 +49,10 @@ async function captureLinkedInCookie(): Promise<{
     name: 'li_a',
   });
 
-  // user_agent : on demande au content script de nous le donner via un message
-  // (le SW n'a pas accès direct au navigator d'une page). Fallback : UA Chrome stable.
-  const userAgent = await getUserAgentFromAnyTab() || defaultUserAgent();
+  // user_agent : celui du navigateur réel (onglet LinkedIn, sinon le service worker, qui
+  // tourne dans le même navigateur). Le serveur exige le vrai : aucune valeur de repli inventée.
+  const userAgent = await getUserAgentFromAnyTab() || navigator.userAgent || '';
+  if (!userAgent) return null;
 
   return {
     li_at: liAtCookie.value,
@@ -76,27 +77,40 @@ async function getUserAgentFromAnyTab(): Promise<string | null> {
   }
 }
 
-function defaultUserAgent(): string {
-  return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-}
+const RECONNECT_IN_APP_MESSAGE =
+  'La reconnexion depuis l\'extension n\'est pas disponible pour l\'instant. Ouvrez Konekt (Paramètres, Connexions) pour reconnecter votre compte LinkedIn.';
 
 async function handleReconnect(reconnectAccountId?: string): Promise<MessageResponse> {
   const captured = await captureLinkedInCookie();
   if (!captured) {
     return {
       ok: false,
-      error: 'Cookie li_at LinkedIn introuvable — êtes-vous connecté à linkedin.com dans ce navigateur ?',
+      error: 'Cookie li_at LinkedIn ou identité du navigateur introuvable. Êtes-vous connecté à linkedin.com dans ce navigateur ?',
     };
   }
 
-  const { data, error } = await konektApi.reconnectLinkedIn({
+  const { data, error, status } = await konektApi.reconnectLinkedIn({
     access_token: captured.li_at,
+    // Cookie Sales Navigator / Recruiter (li_a), quand le navigateur en a un.
+    ...(captured.li_a ? { premium_token: captured.li_a } : {}),
     user_agent: captured.user_agent,
     reconnect_account_id: reconnectAccountId,
   });
 
+  // Refus d'authentification : le serveur n'accepte pas encore le jeton de l'extension pour cet appel.
+  if (status === 401 || status === 403) {
+    return { ok: false, error: RECONNECT_IN_APP_MESSAGE };
+  }
   if (error || !data?.success) {
     return { ok: false, error: data?.error || error || 'Erreur de reconnexion' };
+  }
+  // LinkedIn demande une vérification (code, validation dans l'application) : la connexion n'est
+  // pas faite et l'extension ne sait pas la terminer.
+  if (data.object === 'Checkpoint') {
+    return {
+      ok: false,
+      error: 'LinkedIn demande une vérification. Ouvrez Konekt (Paramètres, Connexions) pour reconnecter votre compte.',
+    };
   }
 
   await storage.setLastReconnectAt(Date.now());

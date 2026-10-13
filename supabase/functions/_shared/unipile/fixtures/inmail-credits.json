@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "GET /v2/{account_id}/linkedin/inmail-credits (spec linkedin-core.md): classic and recruiter subscribed, no Sales Navigator"
+  },
+  "input": {
+    "object": "InmailCredits",
+    "credits": {
+      "classic": 0,
+      "recruiter": 12
+    }
+  },
+  "expected": {
+    "premium": 0,
+    "recruiter": 12,
+    "sales_navigator": null
+  }
+}

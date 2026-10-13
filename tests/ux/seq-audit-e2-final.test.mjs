@@ -30,26 +30,26 @@ const timeoutScan = slice(timeouts, 'const waitSources = [');
 const waitEvents = slice(engine, 'async function handleCheckWaitEvents', '// ============ UTILITIES');
 const phase2 = slice(waitEvents, '// Phase 2');
 const resolveForChat = slice(engine, 'async function resolveProfileIdForChat', 'async function checkForReplyAfterDate');
-const replyCheck = slice(engine, 'async function checkForReplyAfterDate', 'interface ChatAttendeeInfo');
+const replyCheck = slice(engine, 'async function checkForReplyAfterDate', 'async function checkMessagesForReply');
 const messagesCheck = slice(engine, 'async function checkMessagesForReply', 'async function checkHasProspectReplied');
 const prospectReplied = slice(engine, 'async function checkHasProspectReplied', 'async function loadReplyReferenceDate');
 
 const count = (src, re) => (src.match(re) || []).length;
 
 // ---------------------------------------------------------------- 1. [high] REV engine-conditions-channels-1
-test('REV engine-conditions-channels-1 — expéditeur lu sur is_sender, participants illisibles = issue inconnue', () => {
+test('REV engine-conditions-channels-1 — expéditeur lu sur is_sender, expéditeur indéterminé = issue inconnue', () => {
   assert.ok(messagesCheck, 'checkMessagesForReply introuvable');
-  // La décision passe par la règle pure (is_sender, puis is_sender_self, puis participants).
-  assert.match(messagesCheck, /const verdict = replyStateOfMessages\(messages, afterTimestamp, attendeeInfo\)/);
+  // La décision passe par la règle pure (is_sender, puis is_sender_self), sur les seuls
+  // messages qui peuvent être une réponse (ni événement, ni invitation).
+  assert.match(messagesCheck, /const verdict = replyStateOfMessages\(messages\.filter\(\(m\) => isCandidateReplyCandidate\(m\)\), afterTimestamp, unresolvedAttendees\(\)\)/);
   assert.doesNotMatch(messagesCheck, /m\.is_sender_self === true\) return false/, 'plus de filtre sur le seul is_sender_self');
   assert.doesNotMatch(messagesCheck, /skip to be safe/, 'un message indéterminé n\'est plus écarté en silence');
   // Expéditeur indéterminé : 'unknown', jamais 'no_reply'.
   const unknownBranch = slice(messagesCheck, "if (verdict.state === 'unknown')", 'return unreadable');
   assert.match(unknownBranch, /unreadable = true;/);
   assert.match(messagesCheck, /return unreadable \? 'unknown' : 'no_reply';/);
-  // Participants lus seulement si un message postérieur n'a aucun indicateur.
-  assert.match(messagesCheck, /if \(needsAttendeeResolution\(messages, afterTimestamp\)\) \{/);
-  assert.match(messagesCheck, /attendeeInfo = await resolveAttendeeIds\(chat\.id, effectiveApiKey, effectiveDsn\)/);
+  // API v2 : `is_sender` est toujours un booléen, les participants ne sont plus lus.
+  assert.doesNotMatch(engine, /resolveAttendeeIds|needsAttendeeResolution|ChatAttendeeInfo/);
   // Règle pure : is_sender 0/1 et booléens, avant is_sender_self.
   const flagged = slice(guardsSrc, 'export function flaggedSender', 'export function messageSender');
   assert.match(flagged, /m\.is_sender === true \|\| m\.is_sender === 1\) return 'self'/);
@@ -103,17 +103,17 @@ test('REV engine-conditions-channels-2 — check_timeouts lit les attentes par p
 
 // ---------------------------------------------------------------- 4. [low] REV engine-conditions-channels-11
 test('REV engine-conditions-channels-11 — échéance transmise à la vérification de réponse, testée avant chaque appel', () => {
-  assert.match(replyCheck, /dsn\?: string, deadline\?: number \| null\): Promise<ReplyCheckState>/);
+  assert.match(replyCheck, /deadline\?: number \| null\): Promise<ReplyCheckState>/);
   assert.match(replyCheck, /const outOfTime = \(\) => !providerCallAllowed\(deadline, Date\.now\(\)\);/);
   assert.equal(count(replyCheck, /if \(outOfTime\(\)\) return 'unknown';/g), 3, 'avant la résolution, avant la première lecture, avant la seconde');
-  assert.match(replyCheck, /resolveProfileIdForChat\([^;]*effectiveDsn, deadline\)/);
-  assert.match(replyCheck, /checkMessagesForReply\(r\.chats, afterTimestamp, effectiveApiKey, effectiveDsn, deadline\)/);
+  assert.match(replyCheck, /resolveProfileIdForChat\(accountId, profileId, profileUrl, enrollmentId, supabase, deadline\)/);
+  assert.match(replyCheck, /checkMessagesForReply\(accountId, r\.chats, afterTimestamp, deadline\)/);
   assert.match(resolveForChat, /if \(!providerCallAllowed\(deadline, Date\.now\(\)\)\) return profileId;/);
-  assert.equal(count(messagesCheck, /if \(!providerCallAllowed\(deadline, Date\.now\(\)\)\) return 'unknown';/g), 2, 'avant les messages et avant les participants');
+  assert.equal(count(messagesCheck, /if \(!providerCallAllowed\(deadline, Date\.now\(\)\)\) return 'unknown';/g), 1, 'avant la lecture des messages de chaque conversation');
   // Les contrôles de fond passent leur échéance ; la vérification avant envoi non (inchangée).
-  assert.match(checkReplies, /rCreds\.apiKey, rCreds\.dsn, deadline\)/);
-  assert.match(phase2, /weCreds\.apiKey, weCreds\.dsn, afterDate, deadline\)\) === 'replied'/);
-  assert.match(prospectReplied, /undefined, undefined, undefined, apiKey, dsn, deadline\)/);
+  assert.match(checkReplies, /enrollment\.profile_url, enrollment\.id, supabase, deadline\)/);
+  assert.match(phase2, /checkHasProspectReplied\(waitAccountId, enrollment\.profile_id, afterDate, deadline\)\) === 'replied'/);
+  assert.match(prospectReplied, /checkForReplyAfterDate\(accountId, profileId, since, undefined, undefined, undefined, deadline\)/);
   const rule = slice(guardsSrc, 'export function providerCallAllowed', '// ─── Attente de connexion');
   assert.match(rule, /if \(deadlineMs === null \|\| deadlineMs === undefined\) return true;/);
   assert.match(rule, /hasTimeLeft\(deadlineMs, nowMs, MIN_REMAINING_FOR_PROVIDER_CHECK_MS\)/);
@@ -136,7 +136,6 @@ test('règles pures de la vague finale (si Node importe le TypeScript)', { skip:
   // Expéditeur indéterminé après la référence : inconnu, pas « pas de réponse ».
   assert.equal(g.replyStateOfMessages([{ sender_attendee_id: 'x', timestamp: later }], after, g.unresolvedAttendees()).state, 'unknown');
   assert.equal(g.replyStateOfMessages([{ is_sender: 1, timestamp: later }], after, g.unresolvedAttendees()).state, 'no_reply');
-  assert.equal(g.needsAttendeeResolution([{ is_sender: 0, timestamp: later }], after), false);
   // 2. Attente de connexion d'un candidat déjà en relation.
   assert.equal(g.isConnectionWaitSatisfied({ action_type: 'wait_connection' }, { connection_status: 'connected' }), true);
   assert.equal(g.isConnectionWaitSatisfied({ action_type: 'wait_reply' }, { connection_status: 'connected' }), false);

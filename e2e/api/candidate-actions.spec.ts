@@ -1,9 +1,8 @@
 /** Vraies Auth/RLS/RPC/edge functions locales ; tous les prestataires sont simulés. */
 import { test, expect } from '@playwright/test';
-import { createHmac } from 'node:crypto';
 import { E2E } from '../helpers/env';
 import { admin, addMember, createOrg, deleteOrg, seedCandidateRow, seedLinkedInAccount, seedMission, signIn, type TestOrg, type TestUser } from '../helpers/supabase-admin';
-import { callFunction, engineAvailable, ENGINE_SKIP_REASON, mockCalls, postJson, rand, setMockMode, setPaidPlan, webhook, WEBHOOK_SECRET } from '../helpers/sequence-engine';
+import { callBody, callFunction, callsOf, engineAvailable, ENGINE_SKIP_REASON, expectNoV1Calls, expectNoViolations, mockCalls, rand, setMockMode, setPaidPlan, v2, webhook, type MockRoute } from '../helpers/sequence-engine';
 import type { CandidateActionPlan, CandidateActionScope } from '../../supabase/functions/_shared/candidate-actions/types';
 import { candidateActionExecutionOrder } from '../../src/lib/candidateActions';
 
@@ -12,6 +11,8 @@ test.setTimeout(90_000);
 const orgs: Array<{ org: TestOrg; members: TestUser[] }> = [];
 const mockKeys: string[] = [];
 test.afterEach(async () => {
+  // Every provider call of a scenario goes through the v2 surface: a call of the previous API is a failure of the scenario.
+  await expectNoV1Calls();
   for (const key of mockKeys.splice(0)) await setMockMode(key, {});
   for (const { org, members } of orgs.splice(0)) await deleteOrg(org, members).catch(() => undefined);
 });
@@ -24,7 +25,7 @@ async function setup(credits = 60) {
   const missionId = await seedMission(org.orgId, org.owner.userId);
   const candidateId = `ACoAAActions${rand()}`;
   const email = `${rand()}@candidate.konekt.test`;
-  const accountId = `email_actions_${rand()}`;
+  const accountId = `acc_${rand()}`;
   const marker = `Actions${rand()}`;
   await seedCandidateRow({ orgId: org.orgId, createdBy: org.owner.userId, candidateId, missionId });
   for (const [table, row] of [
@@ -44,7 +45,7 @@ async function setup(credits = 60) {
   await setMockMode(accountId, { action_recipes: { [marker]: { effects: [
     { kind: 'document', label: 'Conserver le suivi', content: 'Attendre les précisions du manager et revenir vers le candidat.', documentType: 'follow_up' },
     { kind: 'message', label: 'Réponse candidat', content: 'Bonjour, merci pour vos disponibilités. Je reviens vers vous dès réception des précisions.', subject: 'Suite à notre échange' },
-  ] } }, routes: [{ method: 'POST', path: '^/api/v1/emails$', status: 201, body: { id: `mail_${marker}`, provider_id: `provider_${marker}`, thread_id: `thread_${marker}` } }] });
+  ] } }, routes: [sendEmailRoute({ id: `mail_${marker}` })] });
   return { org, record, missionId, candidateId, email, accountId, marker, token, scope };
 }
 
@@ -69,7 +70,17 @@ async function execute(f: Awaited<ReturnType<typeof setup>>, plan: CandidateActi
   expect(res.status, JSON.stringify(res.body)).toBe(200);
   return res.body.plan as CandidateActionPlan;
 }
-async function sends(accountId: string) { return (await mockCalls(accountId)).filter(c => c.method === 'POST' && c.path === '/api/v1/emails'); }
+async function sends(accountId: string) { return callsOf(accountId, 'sendEmail'); }
+/** Answer of a scripted e-mail send: the v2 `EmailSent` (the Email id, and the RFC Message-ID the provider may add). */
+function sendEmailRoute(sent: { id: string }, extra: Partial<MockRoute> = {}): MockRoute {
+  return { method: 'POST', op: 'sendEmail', status: 200, body: { object: 'EmailSent', id: sent.id, message_id: `<${sent.id}@mock.invalid>` }, ...extra };
+}
+/** A v2 `Email` as the mailbox reads return it: recipients are lists of { email }, there is no account, direction or in_reply_to field. */
+function v2Email(fields: { id: string; from: string; to: string; subject: string; body: string; threadId: string; at?: string; headers?: { name: string; value: string }[] }) {
+  return { object: 'Email', id: fields.id, message_id: `<${fields.id}@mock.invalid>`, thread_id: fields.threadId, subject: fields.subject, body_plain: fields.body,
+    body: `<p>${fields.body}</p>`, snippet: fields.body, headers: fields.headers ?? [], from: [{ email: fields.from }], to: [{ email: fields.to }], cc: [], bcc: [], reply_to: [],
+    date: fields.at ?? new Date().toISOString(), attachments: [], folders: ['INBOX'], is_unread: true };
+}
 
 test('@critical préparation via tool_use sans texte : proposition persistée, un seul débit et aucun envoi avant validation', async () => {
   const f = await setup();
@@ -120,20 +131,17 @@ for (const variant of [
 ]) {
   test(`@critical préparation multicanal native : ${variant.label}, seul l’e-mail conserve son objet`, async () => {
     const f = await setup();
-    const linkedinId = await seedLinkedInAccount(f.org.orgId, f.org.owner.userId);
-    const whatsappId = `wa_subject_${rand()}`;
+    const linkedinId = await seedLinkedInAccount(f.org.orgId, f.org.owner.userId, `acc_${rand()}`);
+    const whatsappId = `acc_${rand()}`;
     const chatId = `li_subject_${rand()}`;
     mockKeys.push(linkedinId, whatsappId);
     const { error } = await admin().from('member_whatsapp_accounts').insert({ organization_id: f.org.orgId, user_id: f.org.owner.userId,
       whatsapp_account_id: whatsappId, phone_number: '+33687654321', name: 'Mon WhatsApp', account_status: 'OK' });
     if (error) throw new Error(error.message);
     f.scope = { ...f.scope, account_id: linkedinId, chat_id: chatId };
-    await setMockMode(linkedinId, { routes: [
-      { unscoped: true, method: 'GET', path: `^/api/v1/chats/${chatId}$`, body: { id: chatId, account_id: linkedinId, type: 0 } },
-      { unscoped: true, method: 'GET', path: `^/api/v1/chats/${chatId}/attendees$`, body: { items: [
-        { is_self: 1, provider_id: 'ACoAAMOCKME' }, { is_self: 0, provider_id: f.candidateId, name: 'Candidat test' },
-      ] } },
-    ] });
+    // A v2 chat has no account of its own and no attendee list: the other participant of the one-to-one
+    // chat is its `user`, which the mock builds from the candidate id of the account.
+    await setMockMode(linkedinId, { candidate_provider_id: f.candidateId });
     const linkedinContent = 'Bonjour, merci pour votre retour. Je vérifie les précisions demandées.';
     const whatsappContent = 'Bonjour, je vous confirme la réception de vos disponibilités.';
     const emailSubject = '  Précisions sur le poste  ';
@@ -141,7 +149,7 @@ for (const variant of [
       { kind: 'message', channel: 'linkedin', label: 'Répondre sur LinkedIn', content: linkedinContent, subject: variant.linkedinSubject },
       { kind: 'message', channel: 'whatsapp', label: 'Répondre sur WhatsApp', content: whatsappContent, subject: variant.whatsappSubject },
       { kind: 'message', channel: 'email', label: 'Envoyer les précisions', content: 'Bonjour, voici les précisions que vous avez demandées.', subject: emailSubject },
-    ] } }, routes: [{ method: 'POST', path: '^/api/v1/emails$', status: 201, body: { id: `mail_subject_${rand()}` } }] });
+    ] } }, routes: [sendEmailRoute({ id: `mail_subject_${rand()}` })] });
 
     let plan = await generate(f);
     expect(plan.effects).toEqual([
@@ -157,7 +165,7 @@ for (const variant of [
 
     const accounts = [linkedinId, whatsappId, f.accountId];
     const outbound = () => mockCalls().then(calls => calls.filter(call => call.method === 'POST' && accounts.includes(call.account_id ?? '')
-      && (call.path === '/api/v1/emails' || call.path === '/api/v1/chats' || /^\/api\/v1\/chats\/[^/]+\/messages$/.test(call.path))));
+      && ['sendEmail', 'startChat', 'startChatFromInbox', 'sendMessage'].includes(call.op ?? '')));
     expect(await outbound()).toHaveLength(0);
     const premature = await action(f.token, f.scope, { action: 'execute_effect', plan_id: plan.id, effect_id: plan.effects[0].id });
     expect(premature.status).toBeGreaterThanOrEqual(400);
@@ -180,26 +188,32 @@ for (const variant of [
       const calls = await outbound();
       expect(calls).toHaveLength(3);
       expect(calls.map(call => call.account_id)).toEqual([whatsappId, f.accountId, linkedinId]);
+      // The account is in the path, never in the body; a reply in a chat is one JSON message with a text only.
       const linkedinSend = calls.find(call => call.account_id === linkedinId)!;
-      expect(linkedinSend.path).toBe(`/api/v1/chats/${chatId}/messages`);
-      expect(linkedinSend.body).toMatchObject({ account_id: linkedinId, text: linkedinContent });
-      expect(linkedinSend.body).not.toHaveProperty('subject');
+      expect(linkedinSend.op).toBe('sendMessage');
+      expect(linkedinSend.path).toBe(`/v2/${linkedinId}/chats/${chatId}/messages/send`);
+      expect(callBody(linkedinSend)).toEqual({ text: linkedinContent });
+      // No conversation with this number yet: a new one is started with the phone number as the user.
       const whatsappSend = calls.find(call => call.account_id === whatsappId)!;
-      expect(whatsappSend.path).toBe('/api/v1/chats');
-      expect(whatsappSend.body).toMatchObject({ account_id: whatsappId, text: whatsappContent, attendees_ids: '+33612345678' });
-      expect(whatsappSend.body).not.toHaveProperty('subject');
-      expect(calls.find(call => call.account_id === f.accountId)?.body).toMatchObject({ subject: emailSubject.trim() });
+      expect(whatsappSend.op).toBe('startChat');
+      expect(whatsappSend.path).toBe(`/v2/${whatsappId}/chats/send`);
+      expect(callBody(whatsappSend)).toEqual({ text: whatsappContent, users_ids: '+33612345678' });
+      const mailSend = calls.find(call => call.account_id === f.accountId)!;
+      expect(mailSend.op).toBe('sendEmail');
+      expect(callBody(mailSend)).toMatchObject({ subject: emailSubject.trim(), to: [expect.objectContaining({ email: f.email })], html: expect.any(String) });
+      for (const key of ['body', 'account_id', 'attendees_ids']) expect(callBody(mailSend)).not.toHaveProperty(key);
+      await expectNoViolations(...accounts);
     }
   });
 }
 
-test('@critical liaison e-mail attestée : revendication REST refusée, callback signé et dissociation exacte', async () => {
+test('@critical liaison e-mail attestée : revendication REST refusée, rattachement par la tentative de connexion et dissociation exacte', async () => {
   const f = await setup();
   const browserHeaders = { apikey: E2E.anonKey, Authorization: `Bearer ${f.token}`, 'Content-Type': 'application/json' };
   for (const [method, suffix, body] of [
     ['POST', '', { organization_id: f.org.orgId, user_id: f.org.owner.userId, linked_by: f.org.owner.userId,
-      email_account_id: `forged_${rand()}`, account_status: 'OK' }],
-    ['PATCH', `?email_account_id=eq.${f.accountId}`, { email_account_id: `forged_${rand()}`, account_status: 'OK' }],
+      email_account_id: `acc_forged_${rand()}`, account_status: 'OK' }],
+    ['PATCH', `?email_account_id=eq.${f.accountId}`, { email_account_id: `acc_forged_${rand()}`, account_status: 'OK' }],
   ] as const) {
     const response = await fetch(`${E2E.supabaseUrl}/rest/v1/member_email_accounts${suffix}`, {
       method, headers: browserHeaders, body: JSON.stringify(body),
@@ -208,19 +222,21 @@ test('@critical liaison e-mail attestée : revendication REST refusée, callback
     expect(response.status, JSON.stringify(result)).toBe(403);
     expect(result.code).toBe('42501');
   }
-  const hostedAccountId = `email_hosted_${rand()}`;
+  // Hosted connection: the member and the organization come from the attempt row (written by the server for the
+  // signed-in member), never from the payload. The callback carries the attempt id as `state`.
+  const hostedAccountId = `acc_${rand()}`;
   mockKeys.push(hostedAccountId);
-  await setMockMode(hostedAccountId, { routes: [{ method: 'GET', unscoped: true, path: `^/api/v1/accounts/${hostedAccountId}$`, body: {
-    id: hostedAccountId, type: 'GOOGLE', name: f.org.owner.email, sources: [{ status: 'OK' }],
-    connection_params: { mail: { imap_user: f.org.owner.email } },
-  } }] });
-  const state = `user:${f.org.owner.userId}|org:${f.org.orgId}|providers:GOOGLE|expires:${Date.now() + 10 * 60_000}`;
-  const signature = createHmac('sha256', WEBHOOK_SECRET).update(state).digest('hex');
-  const payload = { status: 'CREATION_SUCCESS', account_id: hostedAccountId, name: state };
-  const rejected = await postJson('/functions/v1/unipile-webhook?hosted_sig=invalid', payload);
-  expect(rejected.status).toBe(401);
-  const connected = await postJson(`/functions/v1/unipile-webhook?hosted_sig=${signature}`, payload);
-  expect(connected.status, JSON.stringify(connected.body)).toBe(200);
+  const { data: attempt, error: attemptError } = await admin().from('connection_attempts')
+    .insert({ organization_id: f.org.orgId, user_id: f.org.owner.userId, provider: 'google', purpose: 'link', mode: 'hosted' }).select('id').single();
+  expect(attemptError).toBeNull();
+  const added = (state: string, id?: string) => v2.envelope('account.add', hostedAccountId,
+    { object: 'Account', id: hostedAccountId, status: 'running', provider: 'google', name: f.org.owner.email, state },
+    { id, name: f.org.owner.email, provider: 'google' });
+  // An unknown state links nothing; the real one links the mailbox of the member who started the attempt.
+  await webhook(added(crypto.randomUUID()));
+  expect((await admin().from('member_email_accounts').select('id').eq('email_account_id', hostedAccountId)).data).toEqual([]);
+  await webhook(added(attempt!.id));
+  await webhook(added(attempt!.id));
   const { data: mapping, error } = await admin().from('member_email_accounts').select('*').eq('email_account_id', hostedAccountId).single();
   expect(error).toBeNull();
   expect(mapping).toMatchObject({ organization_id: f.org.orgId, user_id: f.org.owner.userId,
@@ -228,19 +244,20 @@ test('@critical liaison e-mail attestée : revendication REST refusée, callback
   const foreign = await createOrg('agency', 'E2E foreign mailbox');
   orgs.push({ org: foreign, members: [] });
   const { data: foreignMapping, error: foreignError } = await admin().from('member_email_accounts').insert({
-    organization_id: foreign.orgId, user_id: foreign.owner.userId, linked_by: foreign.owner.userId, email_account_id: `foreign_${rand()}`,
+    organization_id: foreign.orgId, user_id: foreign.owner.userId, linked_by: foreign.owner.userId, email_account_id: `acc_foreign_${rand()}`,
   }).select('*').single();
   expect(foreignError).toBeNull();
   const remove = (mappingId: string, expectedAccountId: string) => callFunction('unipile-accounts', f.token, {
     action: 'unlink_email_account', organization_id: f.org.orgId, mapping_id: mappingId, expected_account_id: expectedAccountId,
   });
   expect((await remove(foreignMapping!.id, foreignMapping!.email_account_id)).status).toBe(403);
-  expect((await remove(mapping!.id, 'previous-account-id')).status).toBe(409);
+  expect((await remove(mapping!.id, 'acc_previous')).status).toBe(409);
   const removed = await remove(mapping!.id, hostedAccountId);
   expect(removed.status, JSON.stringify(removed.body)).toBe(200);
   const remaining = await admin().from('member_email_accounts').select('id').eq('id', mapping!.id);
   expect(remaining.data).toEqual([]);
-  expect((await mockCalls()).filter(call => call.method === 'DELETE' && call.path === `/api/v1/accounts/${hostedAccountId}`)).toHaveLength(0);
+  // Dissociating never closes the mailbox session at the provider.
+  expect(await callsOf(hostedAccountId, 'removeAccount')).toHaveLength(0);
 });
 
 test('@critical préparation durable, modification et validation : aucun envoi avant confirmation ; exécution concurrente une seule fois', async () => {
@@ -278,7 +295,7 @@ test('@critical préparation durable, modification et validation : aucun envoi a
 test('@critical résultat partiel : la note reste enregistrée, seul le message refusé peut être repris', async () => {
   const f = await setup();
   let plan = await approve(f, await generate(f));
-  await setMockMode(f.accountId, { routes: [{ method: 'POST', path: '^/api/v1/emails$', status: 400, body: { error: 'rejected' }, times: 1 }, { method: 'POST', path: '^/api/v1/emails$', status: 201, body: { id: 'retry_mail' } }] });
+  await setMockMode(f.accountId, { routes: [{ method: 'POST', op: 'sendEmail', preset: 'validation', times: 1 }, sendEmailRoute({ id: 'retry_mail' })] });
   plan = await execute(f, plan, plan.effects[0].id);
   plan = await execute(f, plan, plan.effects[1].id);
   expect(plan.status).toBe('partial');
@@ -294,7 +311,7 @@ test('@critical résultat partiel : la note reste enregistrée, seul le message 
 test('@critical réponse ambiguë du service : résultat inconnu durable, jamais renvoyé automatiquement', async () => {
   const f = await setup();
   let plan = await approve(f, await generate(f));
-  await setMockMode(f.accountId, { routes: [{ method: 'POST', path: '^/api/v1/emails$', status: 502, body: { error: 'gateway' } }] });
+  await setMockMode(f.accountId, { routes: [{ method: 'POST', op: 'sendEmail', preset: 'bad_gateway' }] });
   plan = await execute(f, plan, plan.effects[1].id);
   expect(plan.effects[1].status).toBe('unknown');
   await execute(f, plan, plan.effects[1].id);
@@ -331,7 +348,7 @@ test('@critical deux recruteurs : brouillons privés et document métier créé 
   const f = await setup();
   const colleague = await addMember(f.org.orgId, 'member', 'actions-colleague');
   f.record.members.push(colleague);
-  const colleagueAccount = `email_colleague_${rand()}`;
+  const colleagueAccount = `acc_${rand()}`;
   mockKeys.push(colleagueAccount);
   await admin().from('member_email_accounts').insert({ organization_id: f.org.orgId, user_id: colleague.userId, email_account_id: colleagueAccount, email_address: colleague.email, provider: 'OUTLOOK', account_status: 'OK', linked_by: colleague.userId });
   const token = (await signIn(colleague.email, colleague.password)).access_token;
@@ -358,13 +375,12 @@ test('@critical e-mail reçu hors séquence : historique candidat durable, idemp
   const f = await setup();
   const plan = await approve(f, await generate(f));
   const providerId = `incoming_${rand()}`;
-  await setMockMode(f.accountId, { routes: [{ method: 'GET', path: `^/api/v1/emails/${providerId}$`, body: {
-    id: providerId, provider_id: providerId, account_id: f.accountId, date: new Date().toISOString(), thread_id: `thread_${rand()}`,
-    from_attendee: { identifier: f.email }, to_attendees: [{ identifier: f.org.owner.email }], subject: 'Nouvelle disponibilité', body_plain: 'Finalement je serai disponible mercredi matin.',
-  } }] });
-  const event = { event: 'mail_received', account_id: f.accountId, email_id: providerId, provider_id: providerId, from_attendee: { identifier: f.email }, to_attendees: [{ identifier: f.org.owner.email }] };
-  await webhook(event);
-  await webhook(event);
+  // The delivery names the mail; the mail itself is read under the account of the delivery.
+  await setMockMode(f.accountId, { routes: [{ method: 'GET', op: 'getEmail', body: v2Email({
+    id: providerId, from: f.email, to: f.org.owner.email, threadId: `thread_${rand()}`, subject: 'Nouvelle disponibilité', body: 'Finalement je serai disponible mercredi matin.' }) }] });
+  const event = () => v2.emailNew({ accountId: f.accountId, emailId: providerId, from: f.email, to: f.org.owner.email, provider: 'google' });
+  await webhook(event());
+  await webhook(event());
   const listed = await action(f.token, f.scope, { action: 'list' });
   expect(listed.status, JSON.stringify(listed.body)).toBe(200);
   expect(listed.body.messages).toEqual(expect.arrayContaining([expect.objectContaining({ direction: 'inbound', audience: 'candidate', candidate_id: f.candidateId, project_id: f.missionId, content: 'Finalement je serai disponible mercredi matin.' })]));
@@ -372,11 +388,12 @@ test('@critical e-mail reçu hors séquence : historique candidat durable, idemp
   const stale = await action(f.token, f.scope, { action: 'execute_effect', plan_id: plan.id, effect_id: plan.effects[1].id });
   expect(stale.status).toBe(409);
   expect(await sends(f.accountId)).toHaveLength(0);
+  await expectNoViolations(f.accountId);
 });
 
 test('@critical WhatsApp personnel : envoi réel vérifié, réponse rattachée et aucune écriture de séquence LinkedIn', async () => {
   const f = await setup();
-  const accountId = `wa_actions_${rand()}`;
+  const accountId = `acc_${rand()}`;
   mockKeys.push(accountId);
   const { error } = await admin().from('member_whatsapp_accounts').insert({ organization_id: f.org.orgId, user_id: f.org.owner.userId,
     whatsapp_account_id: accountId, phone_number: '+33687654321', name: 'Mon WhatsApp', account_status: 'OK' });
@@ -387,23 +404,31 @@ test('@critical WhatsApp personnel : envoi réel vérifié, réponse rattachée 
   let plan = await approve(f, await generate(f));
   const chatId = `wa_chat_${rand()}`;
   const providerId = `wa_incoming_${rand()}`;
+  const candidatePhoneId = '33612345678@s.whatsapp.net';
+  const user = { object: 'User', id: candidatePhoneId, type: 'individual', display_name: 'Candidat WhatsApp' };
   await setMockMode(accountId, { routes: [
-    { method: 'POST', path: '^/api/v1/chats$', status: 201, body: { message_id: `wa_sent_${rand()}`, chat_id: chatId } },
-    { unscoped: true, method: 'GET', path: `^/api/v1/messages/${providerId}$`, body: { id: providerId, provider_id: providerId, account_id: accountId, chat_id: chatId, timestamp: new Date().toISOString(), is_sender: false, text: 'Merci, voici mon portfolio.' } },
-    { unscoped: true, method: 'GET', path: `^/api/v1/chats/${chatId}$`, body: { id: chatId, account_id: accountId, type: 0 } },
-    { unscoped: true, method: 'GET', path: `^/api/v1/chats/${chatId}/attendees$`, body: { items: [{ is_self: 1, provider_id: '33687654321@s.whatsapp.net' }, { is_self: 0, provider_id: '33612345678@s.whatsapp.net' }] } },
+    // No conversation with this number yet: the send starts one and learns its id.
+    { method: 'POST', op: 'startChat', status: 200, body: { object: 'ChatStarted', chat_id: chatId, message_id: `wa_sent_${rand()}` } },
+    { method: 'GET', op: 'getMessage', body: { object: 'Message', id: providerId, chat_id: chatId, sender_id: candidatePhoneId, sender: user, timestamp: new Date().toISOString(),
+      is_sender: false, is_hidden: false, is_seen: false, is_deleted: false, is_event: false, text: 'Merci, voici mon portfolio.', attachments: [], specifics: { type: 'MESSAGE' } } },
+    { method: 'GET', op: 'getChat', body: { object: 'Chat', id: chatId, type: '1to1', is_1to1: true, is_group: false, is_readonly: false, user_id: candidatePhoneId, user, provider: 'whatsapp' } },
   ] });
   plan = await execute(f, plan, plan.effects[0].id);
   expect(plan.status).toBe('completed');
-  const calls = (await mockCalls(accountId)).filter(c => c.method === 'POST' && c.path === '/api/v1/chats');
+  const calls = await callsOf(accountId, 'startChat');
   expect(calls).toHaveLength(1);
-  expect(calls[0].body).toMatchObject({ account_id: accountId, attendees_ids: '+33612345678' });
-  await webhook({ event: 'message_received', account_type: 'WHATSAPP', account_id: accountId, message_id: providerId, chat_id: chatId });
+  expect(calls[0].path).toBe(`/v2/${accountId}/chats/send`);
+  expect(callBody(calls[0])).toMatchObject({ users_ids: '+33612345678' });
+  expect(callBody(calls[0])).not.toHaveProperty('account_id');
+  expect(callBody(calls[0])).not.toHaveProperty('attendees_ids');
+  // The reply arrives as a message.new of the WhatsApp account; the chat id comes from the delivery.
+  await webhook({ ...v2.messageNew({ accountId, chatId, messageId: providerId, senderId: candidatePhoneId, text: 'Merci, voici mon portfolio.' }), account_provider: 'whatsapp' });
   const listed = await action(f.token, f.scope, { action: 'list' });
   expect(listed.status, JSON.stringify(listed.body)).toBe(200);
   expect(listed.body.messages).toEqual(expect.arrayContaining([expect.objectContaining({ channel: 'whatsapp', direction: 'inbound', audience: 'candidate', content: 'Merci, voici mon portfolio.', project_id: f.missionId })]));
   const { count } = await admin().from('mission_conversations').select('id', { count: 'exact', head: true }).eq('account_id', accountId);
   expect(count).toBe(0);
+  await expectNoViolations(accountId, f.accountId);
 });
 
 test('@critical retour d’un collègue : coordination distincte et nouvelle réponse proposée, sans envoi automatique', async () => {
@@ -412,13 +437,14 @@ test('@critical retour d’un collègue : coordination distincte et nouvelle ré
   f.record.members.push(colleague);
   const candidateProviderId = `candidate_sent_${rand()}`;
   const teamProviderId = `team_sent_${rand()}`;
-  const threadId = `team_thread_${rand()}`;
+  // A v2 send answer carries no thread: the thread of a mail we sent is read from the mail itself (the mock derives it from its id).
+  const threadId = `thread_${teamProviderId}`;
   await setMockMode(f.accountId, { action_recipes: { [f.marker]: { effects: [
     { kind: 'message', label: 'Informer le candidat', content: 'Bonjour, je reviens vers vous dès réception des précisions.', subject: 'Suite à vos questions' },
     { kind: 'message', audience: 'team', label: 'Demander les précisions', content: 'Bonjour, pouvez-vous confirmer la taille de l’équipe ?', subject: 'Précisions sur le poste' },
   ] } }, routes: [
-    { method: 'POST', path: '^/api/v1/emails$', status: 201, body: { provider_id: candidateProviderId, thread_id: `candidate_thread_${rand()}` }, times: 1 },
-    { method: 'POST', path: '^/api/v1/emails$', status: 201, body: { provider_id: teamProviderId, thread_id: threadId }, times: 1 },
+    sendEmailRoute({ id: candidateProviderId }, { times: 1 }),
+    sendEmailRoute({ id: teamProviderId }, { times: 1 }),
   ] });
   let plan = await approve(f, await generate(f));
   plan = await execute(f, plan, plan.effects[0].id);
@@ -427,13 +453,11 @@ test('@critical retour d’un collègue : coordination distincte et nouvelle ré
   const incomingId = `team_reply_${rand()}`;
   await setMockMode(f.accountId, { action_recipes: { [f.marker]: { sourceType: 'team_message', effects: [
     { kind: 'message', label: 'Partager les précisions', content: 'Bonjour, l’équipe commerciale compte huit personnes.', subject: 'Précisions sur l’équipe' },
-  ] } }, routes: [{ method: 'GET', path: `^/api/v1/emails/${incomingId}$`, body: { id: incomingId, provider_id: incomingId,
-    account_id: f.accountId, thread_id: threadId, in_reply_to: { message_id: teamProviderId }, date: new Date().toISOString(),
-    from_attendee: { identifier: colleague.email }, to_attendees: [{ identifier: f.org.owner.email }],
-    subject: 'Re: Précisions sur le poste', body_plain: 'L’équipe commerciale compte huit personnes.',
-  } }] });
-  await webhook({ event: 'mail_received', account_id: f.accountId, email_id: incomingId, provider_id: incomingId,
-    from_attendee: { identifier: colleague.email }, to_attendees: [{ identifier: f.org.owner.email }], in_reply_to: { message_id: teamProviderId } });
+  ] } }, routes: [{ method: 'GET', op: 'getEmail', body: v2Email({
+    id: incomingId, from: colleague.email, to: f.org.owner.email, threadId, subject: 'Re: Précisions sur le poste', body: 'L’équipe commerciale compte huit personnes.',
+    headers: [{ name: 'In-Reply-To', value: `<${teamProviderId}@mock.invalid>` }] }) }] });
+  await webhook(v2.emailNew({ accountId: f.accountId, emailId: incomingId, from: colleague.email, to: f.org.owner.email, provider: 'google', threadId,
+    headers: [{ name: 'In-Reply-To', value: `<${teamProviderId}@mock.invalid>` }] }));
   const listed = await action(f.token, f.scope, { action: 'list' });
   expect(listed.status, JSON.stringify(listed.body)).toBe(200);
   expect(listed.body.messages).toEqual(expect.arrayContaining([expect.objectContaining({ direction: 'inbound', audience: 'team', candidate_id: f.candidateId, project_id: f.missionId, sender: colleague.email })]));
@@ -442,6 +466,7 @@ test('@critical retour d’un collègue : coordination distincte et nouvelle ré
   expect(next.effects[0].dedupeKey).not.toBe(plan.effects[0].dedupeKey);
   expect(next.sources.some(source => source.type === 'team_message')).toBe(true);
   expect(await sends(f.accountId)).toHaveLength(2);
+  await expectNoViolations(f.accountId);
 });
 
 test('@critical historique Gmail importé : privé, stable après relecture et sans envoi', async () => {
@@ -451,10 +476,10 @@ test('@critical historique Gmail importé : privé, stable après relecture et s
   const at = new Date(Date.now() - 60000).toISOString();
   await setMockMode(f.accountId, { action_recipes: { [f.marker]: { sourceType: 'inbound_message', effects: [
     { kind: 'message', label: 'Répondre au candidat', content: 'Bonjour, merci pour votre retour. Je vérifie ces points.', subject: 'Suite à vos questions' },
-  ] } }, routes: [{ method: 'GET', path: '^/api/v1/emails$', body: { items: [
-    { id: `historical_in_${f.marker}`, provider_id: `historical_in_${f.marker}`, account_id: f.accountId, date: at, thread_id: `old_${f.marker}`, from_attendee: { identifier: f.email }, to_attendees: [{ identifier: f.org.owner.email }], subject: 'Question', body_plain: 'Bonjour, quelle est la taille de l’équipe ?' },
-    { id: `historical_out_${f.marker}`, provider_id: `historical_out_${f.marker}`, account_id: f.accountId, date: at, thread_id: `old_${f.marker}`, from_attendee: { identifier: f.org.owner.email }, to_attendees: [{ identifier: f.email }], subject: 'Re: Question', body_plain: 'Je vérifie et je vous tiens au courant.' },
-  ], cursor: null } }] });
+  ] } }, routes: [{ method: 'GET', op: 'getEmailsList', body: { data: [
+    v2Email({ id: `historical_in_${f.marker}`, from: f.email, to: f.org.owner.email, threadId: `old_${f.marker}`, at, subject: 'Question', body: 'Bonjour, quelle est la taille de l’équipe ?' }),
+    v2Email({ id: `historical_out_${f.marker}`, from: f.org.owner.email, to: f.email, threadId: `old_${f.marker}`, at, subject: 'Re: Question', body: 'Je vérifie et je vous tiens au courant.' }),
+  ] } }] });
   const first = await action(f.token, f.scope, { action: 'list' });
   expect(first.status, JSON.stringify(first.body)).toBe(200);
   expect(first.body.messages).toHaveLength(2);
@@ -470,4 +495,9 @@ test('@critical historique Gmail importé : privé, stable après relecture et s
   expect(privateHistory.body.messages).toHaveLength(0);
   expect(privateHistory.body.plans).toHaveLength(0);
   expect(await sends(f.accountId)).toHaveLength(0);
+  // The history is read on the path of the member's own mailbox, never on a colleague's.
+  const reads = await callsOf(f.accountId, 'getEmailsList');
+  expect(reads.length).toBeGreaterThan(0);
+  expect(reads.every(call => call.path === `/v2/${f.accountId}/emails` && call.query.any_email === f.email)).toBe(true);
+  await expectNoViolations(f.accountId);
 });

@@ -121,8 +121,10 @@ test('SEQ-004 — reprise et relance par actions serveur, filet « étape déjà
 // ---------------------------------------------------------------- SEQ-005
 test('SEQ-005 — envoi incertain : échec sans relance ; e-mail parti mais non enregistré : succès', () => {
   const uncertainAt = errorBlock.indexOf('isUncertainSendError(errorStr, effectiveActionType)');
-  const retryAt = errorBlock.indexOf('isRetryableError(errorStr)');
+  const retryAt = errorBlock.indexOf('isRetryableError(errorStr, errorKind)');
   assert.ok(uncertainAt !== -1 && uncertainAt < retryAt, 'l\'envoi incertain est traité avant les relances');
+  // API v2 : la famille d'erreur du client (uncertain) décide avant le texte.
+  assert.match(errorBlock, /errorKind === 'uncertain' \|\| isUncertainSendError\(errorStr, effectiveActionType\)/);
   assert.match(errorBlock, /UNCERTAIN_SEND_MESSAGE/);
   assert.match(errorBlock, /isEmailSentButNotRecorded\(errorStr\)/);
   assert.match(catchBlock, /isUncertainSendError\(errorMsg, catchActionType\)/);
@@ -166,7 +168,7 @@ test('SEQ-010 — le compte d\'envoi doit être relié à l\'organisation avant 
   const linked = sliceBetween(engine, 'async function isSenderAccountLinked', '/**');
   assert.match(linked, /from\('member_linkedin_accounts'\)[\s\S]*?\.eq\('organization_id', orgId\)/);
   assert.match(linked, /from\('member_email_accounts'\)[\s\S]*?\.eq\('organization_id', orgId\)/);
-  const health = sliceBetween(loop, '// Check LinkedIn account health before executing', 'if (accountStatus && accountStatus.account_status');
+  const health = sliceBetween(loop, '// Check LinkedIn account health before executing', 'const sendGate = accountSendGate(');
   assert.match(health, /\.eq\('organization_id', enrollmentOrgId\)/);
 });
 
@@ -216,12 +218,12 @@ test('SEQ-027 — les clôtures « terminé » exigent une inscription active ; 
 
 // ---------------------------------------------------------------- SEQ-028
 test('SEQ-028 — compte déconnecté à l\'envoi : pause « compte déconnecté », étape annulée, hors auto-pause', () => {
-  const branch = sliceBetween(errorBlock, '} else if (isAccountDisconnectedError(errorStr)) {', '} else if (isRateLimitError(errorStr)) {');
+  const branch = sliceBetween(errorBlock, '} else if (isAccountDisconnectedError(errorStr, errorKind)) {', '} else if (isRateLimitError(errorStr, errorKind)) {');
   assert.match(branch, /pauseActiveEnrollments\(supabase, \{ id: enrollment\.id \}, ACCOUNT_DISCONNECTED_PAUSE_REASON\)/);
   assert.match(branch, /skip_reason: ACCOUNT_DISCONNECTED_SKIP_REASON/);
   assert.match(branch, /results\.skipped\+\+/);
   assert.doesNotMatch(branch, /failedSequenceIds\.add/);
-  const inCatch = sliceBetween(catchBlock, 'isAccountDisconnectedError(errorMsg)', 'isRateLimitError(errorMsg)');
+  const inCatch = sliceBetween(catchBlock, 'isAccountDisconnectedError(errorMsg, caughtKind)', 'isRateLimitError(errorMsg, caughtKind)');
   assert.match(inCatch, /ACCOUNT_DISCONNECTED_PAUSE_REASON/);
   assert.match(inCatch, /skip_reason: ACCOUNT_DISCONNECTED_SKIP_REASON/);
 });

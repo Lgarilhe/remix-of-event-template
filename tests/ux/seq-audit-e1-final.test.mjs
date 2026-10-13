@@ -42,9 +42,9 @@ const selection = slice(processFn, 'const selectionRead = await readCycleSelecti
 const dormant = slice(processFn, 'Recovery: enrollments actifs SANS', 'Smart batching: fetch more candidates');
 const loop = slice(processFn, 'for (const exec of batchedExecutions)', '// Auto-pause: if >30% of batch actions failed definitively');
 const gate = slice(loop, '// === SUBSCRIPTION GATE', '// === AUTO-SKIP: channel unavailable ===');
-const channels = slice(loop, '// === AUTO-SKIP: channel unavailable ===', '// Resolve Unipile credentials per-org');
+const channels = slice(loop, '// === AUTO-SKIP: channel unavailable ===', "Fournisseur LinkedIn configuré sur le serveur ?");
 const rotation = slice(loop, '// === INBOX ROTATION', 'const effectiveAccountId =');
-const health = slice(loop, "if (accountStatus.account_status === 'CREDENTIALS'", '// Type d\'étape transmis');
+const health = slice(loop, 'const sendGate = accountSendGate(accountStatus?.account_status);', '// Type d\'étape transmis');
 const errorBlock = slice(loop, '// Error handling: differentiate rate limits', '} catch (err) {');
 const closeReplied = slice(engine, 'async function closeEnrollmentAsReplied', 'async function cancelPendingExecutions');
 
@@ -88,11 +88,11 @@ test('n°2 / n°5 D5 — reprise et relance refusées pour une inscription touch
 // ---------------------------------------------------------------- n°3
 test('n°3 — e-mail coupé après 30 s : exécution laissée « en cours d\'envoi », jamais un échec rejouable', () => {
   const unknownAt = errorBlock.indexOf("} else if (effectiveActionType === 'email' && isEmailOutcomeUnknown(errorStr)) {");
-  const uncertainAt = errorBlock.indexOf('} else if (isUncertainSendError(errorStr, effectiveActionType)) {');
+  const uncertainAt = errorBlock.indexOf("} else if (errorKind === 'uncertain' || isUncertainSendError(errorStr, effectiveActionType)) {");
   assert.ok(unknownAt !== -1 && unknownAt < uncertainAt);
   const unknownBranch = errorBlock.slice(unknownAt, uncertainAt);
   assert.doesNotMatch(unknownBranch, /\.update\(/, 'rien n\'est écrit : le rattrapage tranche avec la preuve d\'envoi');
-  const uncertain = slice(errorBlock, '} else if (isUncertainSendError(errorStr, effectiveActionType)) {', '} else if (isMailboxDisconnectedError');
+  const uncertain = slice(errorBlock, "} else if (errorKind === 'uncertain' || isUncertainSendError(errorStr, effectiveActionType)) {", '} else if (isMailboxDisconnectedError');
   assert.match(uncertain, /\}\)\.eq\('id', exec\.id\)\.eq\('status', 'sending'\);/);
   assert.match(errorBlock, /status: 'failed', error_message: executeResult\.error[^\n]*\.eq\('id', exec\.id\)\.eq\('status', 'sending'\);/);
   // Défense : preuve d'envoi d'une autre exécution de la même étape.
@@ -153,7 +153,7 @@ test('n°9 — rotation sans migration B6 (22P02) : envoi depuis le compte de l\
 // ---------------------------------------------------------------- n°10
 test('n°10 — boîte e-mail déconnectée : pause « send_failed » reprenable, jamais « compte LinkedIn déconnecté »', () => {
   const mailboxAt = errorBlock.indexOf('} else if (isMailboxDisconnectedError(errorStr)) {');
-  const linkedinAt = errorBlock.indexOf('} else if (isAccountDisconnectedError(errorStr)) {');
+  const linkedinAt = errorBlock.indexOf('} else if (isAccountDisconnectedError(errorStr, errorKind)) {');
   assert.ok(mailboxAt !== -1 && mailboxAt < linkedinAt, 'traitée avant isAccountDisconnectedError');
   const mailbox = errorBlock.slice(mailboxAt, linkedinAt);
   assert.match(mailbox, /pauseActiveEnrollments\(supabase, \{ id: enrollment\.id \}, 'send_failed', \{\s*tracking_data: \{[\s\S]*?pause_reason: mailboxLabel \}/);

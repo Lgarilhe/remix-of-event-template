@@ -59,7 +59,7 @@ function fakeClient(handlers: Record<string, Handler>) {
         eq(col: string, value: unknown) { q.filters[col] = value; return builder; },
         in(col: string, values: unknown[]) { q.filters[col] = values; return builder; },
         is(col: string, value: unknown) { q.filters[col] = value; return builder; },
-        ilike(col: string, pattern: unknown) { q.filters[col] = pattern; return builder; },
+        ilike(col: string, pattern: string) { q.filters[col] = pattern; return builder; },
         or(expr: string) { q.or = expr; return builder; },
         limit() { return builder; },
         maybeSingle: () => answer(null),

@@ -18,6 +18,15 @@ import { handleProposedToolCall, type ToolContext } from '../../supabase/functio
 import { registerMutatingTools } from '../../supabase/functions/_shared/agent-tools-mutations.ts';
 
 const MOCK = Deno.env.get('VENDOR_MOCK_URL') ?? 'http://127.0.0.1:54340';
+
+// Configuration du fournisseur, comme celle du serveur de fonctions : la clé globale vient de
+// l'environnement (plus d'identifiants par organisation), l'ancienne API n'est plus servie. Un
+// appelant qui lance la sonde sans transmettre PROVIDER_ENV obtient quand même la clé du faux.
+for (const legacy of ['UNIPILE_API_KEY', 'UNIPILE_DSN']) Deno.env.delete(legacy);
+if (!Deno.env.get('UNIPILE_V2_API_KEY')) Deno.env.set('UNIPILE_V2_API_KEY', Deno.env.get('E2E_UNIPILE_V2_API_KEY') ?? 'e2e-test-key');
+const webhookToken = Deno.env.get('E2E_UNIPILE_V2_WEBHOOK_TOKEN');
+if (!Deno.env.get('UNIPILE_V2_WEBHOOK_TOKEN') && webhookToken) Deno.env.set('UNIPILE_V2_WEBHOOK_TOKEN', webhookToken);
+
 const realFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   const req = input instanceof Request ? input : null;

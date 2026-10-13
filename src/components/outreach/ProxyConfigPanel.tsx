@@ -45,7 +45,6 @@ const PROXY_COUNTRIES = [
 
 const MODES = [
   { value: 'country', label: 'Pays' },
-  { value: 'ip', label: 'Adresse IP' },
   { value: 'custom', label: 'Personnalisé' },
 ] as const;
 
@@ -76,9 +75,12 @@ export const ProxyConfigPanel = ({
 }: ProxyConfigPanelProps) => {
   const fieldId = useId();
   const resolvedMode = currentMode || (currentCountry ? 'country' : 'none');
-  const [mode, setMode] = useState<string>(resolvedMode === 'none' ? 'country' : resolvedMode);
-  const [selectedCountry, setSelectedCountry] = useState<string>(currentCountry || '');
-  const [ipAddress, setIpAddress] = useState<string>(currentMode === 'ip' ? (currentCountry || '') : '');
+  // Le choix d'une adresse IP n'existe plus : un ancien réglage s'ouvre sur « Pays »,
+  // sans pays choisi (la valeur enregistrée est une adresse, pas un code pays).
+  const [mode, setMode] = useState<string>(resolvedMode === 'custom' ? 'custom' : 'country');
+  const [selectedCountry, setSelectedCountry] = useState<string>(
+    resolvedMode !== 'ip' && PROXY_COUNTRIES.some((c) => c.code === currentCountry) ? (currentCountry as string) : '',
+  );
   const [customProtocol, setCustomProtocol] = useState<string>(currentProtocol || 'https');
   const [customHost, setCustomHost] = useState<string>(currentHost || '');
   const [customPort, setCustomPort] = useState<string>(currentPort?.toString() || '');
@@ -118,9 +120,6 @@ export const ProxyConfigPanel = ({
     if (mode === 'country') {
       if (!selectedCountry) { toast.error('Choisissez un pays.'); return; }
       payload.proxy_country = selectedCountry;
-    } else if (mode === 'ip') {
-      if (!ipAddress.trim()) { toast.error('Saisissez l’adresse IP du proxy.'); return; }
-      payload.proxy_ip = ipAddress.trim();
     } else if (mode === 'custom') {
       if (!customHost.trim() || !customPort) { toast.error('Indiquez l’hôte et le port du proxy.'); return; }
       payload.proxy_protocol = customProtocol;
@@ -154,10 +153,7 @@ export const ProxyConfigPanel = ({
     }
     setOutcome('ok');
     toast.success('Proxy enregistré');
-    onUpdated(
-      mode === 'country' ? selectedCountry : mode === 'ip' ? ipAddress.trim() : null,
-      mode,
-    );
+    onUpdated(mode === 'country' ? selectedCountry : null, mode);
   };
 
   const fieldClass = 'h-8 max-md:h-11';
@@ -214,17 +210,6 @@ export const ProxyConfigPanel = ({
               ))}
             </SelectContent>
           </Select>
-        )}
-
-        {mode === 'ip' && (
-          <Input
-            value={ipAddress}
-            onChange={(e) => setIpAddress(e.target.value)}
-            aria-label="Adresse IP du proxy"
-            placeholder="203.0.113.10"
-            inputMode="decimal"
-            className={cn(fieldClass, 'w-44')}
-          />
         )}
 
         {mode === 'custom' && (
@@ -294,6 +279,10 @@ export const ProxyConfigPanel = ({
           Enregistrer
         </Button>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Changer le proxy relance la connexion LinkedIn de ce compte. Elle est interrompue un court instant.
+      </p>
     </div>
   );
 };

@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
 
 const webhook = read('supabase/functions/unipile-webhook/index.ts');
-const accounts = read('supabase/functions/unipile-accounts/index.ts');
+const accounts = read('supabase/functions/unipile-accounts/handler.ts');
 const calendly = read('supabase/functions/calendly-webhook/index.ts');
 const stripe = read('supabase/functions/stripe-webhook/index.ts');
 const mutations = read('supabase/functions/_shared/agent-tools-mutations.ts');
@@ -101,16 +101,21 @@ test('D1 — souscription : jamais de réactivation dans une séquence désactiv
 });
 
 // ------------------------------------------------------------------ point 4
-test('hosted_auth : propriété du nouveau compte contrôlée avant l’arrêt de l’ancien', () => {
-  const hosted = sliceBetween(webhook, "case 'account_connected': {", "case 'account_status_updated':");
-  const ownersAt = hosted.indexOf(".from('member_linkedin_accounts')\n                .select('organization_id, user_id')\n                .eq('linkedin_account_id', payload.account_id);");
-  const stopAt = hosted.indexOf('await stopLinkedInAccountSending(supabase, {');
+test('rattachement par lien d’authentification : propriété du nouveau compte contrôlée avant l’arrêt de l’ancien', () => {
+  // Le récepteur n'écrit plus la liaison : le code partagé de connection-claim.ts le fait pour la tentative de connexion.
+  const claimSource = read('supabase/functions/_shared/connection-claim.ts');
+  const hosted = sliceBetween(claimSource, 'async function claimLinkedIn(', 'async function claimEmail(');
+  const ownersAt = hosted.indexOf(".from('member_linkedin_accounts')\n    .select('organization_id, user_id').eq('linkedin_account_id', account.id);");
+  const stopAt = hosted.indexOf('await stopLinkedInAccountSending(admin as never,');
   assert.ok(ownersAt > 0, 'contrôle de propriété absent');
   assert.ok(ownersAt < stopAt, 'arrêt de l’ancien compte avant le contrôle de propriété');
-  assert.match(hosted, /r\.organization_id !== hostedState\.organizationId\)\) \{\s*throw Object\.assign\(new Error\([^)]*\), \{ code: '42501' \}\);/);
-  assert.match(hosted, /r\.user_id !== hostedState\.userId\)\) \{\s*throw Object\.assign\(new Error\([^)]*\), \{ code: '23505' \}\);/);
+  assert.match(hosted, /ownerRows\.some\(\(r\) => r\.organization_id !== organizationId\)\) return failure\('linkedin', 'cross_tenant'\);/);
+  assert.match(hosted, /ownerRows\.some\(\(r\) => r\.user_id !== userId\)\) return failure\('linkedin', 'other_member'\);/);
   // Nouveau compte : montée en charge repartie de zéro, comme claim_linkedin_account.
-  assert.match(hosted, /\.\.\.\(accountChanged \? \{ linked_at: nowIso \} : \{\}\),/);
+  assert.match(hosted, /\.\.\.\(changed \? \{ linked_at: nowIso \} : \{\}\),/);
+  // Le récepteur ne fait que déléguer, la reprise des inscriptions suit.
+  assert.doesNotMatch(webhook, /\.upsert\(\{[\s\S]{0,200}linkedin_account_id/);
+  assert.match(webhook, /claimForAttempt\(supabase, \{ attemptId: payload\.state, account \}\)/);
 });
 
 // ------------------------------------------------------------------ point 5
@@ -141,7 +146,9 @@ test('assistant : compte déconnecté annoncé au vouvoiement, sans identifiant 
   const verify = sliceBetween(toolBlock('send_linkedin_message'), 'async verifyAccess(', 'async dryRun(');
   assert.doesNotMatch(verify, /Reconnecte-le/);
   assert.doesNotMatch(verify, /Compte LinkedIn \$\{resolved\.account_id\}/);
-  assert.match(verify, /Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer\./);
+  // Le texte vit dans un seul assistant (déconnecté, limité ou verrouillé), appelé par la vérification.
+  assert.match(verify, /sendingAccountBlockedMessage\(resolved\.account_status\)/);
+  assert.match(mutations, /Votre compte LinkedIn est déconnecté : reconnectez-le dans Paramètres > Mon compte avant d'envoyer\./);
 });
 
 // ------------------------------------------------------------------ point 8
@@ -175,8 +182,8 @@ test('D5 — RGPD : marqueur durable sur toutes les inscriptions trouvées, fusi
 // ------------------------------------------------------- points 9 et 11
 test('unipile-accounts : arrêt des envois et dissociation jamais bloqués par l’absence d’identifiants', () => {
   assert.match(accounts, /const DATABASE_ONLY_ACTIONS = new Set\(\['unlink_linkedin_account', 'stop_member_linkedin', 'unlink_email_account'\]\);/);
-  assert.match(accounts, /if \(!credentials && !DATABASE_ONLY_ACTIONS\.has\(action\)\) \{[\s\S]*?LinkedIn non configuré pour cette organisation/);
-  assert.doesNotMatch(accounts, /if \(!credentials\) \{\s*return new Response/);
+  assert.match(accounts, /if \(!providerConfigured && !DATABASE_ONLY_ACTIONS\.has\(action\) && !LOCAL_CONNECTION_ACTIONS\.has\(action\)\) \{[\s\S]*?userSafeMessage\('config'\)/);
+  assert.doesNotMatch(accounts, /if \(!providerConfigured\) \{\s*return/);
   // Ces actions n'appellent pas le prestataire (identifiants vides admis).
   for (const name of ['unlink_linkedin_account', 'stop_member_linkedin']) {
     const start = accounts.indexOf(`      case '${name}': {`);

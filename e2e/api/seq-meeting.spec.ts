@@ -34,6 +34,7 @@ import {
 import {
   ENGINE_SKIP_REASON,
   callFunction,
+  callsOf,
   engineAvailable,
   enroll,
   messageSequence,
@@ -147,8 +148,7 @@ async function aiCallsWith(marker: string) {
 }
 /** Envois LinkedIn (nouvelle conversation, suite, invitation) depuis ce compte. */
 async function sendsFrom(accountId: string) {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'POST'
-    && (c.path === '/api/v1/chats' || /^\/api\/v1\/chats\/[^/]+\/messages$/.test(c.path) || c.path === '/api/v1/users/invite'));
+  return callsOf(accountId, ['startChat', 'startChatFromInbox', 'sendMessage', 'createRelationRequest']);
 }
 
 /**

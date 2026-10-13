@@ -1,9 +1,25 @@
 // Deno.serve used directly
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.75.1";
-import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
-import { flattenV2WebhookEnvelope, resolveV2WebhookToken } from "../_shared/unipile-v2.ts";
+import {
+  accountChannelOf,
+  describeForLog,
+  flattenEnvelope,
+  getAccount,
+  getChat,
+  getMessage,
+  getProfile,
+  handlerNameOf,
+  isCandidateReplyCandidate,
+  isV2AccountId,
+  mapAccountRemoved,
+  mapAccountStatus,
+  normalizeEmail,
+  verifyWebhookRequest,
+  webhookDedupKey,
+  webhookFallbackDedupKey,
+  type KonektAccountStatus,
+} from "../_shared/unipile/index.ts";
 import { ACCOUNT_DISCONNECTED_PAUSE_REASON, ACCOUNT_DISCONNECTED_SKIP_REASON } from "../_shared/linkedin-quotas.ts";
-import { timingSafeEqual } from "../_shared/timing-safe-equal.ts";
 import { stopLinkedInAccountSending } from "../_shared/linkedin-sending-stop.ts";
 import { resumeDate } from "../_shared/sequence-resume.ts";
 import { inReplyToCandidates } from "../_shared/sequence-email-policy.mjs";
@@ -20,33 +36,69 @@ import {
 import { candidateRef, recordInbound, recordOwnMessage, type CandidateRef } from "../_shared/candidate-stage-events.ts";
 import { isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
 import { captureCandidateActionIncomingBestEffort } from "../_shared/candidate-actions/incoming.ts";
-import { candidateActionPhone } from "../_shared/candidate-actions/transport.ts";
+import { claimForAttempt, insertClaimNotification, providerKind, statusAtClaim } from "../_shared/connection-claim.ts";
 
+// Récepteur des événements du service de connexion (API v2). Aucun en-tête
+// d'authentification n'est lisible côté fournisseur à la création d'un point de
+// terminaison : la seule authentification est le paramètre `?v2_token=` de l'URL,
+// vérifié en temps constant par verifyWebhookRequest (échec fermé : jamais de
+// livraison acceptée sans jeton valide).
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, unipile-auth, x-unipile-signature',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const WEBHOOK_SECRET = Deno.env.get('UNIPILE_WEBHOOK_SECRET');
 /** webhook_event_log.event_type d'une clé dont le traitement a échoué et que la purge n'a pas pu retirer. */
 const FAILED_EVENT_MARKER = 'processing_failed';
-// Note : le handler est fail-closed (500 si secret absent, 401 si header
-// invalide) — ce warn signale juste une config incomplète au boot.
-if (!WEBHOOK_SECRET) console.warn('[unipile-webhook] ⚠️ UNIPILE_WEBHOOK_SECRET not set — all requests will be REJECTED until configured');
+/** Statuts d'une liaison déjà en panne : une nouvelle panne ne prévient pas une seconde fois (SEQ-208). */
+const ALREADY_BROKEN_STATUSES = new Set(['CREDENTIALS', 'ERROR', 'PERMISSIONS', 'DELETED', 'DISCONNECTED']);
+/**
+ * Statuts qu'un verrouillage (LOCKED) ne remplace jamais : une panne à reconnecter (le membre doit d'abord
+ * reconnecter, la liaison garde son statut et sa notification) et LOCKED lui-même (déjà verrouillé : ni
+ * écriture ni seconde notification, une seule fois par passage).
+ */
+const NO_LOCK_NOTICE_STATUSES = new Set([...ALREADY_BROKEN_STATUSES, 'LOCKED']);
+/** PARTIAL n'est pas annoncé de nouveau à une liaison déjà en panne à reconnecter ni déjà PARTIAL. */
+const NO_PARTIAL_NOTICE_STATUSES = new Set([...ALREADY_BROKEN_STATUSES, 'PARTIAL']);
+/** Filtre PostgREST (.or) : liaisons sans statut, ou dont le statut n'est pas dans la liste. */
+const statusNotIn = (statuses: Iterable<string>) => `account_status.is.null,account_status.not.in.(${[...statuses].join(',')})`;
+/** Liaisons qu'un verrouillage remplace : sans statut, OK, DEGRADED, PARTIAL ou un statut inconnu. */
+const LOCK_REPLACES_FILTER = statusNotIn(NO_LOCK_NOTICE_STATUSES);
+/** Délai de la relecture de l'état d'un compte chez le prestataire : au-delà, l'événement est traité sans elle. */
+const REREAD_DEADLINE_MS = 8_000;
+/** Essais d'un passage d'état sur une liaison que d'autres événements font changer au même moment. */
+const MAX_TRANSITION_ATTEMPTS = 25;
+/**
+ * Phrase de la carte de connexion pour PARTIAL (src/lib/connectionCopy.ts, `authentication_partial`, canal
+ * LinkedIn), reprise mot pour mot : le bandeau, la ligne d'À traiter et cette notification disent la même chose.
+ * Garde : tests/ux/etat-compte-alertes.test.mjs compare les deux textes.
+ */
+const PARTIAL_CONNECTION_SENTENCE = 'Une partie de la connexion LinkedIn demande une nouvelle authentification. Reconnectez le compte pour reprendre les envois.';
 
-async function hmacSha256Hex(secret: string, value: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
+/**
+ * Échec passager d'un événement d'état (lecture ou écriture de base en échec, relecture du compte impossible,
+ * conflit d'écriture qui ne se résout pas) : l'événement n'est PAS appliqué, il ne doit donc pas être acquitté.
+ * Elle remonte jusqu'au catch de handleRequest, qui libère la ligne de dédoublonnage (ou la marque en échec) et
+ * répond 500 : le prestataire rejoue l'événement, et le rejeu est traité.
+ */
+class TransientEventError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
+    this.name = 'TransientEventError';
+  }
 }
 
-// Timeout wrapper for all external fetch calls (Unipile, Anthropic, Notion)
+/** L'erreur d'un passage d'état, rendue transitoire (message neutre : il est renvoyé dans le corps du 500). */
+function transientFailure(error: unknown): TransientEventError {
+  if (error instanceof TransientEventError) return error;
+  console.warn('[unipile-webhook] Account status event not applied, the provider will redeliver it:', describeForLog(error));
+  return new TransientEventError('Account status event not applied (transient failure), retry', error);
+}
+
+/** Mots de statut du prestataire (spécification des comptes) : un autre mot ne dit rien sur l'état du compte. */
+const KNOWN_PROVIDER_STATUS_WORDS = new Set(['running', 'disconnected', 'errored', 'degraded', 'partial']);
+
+// Timeout wrapper for the internal function calls (analyse, indexation)
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -200,21 +252,299 @@ async function alertSiblingStopFailure(
   }
 }
 
-/** Notification « Compte LinkedIn déconnecté », commune aux événements v1 (statut) et v2. */
+/**
+ * Notification « Compte LinkedIn déconnecté » (statut déconnecté), « Problème de connexion LinkedIn »
+ * (`problem: 'error'`, statut en erreur), « Connexion LinkedIn partielle » (`problem: 'partial'`, un produit
+ * demande une nouvelle authentification : le membre doit reconnecter), « Compte LinkedIn restreint »
+ * (`problem: 'locked'`, accès verrouillé : se reconnecter n'y change rien) ou compte supprimé (`removed`).
+ */
 function linkedinDisconnectedNotification(
   row: { user_id: string; organization_id: string; linkedin_account_name?: string | null },
   accountId: string,
+  options: { removed?: boolean; problem?: 'error' | 'locked' | 'partial' } = {},
 ) {
+  const label = `Votre compte LinkedIn${row.linkedin_account_name ? ` « ${row.linkedin_account_name} »` : ''}`;
+  let title = 'Compte LinkedIn déconnecté';
+  let body = `${label} n'est plus connecté. Reconnectez-le depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`;
+  if (options.removed) {
+    body = `${label} a été supprimé du service de connexion : les envois qui en partaient sont arrêtés. Reliez-le de nouveau depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`;
+  } else if (options.problem === 'error') {
+    title = 'Problème de connexion LinkedIn';
+    body = `${label} rencontre un problème de connexion : les envois qui en partent sont en pause. Reconnectez-le depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`;
+  } else if (options.problem === 'partial') {
+    title = 'Connexion LinkedIn partielle';
+    body = PARTIAL_CONNECTION_SENTENCE;
+  } else if (options.problem === 'locked') {
+    title = 'Compte LinkedIn restreint';
+    body = `${label} est restreint par LinkedIn : les envois qui en partent sont en pause. Se reconnecter n'y change rien. Patientez, ou vérifiez l'état du compte directement sur LinkedIn : les envois reprendront d'eux-mêmes une fois la restriction levée.`;
+  }
   // Schéma notifications : body + read_at (NULL = non lue), pas message/read.
   return {
     user_id: row.user_id,
     organization_id: row.organization_id,
     type: 'linkedin_disconnected',
-    title: 'Compte LinkedIn déconnecté',
-    body: `Votre compte LinkedIn${row.linkedin_account_name ? ` « ${row.linkedin_account_name} »` : ''} n'est plus connecté. Reconnectez-le depuis Paramètres > Mon compte pour reprendre vos recherches et vos séquences.`,
+    title,
+    body,
     link: '/settings?tab=account',
-    metadata: { linkedin_account_id: accountId },
+    metadata: {
+      linkedin_account_id: accountId,
+      ...(options.problem === 'error' ? { account_status: 'ERROR' } : {}),
+      ...(options.problem === 'partial' ? { account_status: 'PARTIAL' } : {}),
+      ...(options.problem === 'locked' ? { account_status: 'LOCKED' } : {}),
+    },
   };
+}
+
+/** Liaison LinkedIn que ce passage vient de faire changer d'état : celle dont le membre est prévenu. */
+interface MovedLinkedAccountRow {
+  user_id: string;
+  organization_id: string;
+  linkedin_account_name: string | null;
+}
+
+/** Liaison LinkedIn telle que la lit un passage d'état, avec son statut d'avant. */
+interface LinkedAccountStateRow extends MovedLinkedAccountRow {
+  id: string;
+  account_status: string | null;
+}
+
+/** Genre de notification d'un passage d'état (OK et DEGRADED : aucune, état de carte seulement). */
+type AccountNotice = 'locked' | 'partial' | 'disconnected' | 'error';
+const NOTICE_BY_STATUS: Readonly<Record<string, AccountNotice>> = {
+  LOCKED: 'locked',
+  PARTIAL: 'partial',
+  CREDENTIALS: 'disconnected',
+  ERROR: 'error',
+};
+
+/** Statut Konekt à écrire sur une liaison LinkedIn, avec les champs écrits en même temps. */
+interface StatusTarget {
+  status: string;
+  patch: Record<string, unknown>;
+}
+
+/**
+ * Champs écrits avec un statut : date du constat, et le code neutre de la panne (jamais le texte du prestataire,
+ * lisible par les membres de l'organisation), effacé au retour à OK.
+ */
+function statusPatch(status: string): Record<string, unknown> {
+  return {
+    account_status: status,
+    last_checked_at: new Date().toISOString(),
+    ...(status === 'OK' ? { failure_reason: null } : {}),
+    ...(status === 'CREDENTIALS' ? { failure_reason: 'disconnected' } : {}),
+    ...(status === 'ERROR' ? { failure_reason: 'error' } : {}),
+  };
+}
+
+/**
+ * Lignes lues dont le passage vers `status` mérite d'être annoncé au membre : PARTIAL pas à une liaison déjà en
+ * panne à reconnecter ni déjà PARTIAL, une panne (CREDENTIALS, ERROR) pas à une liaison déjà en panne (SEQ-208).
+ * OK, DEGRADED et LOCKED (annoncé par son écriture conditionnelle) : jamais ici.
+ */
+function announcedRows<T extends { account_status: string | null }>(status: string, rows: T[]): T[] {
+  if (status === 'PARTIAL') return rows.filter((row) => !NO_PARTIAL_NOTICE_STATUSES.has(String(row.account_status ?? '').toUpperCase()));
+  if (status !== 'CREDENTIALS' && status !== 'ERROR') return [];
+  return rows.filter((row) => !ALREADY_BROKEN_STATUSES.has(String(row.account_status ?? '').toUpperCase()));
+}
+
+/**
+ * Passage d'état atomique (compare-and-set) : l'écriture ne touche que les liaisons dont le statut d'AVANT
+ * répond à `previousStatusFilter` (filtre .or), et rend les lignes qu'elle a vraiment changées. Le membre
+ * n'est prévenu que pour ces lignes : deux livraisons simultanées d'événements distincts pour le même passage
+ * (account.locked et account.status.running avec is_locked, par exemple) ne peuvent pas toutes deux le
+ * changer, la seconde ne trouve plus de ligne à écrire. Aucune lecture du statut d'avant, donc aucune fenêtre
+ * entre la lecture et l'écriture. Sert quand les statuts remplacés sont ceux qui sont annoncés (LOCKED, et le
+ * déverrouillage qui ne relève que les liaisons LOCKED).
+ */
+async function moveLinkedInAccount(
+  supabase: SupabaseClient,
+  accountId: string,
+  patch: Record<string, unknown>,
+  previousStatusFilter: string,
+): Promise<{ moved: MovedLinkedAccountRow[]; error: unknown }> {
+  const { data, error } = await supabase
+    .from('member_linkedin_accounts')
+    .update(patch)
+    .eq('linkedin_account_id', accountId)
+    .or(previousStatusFilter)
+    .select('user_id, organization_id, linkedin_account_name');
+  return { moved: error ? [] : ((data ?? []) as MovedLinkedAccountRow[]), error };
+}
+
+/**
+ * Prévient les membres dont le compte vient de passer LOCKED (envois en pause, aucun geste de reconnexion),
+ * PARTIAL (un produit demande une nouvelle authentification), CREDENTIALS ou ERROR (à reconnecter). Au mieux :
+ * un échec est journalisé et ne fait jamais échouer l'événement.
+ */
+async function notifyAccountState(
+  supabase: SupabaseClient,
+  accountId: string,
+  rows: MovedLinkedAccountRow[],
+  problem: AccountNotice,
+): Promise<void> {
+  if (rows.length === 0) return;
+  try {
+    const { error } = await supabase.from('notifications').insert(
+      rows.map((row) => linkedinDisconnectedNotification(row, accountId, problem === 'disconnected' ? {} : { problem })),
+    );
+    if (error) console.warn(`[unipile-webhook] Could not create ${problem} notifications:`, error);
+  } catch (e) {
+    console.warn(`[unipile-webhook] Error creating ${problem} notifications:`, e);
+  }
+}
+
+/**
+ * Passage d'état des liaisons LinkedIn d'un compte quand le statut remplacé et le statut annoncé diffèrent
+ * (un statut de panne remplace une autre panne sans nouvelle notification, PARTIAL remplace une panne sans
+ * notification) : la ligne est lue, puis écrite SI SON STATUT EST ENCORE CELUI QUI A ÉTÉ LU (compare-and-set,
+ * rendue par .select()). Une écriture qui ne trouve plus la ligne telle qu'elle l'a lue relit et décide de
+ * nouveau : chaque événement a donc un seul point d'effet, au moment de son écriture réussie, et ne recouvre
+ * jamais un événement plus récent. Le membre n'est prévenu que pour le passage que CETTE écriture a fait,
+ * jamais d'après la lecture : des livraisons simultanées d'événements distincts ne le préviennent qu'une fois
+ * par passage réel. `targetFor` rend l'état à écrire pour un statut d'avant, ou null pour laisser la ligne.
+ * Une erreur n'est jamais levée mais rendue dans `error` : lecture ou écriture en échec, plafond d'essais atteint, ou
+ * état à écrire impossible à décider (`targetFor` lève). Elle signifie « événement non appliqué en entier » : l'appelant
+ * la rend transitoire (transientFailure) pour que le prestataire rejoue l'événement, jamais acquitté comme traité.
+ */
+export async function transitionLinkedInAccount(
+  supabase: SupabaseClient,
+  accountId: string,
+  targetFor: (previous: string | null) => StatusTarget | null | Promise<StatusTarget | null>,
+): Promise<{ finalStatuses: string[]; error: unknown }> {
+  const finalStatuses: string[] = [];
+  const handled = new Set<string>();
+  const told = new Map<AccountNotice, MovedLinkedAccountRow[]>();
+  let failure: unknown = null;
+  let settled = false;
+  for (let attempt = 0; attempt < MAX_TRANSITION_ATTEMPTS && !settled && !failure; attempt++) {
+    const { data, error } = await supabase
+      .from('member_linkedin_accounts')
+      .select('id, user_id, organization_id, linkedin_account_name, account_status')
+      .eq('linkedin_account_id', accountId);
+    if (error) {
+      failure = error;
+      break;
+    }
+    settled = true;
+    for (const row of (data ?? []) as LinkedAccountStateRow[]) {
+      if (handled.has(row.id)) continue;
+      let target: StatusTarget | null;
+      try {
+        target = await targetFor(row.account_status ?? null);
+      } catch (e) {
+        // Relecture du compte impossible (voir applyLinkedInStatus) : la liaison n'est pas touchée, l'événement est rejoué.
+        failure = e;
+        break;
+      }
+      if (!target) {
+        handled.add(row.id);
+        finalStatuses.push(String(row.account_status ?? ''));
+        continue;
+      }
+      const write = supabase
+        .from('member_linkedin_accounts')
+        .update(target.patch)
+        .eq('id', row.id)
+        .eq('linkedin_account_id', accountId);
+      const { data: changed, error: writeError } = await (row.account_status === null
+        ? write.is('account_status', null)
+        : write.eq('account_status', row.account_status)
+      ).select('id');
+      if (writeError) {
+        failure = writeError;
+        break;
+      }
+      if ((changed ?? []).length === 0) {
+        settled = false;
+        continue;
+      }
+      handled.add(row.id);
+      finalStatuses.push(target.status);
+      const notice = NOTICE_BY_STATUS[target.status];
+      if (notice && announcedRows(target.status, [row]).length > 0) {
+        told.set(notice, [...(told.get(notice) ?? []), row]);
+      }
+    }
+  }
+  if (!settled && !failure) failure = new Error('account status kept changing, event not applied');
+  for (const [notice, rows] of told) await notifyAccountState(supabase, accountId, rows, notice);
+  return { finalStatuses, error: failure };
+}
+
+/**
+ * État que le prestataire rapporte maintenant pour un compte (statut et verrou ensemble, `statusAtClaim`),
+ * relu à l'événement d'un déverrouillage ou d'un statut qui ne dit pas si le verrou est levé : aucun événement de
+ * statut n'est émis quand seul le verrou change, donc ni l'événement ni la ligne enregistrée ne disent dans
+ * quel état le compte revient. null quand la lecture échoue, dépasse son délai ou rend un compte sans statut
+ * lisible : l'appelant n'écrit alors rien (un doute ne laisse rien partir) et fait rejouer l'événement.
+ */
+async function readReportedStatus(accountId: string): Promise<KonektAccountStatus | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const read = getAccount(accountId);
+    read.catch(() => {}); // une lecture abandonnée à l'échéance ne doit pas remonter plus tard
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('account state re-read deadline')), testing.rereadDeadlineMs);
+    });
+    const account = await Promise.race([read, deadline]);
+    // Un compte sans statut lisible n'apprend rien : ce n'est pas un compte opérationnel.
+    if (typeof account?.status !== 'string' || account.status.trim() === '') {
+      console.warn('[unipile-webhook] Account state could not be re-read, the provider returned no status, the event is not applied and will be redelivered');
+      return null;
+    }
+    return statusAtClaim(account);
+  } catch (e) {
+    console.warn('[unipile-webhook] Account state could not be re-read, the event is not applied and will be redelivered:', describeForLog(e));
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Vrai quand une liaison de ce compte (LinkedIn, e-mail ou WhatsApp) est enregistrée LOCKED. Lecture en échec : le
+ * déverrouillage ne peut pas être décidé, l'erreur est transitoire (rien n'est écrit, l'événement est rejoué).
+ */
+async function hasLockedBinding(supabase: SupabaseClient, accountId: string): Promise<boolean> {
+  const reads = await Promise.all([
+    supabase.from('member_linkedin_accounts').select('account_status').eq('linkedin_account_id', accountId).eq('account_status', 'LOCKED'),
+    supabase.from('member_email_accounts').select('account_status').eq('email_account_id', accountId).eq('account_status', 'LOCKED'),
+    supabase.from('member_whatsapp_accounts').select('account_status').eq('whatsapp_account_id', accountId).eq('account_status', 'LOCKED'),
+  ]);
+  for (const { error } of reads) if (error) throw transientFailure(error);
+  return reads.some(({ data }) => (data ?? []).length > 0);
+}
+
+/**
+ * Applique aux liaisons LinkedIn d'un compte le statut qu'un événement rapporte, hors LOCKED (account.status.running,
+ * degraded et partial sans verrou, account.status.disconnected et errored, account.add et account.reconnect sans
+ * tentative de connexion) : un seul chemin, donc les mêmes règles partout. Une panne à reconnecter (CREDENTIALS,
+ * ERROR) l'emporte sur le verrou, qui se règle en reconnectant. Les autres statuts ne disent pas toujours si le verrou
+ * est levé : une liaison LOCKED prend alors l'état que le prestataire rapporte maintenant (relu), et reste LOCKED s'il
+ * dit encore verrouillé. Relecture impossible : la liaison reste LOCKED (aucun envoi ne part sur un doute), rien n'est
+ * écrit et l'erreur rendue est transitoire (l'appelant fait rejouer l'événement). `lockKnown` : l'événement porte
+ * lui-même `is_locked` (vrai ou faux), il fait foi pour le verrou et aucune relecture n'a lieu.
+ */
+async function applyLinkedInStatus(
+  supabase: SupabaseClient,
+  accountId: string,
+  status: string,
+  lockKnown = false,
+): Promise<{ finalStatuses: string[]; error: unknown }> {
+  if (status === 'LOCKED') return { finalStatuses: [], error: new Error('LOCKED is written by its own conditional update') };
+  const own: StatusTarget = { status, patch: statusPatch(status) };
+  const rereadsLocked = !lockKnown && status !== 'CREDENTIALS' && status !== 'ERROR';
+  let afterLock: Promise<StatusTarget | null> | undefined;
+  return await transitionLinkedInAccount(supabase, accountId, (previous) => {
+    if (!rereadsLocked || String(previous ?? '').toUpperCase() !== 'LOCKED') return own;
+    afterLock ??= (async () => {
+      const reported = await readReportedStatus(accountId);
+      if (reported === null) throw new TransientEventError('Account state could not be re-read');
+      return reported === 'LOCKED' ? null : { status: reported, patch: statusPatch(reported) };
+    })();
+    return afterLock;
+  });
 }
 
 /**
@@ -326,200 +656,56 @@ async function resumeEnrollmentsAfterReconnect(supabase: SupabaseClient, account
   }
 }
 
-// Resolve Unipile credentials for the org that owns the given Unipile account_id.
-// Falls back to global env vars if no per-org credentials are found.
-async function resolveCredsForAccount(accountId: string, supabase: SupabaseClient): Promise<{ apiKey: string; dsn: string }> {
-  const envApiKey = Deno.env.get('UNIPILE_API_KEY') || '';
-  const rawDsn = (Deno.env.get('UNIPILE_DSN') || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const envDsn = `https://${rawDsn}`;
-  const fallback = { apiKey: envApiKey, dsn: envDsn };
-
-  if (!accountId) return fallback;
-
-  try {
-    const { data: linkedInAccount } = await supabase
-      .from('member_linkedin_accounts')
-      .select('organization_id')
-      .eq('linkedin_account_id', accountId)
-      .maybeSingle();
-
-    let organizationId = linkedInAccount?.organization_id as string | undefined;
-    if (!organizationId) {
-      const { data: emailAccount } = await supabase
-        .from('member_email_accounts')
-        .select('organization_id')
-        .eq('email_account_id', accountId)
-        .maybeSingle();
-      organizationId = emailAccount?.organization_id as string | undefined;
-    }
-
-    if (!organizationId) {
-      const { data: whatsappAccount } = await supabase.from('member_whatsapp_accounts')
-        .select('organization_id').eq('whatsapp_account_id', accountId).maybeSingle();
-      organizationId = whatsappAccount?.organization_id as string | undefined;
-    }
-
-    if (!organizationId) return fallback;
-
-    const creds = await resolveUnipileCredentials(organizationId, supabase);
-    if (creds) {
-      return { apiKey: creds.apiKey, dsn: creds.dsn };
-    }
-  } catch (e) {
-    console.warn('[unipile-webhook] Org credential resolution failed, using env:', e);
-  }
-  return fallback;
-}
-
-
+/**
+ * Événement du service de connexion, aplati par flattenEnvelope puis nommé par
+ * son handler (`event`, voir handlerNameOf). Seul `message.new` a été observé sur
+ * une vraie livraison : les autres formes sont lues avec prudence, une clé absente
+ * reste absente (jamais inventée).
+ */
 interface WebhookPayload {
+  /** Nom du handler (alias du type v2). */
   event: string;
+  /** Type v2 brut (`message.new`, `account.status.running`...). */
+  v2_event: string;
+  /** Identifiant d'événement `evt_...`, commun à toutes les tentatives de livraison. */
+  event_id?: string;
   account_id: string;
+  /** Fournisseur du compte (`linkedin`, `google`, `outlook`, `imap`, `whatsapp`...), en minuscules. */
   account_type?: string;
   data?: Record<string, unknown>;
-  // hosted_auth flow : le `name` qu'on passe à /hosted/accounts/link revient ici.
-  // On encode "user:{uuid}|org:{uuid}[|reconnect:{acc}]" pour tracer qui a initié
-  // la connexion et faire un upsert correct dans member_linkedin_accounts.
-  name?: string;
-  // account_connected / account_status_updated : le status Unipile courant
-  status?: string;
-  // new_relation format (flat)
+  /** account.add / account.reconnect : `state` renvoyé, identifiant de la tentative de connexion. */
+  state?: string;
+  /** account.add / account.reconnect : ancien identifiant du compte migré, journalisé seulement. */
+  v1_account_id?: string;
+  /** account.add / account.reconnect : statut (`running`...) et verrouillage du compte, quand la charge est un `Account`. */
+  provider_status?: string;
+  is_locked?: boolean;
+  /** account.status.running|degraded|partial : statut Konekt (OK, DEGRADED, PARTIAL ou LOCKED). */
+  account_status?: string;
+  /** account.initial_sync.* : completed ou failed. */
+  sync_status?: string;
+  // relation.new
   user_provider_id?: string;
   user_full_name?: string;
   user_public_identifier?: string;
   user_profile_url?: string;
-  // message_received format (flat structure)
-  chat_id?: string;
-  sender?: { attendee_id?: string; attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string };
-  attendees?: Array<{ attendee_provider_id?: string; attendee_name?: string; attendee_profile_url?: string }>;
-  // mail_received format (per Unipile docs, source='email')
-  // Champs effectifs : email_id, account_id, event, webhook_name, date,
-  // from_attendee, to_attendees, bcc_attendees, cc_attendees, reply_to_attendees,
-  // provider_id, message_id, has_attachments, subject, body, body_plain,
-  // attachments, folders, role, read_date, is_complete, in_reply_to,
-  // tracking_id, origin
-  email_id?: string;
+  // message.new : identifiant du message (la conversation est dans data.chat)
   message_id?: string;
-  provider_id?: string;
+  // email.new
+  email_id?: string;
+  thread_id?: string;
   subject?: string;
   body?: string;
   body_plain?: string;
-  /** Per docs : object { message_id, id }. Garde any pour souplesse. */
+  /** Identifiant du message auquel le courriel répond (en-têtes In-Reply-To / References). */
   in_reply_to?: { message_id?: string; id?: string } | string;
-  has_attachments?: boolean;
-  is_complete?: boolean;
   from_attendee?: { display_name?: string; identifier?: string };
   to_attendees?: Array<{ display_name?: string; identifier?: string }>;
   cc_attendees?: Array<{ display_name?: string; identifier?: string }>;
   bcc_attendees?: Array<{ display_name?: string; identifier?: string }>;
   date?: string;
-  /** En-têtes du message, quand la charge utile les expose (réponses automatiques). */
+  /** En-têtes du message (réponses automatiques). */
   headers?: Array<{ name?: string; value?: unknown }> | Record<string, unknown>;
-  // account_status webhook : payload peut arriver wrappé en AccountStatus
-  AccountStatus?: { account_id?: string; account_type?: string; message?: string };
-  // API v2 (account.add / account.reconnect) : le state du hosted auth arrive
-  // dans un champ dédié `state` au lieu d'être encodé dans `name` comme en v1.
-  state?: string;
-}
-
-/**
- * Parse le `name` passé par hosted_auth pour extraire user_id + org_id + reconnect hint.
- * Format attendu : "user:{uuid}|org:{uuid}[|reconnect:{account_id}]"
- * Retourne null si format inconnu (flow legacy avec org_name brut).
- */
-function parseHostedAuthState(name: string | undefined): {
-  userId: string;
-  organizationId: string;
-  reconnectAccountId: string | null;
-  providers: string[];
-  expiresAtMs: number | null;
-} | null {
-  if (!name || typeof name !== 'string') return null;
-  const parts = name.split('|');
-  const map: Record<string, string> = {};
-  for (const part of parts) {
-    const colonIdx = part.indexOf(':');
-    if (colonIdx > 0) {
-      const k = part.slice(0, colonIdx).trim();
-      const v = part.slice(colonIdx + 1).trim();
-      if (k && v) map[k] = v;
-    }
-  }
-  if (!map.user || !map.org) return null;
-  return {
-    userId: map.user,
-    organizationId: map.org,
-    reconnectAccountId: map.reconnect || null,
-    providers: (map.providers || '')
-      .split(',')
-      .map((provider) => provider.trim().toUpperCase())
-      .filter(Boolean),
-    expiresAtMs: /^\d{13}$/.test(map.expires || '') ? Number(map.expires) : null,
-  };
-}
-
-const EMAIL_ACCOUNT_TYPES = new Set([
-  'GOOGLE', 'GOOGLE_OAUTH', 'GMAIL',
-  'OUTLOOK', 'MICROSOFT', 'EXCHANGE',
-  'IMAP', 'MAIL', 'ICLOUD',
-]);
-
-function normalizeAccountType(payload: WebhookPayload, hostedProviders: string[] = []): string {
-  const raw = payload.account_type
-    || payload.AccountStatus?.account_type
-    || (payload.data as Record<string, unknown> | undefined)?.account_type
-    || (payload.data as Record<string, unknown> | undefined)?.type
-    || hostedProviders[0]
-    || '';
-  return String(raw).trim().toUpperCase();
-}
-
-async function resolveConnectedAccountMetadata(
-  payload: WebhookPayload,
-  organizationId: string,
-  supabase: SupabaseClient,
-  hostedProviders: string[],
-): Promise<{ accountType: string; emailAddress: string | null; displayName: string | null }> {
-  let accountType = normalizeAccountType(payload, hostedProviders);
-  let emailAddress: string | null = null;
-  let displayName: string | null = null;
-  const payloadData = (payload.data as Record<string, unknown> | undefined) || {};
-  if (typeof payloadData.name === 'string') displayName = payloadData.name;
-  if (typeof payloadData.identifier === 'string') emailAddress = payloadData.identifier;
-
-  if (accountType !== 'WHATSAPP' && accountType && (displayName || !EMAIL_ACCOUNT_TYPES.has(accountType))) {
-    return { accountType, emailAddress, displayName };
-  }
-
-  try {
-    const credentials = await resolveUnipileCredentials(organizationId, supabase);
-    if (!credentials || !payload.account_id) return { accountType, emailAddress, displayName };
-    const response = await fetchWithTimeout(
-      `${credentials.dsn}/api/v1/accounts/${encodeURIComponent(payload.account_id)}`,
-      { headers: { 'X-API-KEY': credentials.apiKey, Accept: 'application/json' } },
-    );
-    if (!response.ok) return { accountType, emailAddress, displayName };
-    const account = await response.json() as {
-      type?: unknown;
-      account_type?: unknown;
-      name?: unknown;
-      identifier?: unknown;
-      connection_params?: {
-        mail?: { imap_user?: unknown; smtp_user?: unknown };
-        im?: { phone_number?: unknown };
-      };
-    };
-    accountType = String(account.type || account.account_type || accountType).trim().toUpperCase();
-    displayName = typeof account.name === 'string' ? account.name : displayName;
-    const mail = account.connection_params?.mail;
-    const resolvedAddress = accountType === 'WHATSAPP'
-      ? account.connection_params?.im?.phone_number
-      : mail?.imap_user || mail?.smtp_user || account.identifier;
-    emailAddress = typeof resolvedAddress === 'string' ? resolvedAddress : accountType === 'WHATSAPP' ? null : emailAddress || displayName;
-  } catch (error) {
-    console.warn('[unipile-webhook] Could not resolve connected account metadata:', error);
-  }
-  return { accountType, emailAddress, displayName };
 }
 
 interface SequenceEnrollment {
@@ -544,7 +730,51 @@ interface SequenceEnrollment {
   tracking_data?: Record<string, unknown> | null;
 }
 
-Deno.serve(async (req) => {
+const json = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+/**
+ * En-tête de l'ancienne génération : lu pour le DIAGNOSTIC d'un refus seulement
+ * (un point de terminaison de l'ancienne génération encore actif envoie cet
+ * en-tête et jamais de jeton), jamais pour authentifier.
+ */
+const LEGACY_AUTH_HEADER = 'unipile-auth';
+
+/** Ce qu'un refus laisse dans le journal : des booléens et le type de contenu, jamais une valeur secrète. */
+function describeRejectedDelivery(req: Request, reason: string): Record<string, unknown> {
+  let hasToken = false;
+  try {
+    hasToken = Boolean(new URL(req.url).searchParams.get('v2_token'));
+  } catch {
+    hasToken = false;
+  }
+  return {
+    reason,
+    has_token: hasToken,
+    legacy_header: req.headers.has(LEGACY_AUTH_HEADER),
+    user_agent: (req.headers.get('user-agent') ?? '').slice(0, 80),
+    content_type: req.headers.get('content-type') ?? null,
+  };
+}
+
+/** Clés d'un objet JSON (jamais ses valeurs : le contenu d'un message ne se journalise pas). */
+function structuralKeys(value: unknown): string[] {
+  return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value as Record<string, unknown>).slice(0, 20) : [];
+}
+
+/** Les événements de message ne concernent le parcours LinkedIn que pour un compte LinkedIn (ou sans fournisseur lisible). */
+function isLinkedInProvider(provider: string | undefined): boolean {
+  const value = (provider ?? '').trim().toLowerCase();
+  return value === '' || value === 'linkedin' || value === 'mock';
+}
+
+/** Points d'injection des tests : le client de base de données et le délai de relecture d'un compte (index.test.ts). */
+export const testing = {
+  createDb: (url: string, key: string): SupabaseClient => createClient(url, key),
+  rereadDeadlineMs: REREAD_DEADLINE_MS,
+};
+
+export async function handleRequest(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -555,156 +785,73 @@ Deno.serve(async (req) => {
   let supabaseForCleanup: SupabaseClient | null = null;
 
   try {
-    const rawPayload = await req.json() as Partial<WebhookPayload>;
-    // Verify webhook authenticity
-    const authHeader = req.headers.get('unipile-auth');
-    if (!WEBHOOK_SECRET) {
-      console.error('[unipile-webhook] ⚠️ UNIPILE_WEBHOOK_SECRET not set — rejecting request. Configure this secret!');
-      return new Response(JSON.stringify({ error: 'Webhook secret not configured' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    const headerAuthenticated = Boolean(authHeader && timingSafeEqual(authHeader, WEBHOOK_SECRET));
-    // Webhooks API v2 : l'enregistrement v2 n'accepte pas de headers custom →
-    // le token dérivé voyage en query param, posé par unipile-manage-webhooks
-    // (action register + api_version v2). Même niveau de confiance que le header.
-    const v2Token = new URL(req.url).searchParams.get('v2_token');
-    const expectedV2Token = v2Token ? await resolveV2WebhookToken() : null;
-    const v2Authenticated = Boolean(v2Token && expectedV2Token && timingSafeEqual(v2Token, expectedV2Token));
-    const fullyAuthenticated = headerAuthenticated || v2Authenticated;
-    const hostedSignature = new URL(req.url).searchParams.get('hosted_sig');
-    const hostedState = parseHostedAuthState(rawPayload.name);
-    const hostedStateFresh = Boolean(
-      hostedState?.expiresAtMs
-      && hostedState.expiresAtMs > Date.now()
-      && hostedState.expiresAtMs <= Date.now() + 31 * 60 * 1000,
-    );
-    const expectedHostedSignature = hostedSignature && rawPayload.name && hostedStateFresh
-      ? await hmacSha256Hex(WEBHOOK_SECRET, rawPayload.name)
-      : null;
-    const hostedAuthenticated = Boolean(
-      hostedSignature
-      && expectedHostedSignature
-      && timingSafeEqual(hostedSignature, expectedHostedSignature),
-    );
-    if (!fullyAuthenticated && !hostedAuthenticated) {
-      console.error('[unipile-webhook] Invalid webhook authentication');
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Authentification d'abord, avant de lire le corps : le jeton `?v2_token=` est
+    // la seule preuve admise. Sans jeton configuré, 503 (jamais 500, jamais accès
+    // ouvert) ; jeton absent ou faux, 401. L'en-tête de l'ancienne génération et
+    // les signatures d'appel de retour d'un lien d'authentification ne sont plus lus.
+    const auth = await verifyWebhookRequest(req);
+    if (!auth.ok) {
+      if (auth.reason === 'not_configured') {
+        console.error('[unipile-webhook] No delivery token configured (UNIPILE_V2_WEBHOOK_TOKEN): rejecting every delivery');
+        return json({ error: 'Webhook not configured' }, auth.status);
+      }
+      console.error('[unipile-webhook] Invalid webhook authentication', describeRejectedDelivery(req, auth.reason));
+      return json({ error: 'Unauthorized' }, auth.status);
     }
 
-    const hostedAuthSucceeded = Boolean(
-      rawPayload.name
-      && rawPayload.account_id
-      && (rawPayload.status === 'CREATION_SUCCESS' || rawPayload.status === 'RECONNECTED'),
-    );
-    if (hostedAuthenticated && !fullyAuthenticated && (!hostedAuthSucceeded || rawPayload.event)) {
-      return new Response(JSON.stringify({ error: 'Invalid hosted auth callback' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    let rawPayload: unknown;
+    try {
+      rawPayload = await req.json();
+    } catch {
+      return json({ error: 'Invalid JSON' }, 400);
     }
-    // API v2 : enveloppe { type, id: evt_…, account_id, payload: {…} } remise
-    // au format des handlers v1 (voir flattenV2WebhookEnvelope).
-    const source = (flattenV2WebhookEnvelope(rawPayload) ?? rawPayload) as Partial<WebhookPayload>;
+
+    // Enveloppe v2 { id: evt_…, type, account_id, payload: {…} } remise à plat ;
+    // le type v2 brut reste dans `v2_event`, `event` porte le nom du handler.
+    const flat = flattenEnvelope(rawPayload);
+    if (!flat) {
+      // Conformité LinkedIn : seulement les clés, jamais le contenu.
+      console.warn('[unipile-webhook] Ignored: body is not a v2 event envelope, keys:', structuralKeys(rawPayload));
+      return json({ ok: true, ignored: 'not_a_v2_envelope' });
+    }
+    const v2Event = String(flat.v2_event ?? '');
     const payload: WebhookPayload = {
-      ...source,
-      event: source.event
-        || (source.AccountStatus ? 'account_status_updated' : '')
-        || (hostedAuthSucceeded ? 'account_connected' : ''),
-      account_id: source.account_id || source.AccountStatus?.account_id || '',
+      ...(flat as unknown as WebhookPayload),
+      event: handlerNameOf(v2Event),
+      v2_event: v2Event,
+      account_id: typeof flat.account_id === 'string' ? flat.account_id : '',
     };
-
-    // ─── Aliases API v2 (BETA) ─────────────────────────────────────────────
-    // La v2 renomme les événements — on les remappe sur les handlers v1
-    // existants (dont le parsing est défensif multi-format). Chaque clé doit
-    // figurer dans V2_TRIGGER_EVENTS (_shared/unipile-v2.ts).
-    const V2_EVENT_ALIASES: Record<string, string> = {
-      'relation.new': 'new_relation',
-      'message.new': 'new_message',
-      'email.new': 'mail_received',
-      'account.add': 'account_connected',
-      'account.reconnect': 'account_connected',
-      'account.remove': 'account_disconnected',
-      'account.status.disconnected': 'account_disconnected',
-      'account.status.errored': 'account_error',
-      'account.status.running': 'account_status_updated',
-      'account.status.degraded': 'account_status_updated',
-      'account.status.partial': 'account_status_updated',
-      'account.locked': 'account_locked',
-      'account.unlocked': 'account_unlocked',
-    };
-    // account.status.{running|degraded|partial} portent le statut dans le NOM
-    // de l'événement : il fait foi et remplace un éventuel payload.status (une
-    // valeur v2 en minuscules comme 'running' n'est pas 'OK' pour les gardes
-    // d'envoi de process-sequences et process-inmail-queue).
-    // - running : compte opérationnel → OK ;
-    // - degraded : un produit (ex. Recruiter) en erreur de service, un autre
-    //   actif → DEGRADED, envois reportés d'heure en heure jusqu'au retour à OK ;
-    // - partial : un produit à réauthentifier, un autre actif → PARTIAL,
-    //   « à reconnecter » côté front (src/lib/linkedinStatus.ts).
-    const V2_STATUS_BY_EVENT: Record<string, string> = {
-      'account.status.running': 'OK',
-      'account.status.degraded': 'DEGRADED',
-      'account.status.partial': 'PARTIAL',
-    };
-    const v2OriginEvent = V2_EVENT_ALIASES[payload.event] ? payload.event : null;
-    // Le schéma des payloads v2 n'est pas documenté : l'identifiant d'événement
-    // (préfixe evt_, cf. GET /v2/webhooks/conversations/) n'est retenu que s'il
-    // en a la forme.
-    const v2EventId = v2OriginEvent
-      ? [(source as Record<string, unknown>).event_id, (rawPayload as Record<string, unknown>).event_id, (rawPayload as Record<string, unknown>).id]
-          .find((v): v is string => typeof v === 'string' && v.startsWith('evt_')) ?? null
-      : null;
-    if (v2OriginEvent) {
-      if (V2_STATUS_BY_EVENT[v2OriginEvent]) payload.status = V2_STATUS_BY_EVENT[v2OriginEvent];
-      payload.event = V2_EVENT_ALIASES[v2OriginEvent];
-    }
 
     // Conformité LinkedIn (warning #260513-007211) : ne JAMAIS logger le payload
     // brut — il peut contenir du contenu de messages, PII destinataires, et
     // potentiellement des identifiants de session. On loggue uniquement les
     // métadonnées structurelles de l'event.
     console.log('[unipile-webhook] event:', payload.event,
-      'v2_origin:', v2OriginEvent,
-      'v2_evt:', v2EventId,
+      'v2:', v2Event,
+      'evt:', payload.event_id ?? null,
       'account:', payload.account_id,
-      'chat:', (payload as any).chat_id ?? null,
-      'msg:', (payload as any).message_id ?? null,
-      'profile:', (payload as any).user_provider_id ?? null);
+      'chat:', ((payload.data as { chat?: { id?: unknown } } | undefined)?.chat?.id) ?? null,
+      'msg:', payload.message_id ?? null,
+      'profile:', payload.user_provider_id ?? null);
+
+    // Un compte sans identifiant v2 n'est pas un compte du service (un identifiant
+    // de l'ancienne génération est refusé à la frontière, jamais traduit ici).
+    if (!isV2AccountId(payload.account_id)) {
+      console.warn('[unipile-webhook] Ignored: event without a v2 account id, type:', v2Event);
+      return json({ ok: true, ignored: 'invalid_account_id' });
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = testing.createDb(supabaseUrl, supabaseServiceKey);
 
-    // ─── Idempotency : dédoublonne les retries Unipile (5× selon doc) ──────
-    // Construit un event_key stable par event. Ordre de préférence :
-    // 1. message_id / email_id pour les events de message
-    // 2. account_id + event + timestamp pour les status changes
-    // 3. SHA simplifié du payload sinon
-    // Le statut et l'identifiant du message imbriqué font partie de la clé : sans
-    // eux, « CREDENTIALS » puis « OK » dans la même minute (format à plat, API v2)
-    // ne comptaient qu'une fois et le compte restait noté déconnecté.
-    const eventIdRaw =
-      (payload as any).message_id
-      || (payload as any).email_id
-      || (payload as any).data?.message?.id
-      || ((payload as any).AccountStatus
-          ? `${(payload as any).AccountStatus.account_id}:${(payload as any).AccountStatus.message}:${Math.floor(Date.now() / 60000)}`
-          : null)
-      // Identifiant d'événement v2 (evt_…, commun à toutes les tentatives d'un
-      // même événement) quand le payload le porte : dédoublonnage exact, sans
-      // fenêtre à la minute qui écarterait un retour running → degraded →
-      // running rapide.
-      || (v2OriginEvent && v2EventId ? `${payload.account_id || 'no-acc'}:${v2OriginEvent}:${v2EventId}` : null)
-      // Nom v2 d'origine : degraded, partial et running partagent le même
-      // alias (account_status_updated) ; sans lui, un retour à running dans la
-      // même minute qu'un degraded serait écarté comme doublon.
-      || `${payload.account_id || 'no-acc'}:${v2OriginEvent || payload.event}:${(payload as any).chat_id || ''}:${(payload as any).user_provider_id || ''}:${payload.status || (payload.data as any)?.status || ''}:${Math.floor(Date.now() / 60000)}`;
-    const eventKey = `unipile:${payload.event}:${eventIdRaw}`.slice(0, 500);
+    // ─── Idempotency : dédoublonne les nouvelles livraisons d'un même événement ──
+    // Clé = type v2 BRUT + identifiant d'événement evt_… (commun à toutes les
+    // tentatives d'un même événement, et à son rejeu). Le type brut distingue
+    // account.status.running, degraded et partial, qui partagent un handler.
+    // Sans identifiant evt_ (livraison mal formée) : repli sur le compte, une
+    // référence de la charge et la minute.
+    const eventKey = (webhookDedupKey(flat) ?? webhookFallbackDedupKey(flat)).slice(0, 500);
     dedupKeyForCleanup = eventKey;
     supabaseForCleanup = supabase;
 
@@ -712,7 +859,7 @@ Deno.serve(async (req) => {
       const { data: isNew } = await supabase.rpc('record_webhook_event', {
         p_event_key: eventKey,
         p_provider: 'unipile',
-        p_event_type: payload.event,
+        p_event_type: v2Event,
         p_account_id: payload.account_id || null,
       });
       if (isNew === false) {
@@ -721,16 +868,13 @@ Deno.serve(async (req) => {
         // l'événement, au lieu de l'ignorer comme doublon (SEQ-040).
         const { data: reclaimed } = await supabase
           .from('webhook_event_log')
-          .update({ event_type: payload.event, received_at: new Date().toISOString() })
+          .update({ event_type: v2Event, received_at: new Date().toISOString() })
           .eq('event_key', eventKey)
           .eq('event_type', FAILED_EVENT_MARKER)
           .select('event_key');
         if ((reclaimed ?? []).length === 0) {
           console.log('[unipile-webhook] Duplicate event ignored:', eventKey);
-          return new Response(JSON.stringify({ ok: true, deduplicated: true }), {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
+          return json({ ok: true, deduplicated: true });
         }
         console.warn('[unipile-webhook] Retrying event whose dedup purge had failed:', eventKey);
       }
@@ -741,8 +885,7 @@ Deno.serve(async (req) => {
       console.warn('[unipile-webhook] Dedup check failed (non-blocking):', e);
     }
 
-    // Resolve per-org Unipile credentials based on the account_id in the webhook payload
-    const uCreds = await resolveCredsForAccount(payload.account_id || '', supabase);
+    const channel = accountChannelOf(payload.account_type);
 
     switch (payload.event) {
       case 'new_relation': {
@@ -751,269 +894,101 @@ Deno.serve(async (req) => {
         break;
       }
 
-      case 'new_message':
-      case 'message_received': {
+      case 'new_message': {
         const captured = await captureCandidateActionIncomingBestEffort(supabase, payload as unknown as Record<string, unknown>, rawPayload);
         // WhatsApp has a personal binding and its own history. It must never
         // pass through the LinkedIn enrollment/stage handler.
-        if (captured.channel !== 'whatsapp') await handleNewMessage(supabase, payload, uCreds, eventKey);
+        if (captured.channel !== 'whatsapp' && isLinkedInProvider(payload.account_type)) {
+          await handleNewMessage(supabase, payload, eventKey);
+        }
         break;
       }
 
-      case 'mail_received':
-      case 'mail.received':
-      case 'new_email': {
+      case 'mail_received': {
         const captured = await captureCandidateActionIncomingBestEffort(supabase, payload as unknown as Record<string, unknown>, rawPayload);
         // Un email a été reçu sur un compte connecté → vérifier si c'est une
         // réponse à une étape de séquence email pour stopper les suivantes.
         if (captured.audience !== 'team') await handleNewMail(supabase, payload, eventKey);
         break;
       }
-      
+
       case 'account_connected': {
-        console.log('[unipile-webhook] Account connected:', payload.account_id, 'name:', payload.name);
-
-        // Parse le state encodé dans `name` par hosted_auth (user + org).
-        // API v2 : le state arrive dans un champ dédié `state` (même encodage).
-        const hostedState = parseHostedAuthState(payload.name || payload.state);
-
-        if (hostedState) {
-          // Flow hosted_auth moderne : UPSERT avec user_id + org_id pour garantir
-          // le mapping même si la row n'existait pas (cas après "Dissocier").
-          // C'est le FIX du dead-end où un nouveau compte Unipile était créé
-          // mais jamais lié à un user -> invisible dans Settings.
-          try {
-            const metadata = await resolveConnectedAccountMetadata(
-              payload,
-              hostedState.organizationId,
-              supabase,
-              hostedState.providers,
-            );
-
-            if (EMAIL_ACCOUNT_TYPES.has(metadata.accountType)) {
-              const { data: existing } = await supabase
-                .from('member_email_accounts')
-                .select('id, user_id')
-                .eq('organization_id', hostedState.organizationId)
-                .eq('email_account_id', payload.account_id)
-                .maybeSingle();
-
-              if (existing && existing.user_id !== hostedState.userId) {
-                console.error('[unipile-webhook] Refusing to reassign an email account to another user');
-              } else {
-                const emailRow = {
-                  organization_id: hostedState.organizationId,
-                  user_id: hostedState.userId,
-                  email_account_id: payload.account_id,
-                  email_address: metadata.emailAddress,
-                  provider: metadata.accountType,
-                  account_status: 'OK',
-                  linked_by: hostedState.userId,
-                };
-                const { error } = existing
-                  ? await supabase.from('member_email_accounts').update(emailRow).eq('id', existing.id)
-                  : await supabase.from('member_email_accounts').insert(emailRow);
-                if (error) throw error;
-                console.log('[unipile-webhook] Mapped email account via hosted_auth for current user');
-              }
-            } else if (metadata.accountType === 'WHATSAPP') {
-              const { data: existing, error: existingError } = await supabase.from('member_whatsapp_accounts')
-                .select('id,organization_id,user_id,account_status').eq('whatsapp_account_id', payload.account_id).maybeSingle();
-              if (existingError) throw existingError;
-              if (existing && (existing.organization_id !== hostedState.organizationId || existing.user_id !== hostedState.userId)) {
-                throw Object.assign(new Error('WhatsApp account already linked to another member'), { code: '23505' });
-              }
-              if (existing?.account_status === 'DELETED') throw Object.assign(new Error('WhatsApp account binding has been revoked'), { code: '42501' });
-              const whatsappRow = {
-                organization_id: hostedState.organizationId, user_id: hostedState.userId,
-                whatsapp_account_id: payload.account_id, phone_number: candidateActionPhone(metadata.emailAddress) || null,
-                name: metadata.displayName, account_status: 'OK', updated_at: new Date().toISOString(),
-              };
-              const result = existing
-                ? await supabase.from('member_whatsapp_accounts').update(whatsappRow).eq('id', existing.id)
-                : await supabase.from('member_whatsapp_accounts').insert(whatsappRow);
-              if (result.error) throw result.error;
-            } else {
-              // Nouveau compte à la place du compte relié de ce membre (SEQ-041) :
-              // l'ancien compte cesse d'envoyer AVANT que la liaison ne soit
-              // repointée (même arrêt que « Dissocier »). Échec = rattachement
-              // refusé, le membre est prévenu par la notification ci-dessous.
-              //
-              // Propriété du nouveau compte vérifiée AVANT l'arrêt, comme
-              // claim_linkedin_account : un compte déjà relié à une autre
-              // organisation (trigger no_cross_tenant, 42501) ou à un autre
-              // membre (UNIQUE, 23505) ferait échouer le rattachement APRÈS
-              // avoir gelé les séquences de l'ancien compte, qui reste relié.
-              const { data: owners, error: ownersError } = await supabase
-                .from('member_linkedin_accounts')
-                .select('organization_id, user_id')
-                .eq('linkedin_account_id', payload.account_id);
-              if (ownersError) throw ownersError;
-              const ownerRows = (owners ?? []) as Array<{ organization_id: string; user_id: string | null }>;
-              if (ownerRows.some((r) => r.organization_id !== hostedState.organizationId)) {
-                throw Object.assign(new Error('LinkedIn account already linked to another organization'), { code: '42501' });
-              }
-              if (ownerRows.some((r) => r.user_id !== hostedState.userId)) {
-                throw Object.assign(new Error('LinkedIn account already linked to another member'), { code: '23505' });
-              }
-
-              const { data: currentLink, error: currentLinkError } = await supabase
-                .from('member_linkedin_accounts')
-                .select('linkedin_account_id')
-                .eq('organization_id', hostedState.organizationId)
-                .eq('user_id', hostedState.userId)
-                .maybeSingle();
-              if (currentLinkError) throw currentLinkError;
-              const previousAccountId = (currentLink as { linkedin_account_id?: string | null } | null)?.linkedin_account_id;
-              const accountChanged = !!previousAccountId && previousAccountId !== payload.account_id;
-              if (accountChanged && previousAccountId) {
-                await stopLinkedInAccountSending(supabase, {
-                  organizationId: hostedState.organizationId,
-                  accountId: previousAccountId,
-                });
-              }
-              const nowIso = new Date().toISOString();
-
-              const { error } = await supabase
-                .from('member_linkedin_accounts')
-                .upsert({
-                  user_id: hostedState.userId,
-                  organization_id: hostedState.organizationId,
-                  linkedin_account_id: payload.account_id,
-                  linkedin_account_name: metadata.displayName || 'Compte LinkedIn',
-                  account_status: 'OK',
-                  last_checked_at: nowIso,
-                  failure_reason: null,
-                  // NOT NULL sans défaut : l'utilisateur qui a initié le flow hosted_auth.
-                  linked_by: hostedState.userId,
-                  // Nouveau compte sur la liaison : la montée en charge repart de
-                  // zéro, comme claim_linkedin_account (une reconnexion du même
-                  // compte garde son ancienneté).
-                  ...(accountChanged ? { linked_at: nowIso } : {}),
-                }, {
-                  onConflict: 'user_id,organization_id',
-                });
-              if (error) throw error;
-              console.log('[unipile-webhook] Mapped LinkedIn account via hosted_auth for current user');
-            }
-          } catch (e) {
-            console.error('[unipile-webhook] Upsert via hosted_auth failed:', e);
-            // L'utilisateur qui a lancé la connexion attend le rattachement : on le prévient.
-            const code = (e as { code?: string })?.code;
-            const channelLabel = hostedState.providers.includes('WHATSAPP') ? 'WhatsApp'
-              : hostedState.providers.some(provider => EMAIL_ACCOUNT_TYPES.has(provider)) ? 'e-mail' : 'LinkedIn';
-            const body = code === '42501'
-              ? `Ce compte ${channelLabel} est déjà rattaché à un autre espace de travail.`
-              : code === '23505'
-                ? `Ce compte ${channelLabel} est déjà rattaché à un autre membre de votre organisation.`
-                : `Le compte ${channelLabel} est connecté mais n'a pas pu être rattaché. Réessayez depuis Paramètres > Mon compte.`;
-            try {
-              await supabase.from('notifications').insert({
-                user_id: hostedState.userId,
-                organization_id: hostedState.organizationId,
-                type: 'error',
-                title: `Compte ${channelLabel} non rattaché`,
-                body,
-                link: '/settings/account/connections',
-                metadata: { account_id: payload.account_id },
-              });
-            } catch (notifErr) {
-              console.warn('[unipile-webhook] Notification insert failed:', notifErr);
-            }
-          }
-        } else {
-          // Fallback legacy : simple UPDATE sur linkedin_account_id (ancien comportement)
-          try {
-            await supabase
-              .from('member_linkedin_accounts')
-              .update({ account_status: 'OK', last_checked_at: new Date().toISOString(), failure_reason: null })
-              .eq('linkedin_account_id', payload.account_id);
-          } catch (e) {
-            console.warn('[unipile-webhook] Could not update account status (legacy flow):', e);
-          }
-        }
-
-        // Lot P0-D : les inscriptions mises en pause à la déconnexion de ce
-        // compte reprennent d'elles-mêmes (pause explicite, reprise automatique).
-        await resumeEnrollmentsAfterReconnect(supabase, payload.account_id);
+        await handleAccountConnected(supabase, payload);
         break;
       }
 
-      // Webhook Unipile « account_status_updated » : tient compte de toutes les
-      // transitions de statut (OK, CONNECTING, CREDENTIALS, ERROR, SYNC_SUCCESS,
-      // RECONNECTED, CREATION_SUCCESS, DELETED). Manquait avant — on ratait les
-      // transitions intermédiaires en prod.
-      // Per Unipile docs (account-lifecycle), payload may be wrapped as
-      // { AccountStatus: { account_id, account_type, message: 'CREDENTIALS' } }
-      // ou flat avec payload.status. On gère les deux formats.
-      case 'account_status_updated':
-      case 'account.status_updated': {
-        const newStatus =
-          payload.status
-          || (payload.data as any)?.status
-          || (payload as any)?.AccountStatus?.message
-          || 'UNKNOWN';
-        const accId = payload.account_id || (payload as any)?.AccountStatus?.account_id;
+      // Compte supprimé chez le prestataire : ce n'est PAS une déconnexion
+      // récupérable. Liaison retirée et envois arrêtés (mapAccountRemoved), comme
+      // « Dissocier » ; reconnecter crée un nouveau compte.
+      case 'account_removed': {
+        await handleAccountRemoved(supabase, payload);
+        break;
+      }
+
+      // account.status.running | degraded | partial : le statut vient du NOM de
+      // l'événement (flattenEnvelope), avec le verrouillage du compte (LOCKED).
+      // disconnected et errored ont leur handler plus bas.
+      case 'account_status_updated': {
+        const newStatus = payload.account_status;
+        const accId = payload.account_id;
+        if (!newStatus) {
+          console.warn('[unipile-webhook] Status event without a readable status:', v2Event);
+          break;
+        }
         console.log('[unipile-webhook] Status updated:', accId, '->', newStatus);
         try {
-          // Normaliser les status Unipile pour simplifier la lecture frontend.
-          // OK et RECONNECTED et SYNC_SUCCESS sont tous "compte fonctionnel".
-          const normalizedStatus =
-            newStatus === 'RECONNECTED' || newStatus === 'SYNC_SUCCESS' || newStatus === 'CREATION_SUCCESS'
-              ? 'OK'
-              : newStatus;
-          if (accId) {
-            const accountType = normalizeAccountType(payload);
-            if (accountType === 'WHATSAPP') {
-              const { error } = await supabase.from('member_whatsapp_accounts')
-                .update({ account_status: normalizedStatus, updated_at: new Date().toISOString() })
-                .eq('whatsapp_account_id', accId).neq('account_status', 'DELETED');
-              if (error) throw error;
-            } else if (EMAIL_ACCOUNT_TYPES.has(accountType)) {
-              await supabase
-                .from('member_email_accounts')
-                .update({ account_status: normalizedStatus })
-                .eq('email_account_id', accId);
-            } else {
-            // Statut précédent lu AVANT l'écriture : la notification de
-            // déconnexion n'est créée qu'au passage OK → panne (SEQ-208), pas à
-            // chaque événement répété.
-            const { data: linkedRows, error: linkedRowsError } = await supabase
-              .from('member_linkedin_accounts')
-              .select('user_id, organization_id, linkedin_account_name, account_status')
-              .eq('linkedin_account_id', accId);
-            if (linkedRowsError) console.warn('[unipile-webhook] status_updated: previous status lookup failed:', linkedRowsError);
-            await supabase
-              .from('member_linkedin_accounts')
-              .update({
-                account_status: normalizedStatus,
-                last_checked_at: new Date().toISOString(),
-                // Si on repasse OK, on efface la raison d'échec précédente
-                ...(normalizedStatus === 'OK' ? { failure_reason: null } : {}),
-              })
-              .eq('linkedin_account_id', accId);
-            if (['CREDENTIALS', 'ERROR', 'PERMISSIONS'].includes(String(normalizedStatus))) {
-              const newlyBroken = ((linkedRows ?? []) as Array<{
-                user_id: string;
-                organization_id: string;
-                linkedin_account_name: string | null;
-                account_status: string | null;
-              }>).filter((row) => row.account_status === 'OK');
-              if (newlyBroken.length > 0) {
-                const { error: notifError } = await supabase
-                  .from('notifications')
-                  .insert(newlyBroken.map((row) => linkedinDisconnectedNotification(row, accId)));
-                if (notifError) console.warn('[unipile-webhook] status_updated: disconnect notifications failed:', notifError);
-              }
-            }
+          if (channel === 'whatsapp') {
+            const whatsappUpdate = supabase.from('member_whatsapp_accounts')
+              .update({ account_status: newStatus, updated_at: new Date().toISOString() })
+              .eq('whatsapp_account_id', accId).neq('account_status', 'DELETED');
+            // LOCKED : même règle que account.locked (ne remplace jamais une panne à reconnecter).
+            const { error } = await (newStatus === 'LOCKED' ? whatsappUpdate.or(LOCK_REPLACES_FILTER) : whatsappUpdate);
+            if (error) throw error;
+          } else if (channel === 'email') {
+            const emailUpdate = supabase
+              .from('member_email_accounts')
+              .update({ account_status: newStatus })
+              .eq('email_account_id', accId);
+            await (newStatus === 'LOCKED' ? emailUpdate.or(LOCK_REPLACES_FILTER) : emailUpdate);
+          } else {
+            // LOCKED, PARTIAL, CREDENTIALS et ERROR préviennent le membre : le passage d'état et son constat sont
+            // une seule écriture conditionnelle au statut d'avant (compare-and-set), jamais une lecture suivie
+            // d'une écriture sans condition, sinon des livraisons simultanées préviendraient chacune ou un
+            // événement plus récent serait recouvert.
+            // - LOCKED remplace OK, DEGRADED, PARTIAL, l'absence de statut et un statut inconnu, jamais une
+            //   panne à reconnecter (CREDENTIALS, ERROR…) : même règle que account.locked.
+            // - les autres statuts (applyLinkedInStatus) : PARTIAL est annoncé à qui n'était ni en panne à
+            //   reconnecter ni déjà PARTIAL ; avec `is_locked` dans l'événement (vrai ou faux), l'événement fait
+            //   foi pour le verrou ; sans lui, une liaison LOCKED prend l'état que le prestataire rapporte
+            //   maintenant (relu), et reste LOCKED, événement rejoué (500), si la relecture est impossible.
+            // DEGRADED arrête les envois sans mettre les inscriptions en pause ni prévenir (nouvelle tentative
+            // automatique, état de carte seulement) : le moteur attend le retour à OK. LOCKED et PARTIAL les
+            // arrêtent aussi sans pause, mais le membre en est prévenu.
             // Reconnexion par cookie ou par statut : les inscriptions mises en
             // pause pour compte déconnecté reprennent (idempotent).
-            if (normalizedStatus === 'OK') {
-              await resumeEnrollmentsAfterReconnect(supabase, accId);
+            let finalStatuses: string[] = [];
+            let linkedinError: unknown = null;
+            if (newStatus === 'LOCKED') {
+              const lockPatch = statusPatch(newStatus);
+              const result = await moveLinkedInAccount(supabase, accId, lockPatch, LOCK_REPLACES_FILTER);
+              linkedinError = result.error;
+              await notifyAccountState(supabase, accId, result.moved, 'locked');
+            } else {
+              // `is_locked` dans l'événement (vrai ou faux) fait foi pour le verrou : aucune relecture.
+              ({ finalStatuses, error: linkedinError } = await applyLinkedInStatus(supabase, accId, newStatus, typeof payload.is_locked === 'boolean'));
+              // Lecture ou écriture en échec, conflit sans fin, relecture du compte impossible : l'événement n'est pas
+              // appliqué, il est rejoué (500), jamais acquitté comme traité.
+              if (linkedinError) throw transientFailure(linkedinError);
             }
+            if (linkedinError) console.warn('[unipile-webhook] status_updated: linkedin status write failed:', linkedinError);
+            // Les inscriptions ne reprennent que si le compte est vraiment revenu OK (une liaison qui reste
+            // verrouillée ou qui prend un autre état à la relecture ne reprend rien).
+            if (newStatus === 'OK' && finalStatuses.every((status) => status === 'OK')) {
+              await resumeEnrollmentsAfterReconnect(supabase, accId);
             }
           }
         } catch (e) {
+          if (e instanceof TransientEventError) throw e;
           console.warn('[unipile-webhook] status_updated handler failed:', e);
         }
         break;
@@ -1025,112 +1000,139 @@ Deno.serve(async (req) => {
         // Conformité LinkedIn : extraire UNIQUEMENT le message d'erreur lisible
         // (pas tout le payload.data qui peut contenir des cookies/tokens).
         const rawData = (payload.data as Record<string, unknown> | undefined) || {};
+        const rawRoot = payload as unknown as Record<string, unknown>;
         const reasonText = (
-          (typeof rawData.reason === 'string' && rawData.reason)
-          || (typeof rawData.message === 'string' && rawData.message)
-          || (typeof rawData.error === 'string' && rawData.error)
+          [rawData.reason, rawData.message, rawData.error, rawRoot.reason, rawRoot.message, rawRoot.error]
+            .find((value): value is string => typeof value === 'string' && value !== '')
           || reason
-        ).toString().slice(0, 500);
+        ).slice(0, 500);
+        // Texte du prestataire : journal du serveur seulement. La colonne failure_reason, lisible par
+        // les membres de l'organisation, ne reçoit qu'un code neutre (jamais le libellé brut).
         console.warn(`[unipile-webhook] Account ${reason}:`, payload.account_id, 'reason:', reasonText);
+        const brokenStatus = mapAccountStatus(reason === 'disconnected' ? 'disconnected' : 'errored');
 
-        // Update status in member_linkedin_accounts
+        // Écriture du statut conditionnelle à celui d'AVANT (compare-and-set, applyLinkedInStatus) : le membre
+        // n'est prévenu qu'au passage d'un compte en état de marche à la panne (SEQ-208), une fois par passage
+        // réel même pour des livraisons simultanées, pas à chaque événement répété.
         try {
-          await supabase
-            .from('member_linkedin_accounts')
-            .update({
-              account_status: reason === 'disconnected' ? 'CREDENTIALS' : 'ERROR',
-              last_checked_at: new Date().toISOString(),
-              failure_reason: reasonText,
-            })
-            .eq('linkedin_account_id', payload.account_id);
+          const { error: linkedinError } = await applyLinkedInStatus(supabase, payload.account_id, brokenStatus);
+          // Panne non enregistrée (lecture ou écriture en échec, conflit sans fin) : rejouée, jamais acquittée.
+          if (linkedinError) throw transientFailure(linkedinError);
           await supabase
             .from('member_email_accounts')
-            .update({ account_status: reason === 'disconnected' ? 'CREDENTIALS' : 'ERROR' })
+            .update({ account_status: brokenStatus })
             .eq('email_account_id', payload.account_id);
           const { error: whatsappError } = await supabase.from('member_whatsapp_accounts')
             .update({ account_status: reason === 'disconnected' ? 'DISCONNECTED' : 'ERROR', updated_at: new Date().toISOString() })
             .eq('whatsapp_account_id', payload.account_id).neq('account_status', 'DELETED');
           if (whatsappError) throw whatsappError;
         } catch (e) {
+          if (e instanceof TransientEventError) throw e;
           console.warn('[unipile-webhook] Could not update account status:', e);
-        }
-
-        // Find users linked to this account and create notifications
-        try {
-          const { data: linkedUsers } = await supabase
-            .from('member_linkedin_accounts')
-            .select('user_id, organization_id, linkedin_account_name')
-            .eq('linkedin_account_id', payload.account_id);
-
-          if (linkedUsers && linkedUsers.length > 0) {
-            const notifications = (linkedUsers as Array<{ user_id: string; organization_id: string; linkedin_account_name: string | null }>)
-              .map((u) => linkedinDisconnectedNotification(u, payload.account_id));
-
-            const { error: notifError } = await supabase.from('notifications').insert(notifications);
-            if (notifError) console.warn('[unipile-webhook] Could not create notifications:', notifError);
-          }
-        } catch (e) {
-          console.warn('[unipile-webhook] Error creating disconnect notifications:', e);
         }
         break;
       }
 
-      // API v2 : accès au compte verrouillé puis déverrouillé (drapeau is_locked,
+      // Accès au compte verrouillé puis déverrouillé (drapeau is_locked,
       // indépendant du statut). LOCKED bloque les envois comme tout statut
-      // différent de OK, sans pause ni notification : l'utilisateur n'a rien à
-      // faire. Le verrouillage ne touche qu'un compte OK (ou sans statut) et le
-      // déverrouillage ne relève que LOCKED : l'aller-retour est exact. Un
-      // compte déjà bloqué (CREDENTIALS, PARTIAL, DEGRADED…) garde son statut,
-      // sinon le déverrouillage le rendrait OK et les envois repartiraient.
+      // différent de OK, sans pause des inscriptions ; le membre en est prévenu
+      // une fois (se reconnecter n'y change rien, il doit patienter ou vérifier
+      // son compte). Même règle que account.status.* avec is_locked : LOCKED
+      // remplace OK, DEGRADED, PARTIAL, l'absence de statut et un statut inconnu
+      // (et prévient), jamais CREDENTIALS ni ERROR (le membre doit d'abord
+      // reconnecter : la liaison garde son statut et sa notification), et pas
+      // une liaison déjà LOCKED. Écriture et constat du passage sont une seule
+      // écriture conditionnelle (moveLinkedInAccount) : des livraisons
+      // simultanées ne préviennent qu'une fois.
+      // Le déverrouillage ne relève que LOCKED, mais ne sait pas en quel état :
+      // le verrou a pu remplacer DEGRADED ou PARTIAL, et aucun événement de
+      // statut n'est émis quand seul le verrou change. Les liaisons enregistrées sont
+      // lues d'abord : sans liaison LOCKED (OK, PARTIAL, CREDENTIALS...), il n'y a rien à
+      // relever, ni relecture chez le prestataire ni écriture. Sinon l'état est relu chez le
+      // prestataire (readReportedStatus : statut et verrou ensemble) et c'est lui qui est
+      // écrit, sur les trois canaux ; un retour en PARTIAL, en CREDENTIALS ou en ERROR
+      // prévient comme l'événement de statut l'aurait fait. Compte encore verrouillé chez le
+      // prestataire : rien ne change. Relecture impossible (erreur, délai, compte sans
+      // statut) ou lecture des liaisons en échec : rien n'est écrit, les liaisons restent
+      // LOCKED (aucun envoi ne part sur un doute) et l'événement est rejoué (500).
       case 'account_locked':
       case 'account_unlocked': {
         const locking = payload.event === 'account_locked';
         const accId = payload.account_id;
-        if (!accId) break;
+        let moved: MovedLinkedAccountRow[] = [];
+        let notice: AccountNotice | undefined = 'locked';
         try {
-          const linkedinUpdate = supabase
-            .from('member_linkedin_accounts')
-            .update({ account_status: locking ? 'LOCKED' : 'OK', last_checked_at: new Date().toISOString() })
-            .eq('linkedin_account_id', accId);
-          const emailUpdate = supabase
-            .from('member_email_accounts')
-            .update({ account_status: locking ? 'LOCKED' : 'OK' })
-            .eq('email_account_id', accId);
-          const whatsappUpdate = supabase.from('member_whatsapp_accounts')
-            .update({ account_status: locking ? 'LOCKED' : 'OK', updated_at: new Date().toISOString() })
-            .eq('whatsapp_account_id', accId);
-          const results = locking
-            ? await Promise.all([
-                linkedinUpdate.or('account_status.is.null,account_status.eq.OK'),
-                emailUpdate.or('account_status.is.null,account_status.eq.OK'),
-                whatsappUpdate.or('account_status.is.null,account_status.eq.OK'),
-              ])
-            : await Promise.all([
-                linkedinUpdate.eq('account_status', 'LOCKED'),
-                emailUpdate.eq('account_status', 'LOCKED'),
-                whatsappUpdate.eq('account_status', 'LOCKED'),
+          const now = new Date().toISOString();
+          if (locking) {
+            const [linkedin, email, whatsapp] = await Promise.all([
+              moveLinkedInAccount(supabase, accId, { account_status: 'LOCKED', last_checked_at: now }, LOCK_REPLACES_FILTER),
+              supabase.from('member_email_accounts')
+                .update({ account_status: 'LOCKED' })
+                .eq('email_account_id', accId).or(LOCK_REPLACES_FILTER),
+              supabase.from('member_whatsapp_accounts')
+                .update({ account_status: 'LOCKED', updated_at: now })
+                .eq('whatsapp_account_id', accId).or(LOCK_REPLACES_FILTER),
+            ]);
+            moved = linkedin.moved;
+            for (const { error } of [linkedin, email, whatsapp]) {
+              if (error) console.warn(`[unipile-webhook] ${payload.event} update failed:`, (error as { message?: string }).message ?? error);
+            }
+          } else if (await hasLockedBinding(supabase, accId)) {
+            const returnsTo = await readReportedStatus(accId);
+            if (returnsTo === null) throw new TransientEventError('Account state could not be re-read after the unlock');
+            notice = NOTICE_BY_STATUS[returnsTo];
+            if (returnsTo !== 'LOCKED') {
+              const [linkedin, email, whatsapp] = await Promise.all([
+                supabase.from('member_linkedin_accounts')
+                  .update(statusPatch(returnsTo))
+                  .eq('linkedin_account_id', accId).eq('account_status', 'LOCKED')
+                  .select('user_id, organization_id, linkedin_account_name'),
+                supabase.from('member_email_accounts')
+                  .update({ account_status: returnsTo })
+                  .eq('email_account_id', accId).eq('account_status', 'LOCKED'),
+                supabase.from('member_whatsapp_accounts')
+                  .update({ account_status: returnsTo, updated_at: now })
+                  .eq('whatsapp_account_id', accId).eq('account_status', 'LOCKED'),
               ]);
-          for (const { error } of results) {
-            if (error) console.warn(`[unipile-webhook] ${payload.event} update failed:`, error.message);
+              moved = linkedin.error ? [] : ((linkedin.data ?? []) as MovedLinkedAccountRow[]);
+              for (const { error } of [linkedin, email, whatsapp]) {
+                if (error) console.warn(`[unipile-webhook] ${payload.event} update failed:`, error.message);
+              }
+            }
           }
         } catch (e) {
+          if (e instanceof TransientEventError) throw e;
           console.warn(`[unipile-webhook] ${payload.event} handler failed:`, e);
         }
+        // Seules les liaisons que l'écriture vient de faire changer d'état sont prévenues.
+        if (notice) await notifyAccountState(supabase, accId, moved, notice);
+        break;
+      }
+
+      // Reconnus et journalisés (webhook_event_log), sans action : accusé de
+      // lecture, réaction à un message, synchronisation initiale d'un compte.
+      // Aucune colonne de synchronisation n'existe encore : l'état n'est pas stocké.
+      case 'message_read':
+      case 'message_reaction':
+      case 'account_sync_completed':
+      case 'account_sync_failed': {
+        console.log('[unipile-webhook] Recognised, no action:', v2Event, payload.sync_status ?? '');
         break;
       }
 
       default:
-        console.log('[unipile-webhook] Unknown event type:', payload.event);
+        // Type non traité (par exemple message.update, chat.update) : la ligne de
+        // dédoublonnage ci-dessus le journalise, la livraison est acquittée en 200
+        // pour que le fournisseur ne la rejoue pas.
+        console.log('[unipile-webhook] Unseen event type, logged and acknowledged without action:', v2Event);
     }
 
     // Must respond with 200 within 30 seconds
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json({ success: true });
   } catch (error) {
     console.error('[unipile-webhook] Error:', error);
     // Échec RÉEL de traitement (DB down, RPC en erreur…) → 500 pour exploiter
-    // les retries Unipile (5×) au lieu de perdre l'event définitivement
+    // les retries du fournisseur au lieu de perdre l'event définitivement
     // (audit 2026-07, Delivery M11 : un blip DB de 30s pendant un
     // mail_received = réponse du candidat jamais enregistrée → on continuait
     // de le relancer). On purge d'abord la ligne de dédup, sinon le retry
@@ -1158,35 +1160,228 @@ Deno.serve(async (req) => {
         console.error('[unipile-webhook] Dedup cleanup failed:', cleanupErr);
       }
     }
-    return new Response(JSON.stringify({
+    return json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    }, 500);
   }
-});
+}
+
+Deno.serve(handleRequest);
+
+/**
+ * Statut Konekt qu'un account.add ou account.reconnect sans tentative rapporte, ou null quand il ne dit rien : statut
+ * absent ou mot hors de la spécification du prestataire (« paused »...), sans verrou. Un verrou (`is_locked` vrai) est
+ * toujours une information. Pour null, le statut enregistré est gardé : ni écriture ni notification.
+ */
+function informedStatus(account: Parameters<typeof statusAtClaim>[0]): KonektAccountStatus | null {
+  const word = typeof account.status === 'string' ? account.status.trim().toLowerCase() : '';
+  if (!KNOWN_PROVIDER_STATUS_WORDS.has(word) && account.is_locked !== true) return null;
+  return statusAtClaim(account);
+}
+
+/**
+ * account.add / account.reconnect. Le `state` du lien d'authentification est
+ * l'identifiant d'une tentative de connexion (table connection_attempts) : c'est
+ * la seule piste qui désigne le membre et l'organisation, jamais la charge ni le
+ * nom du compte. Le rattachement est le code partagé _shared/connection-claim.ts
+ * (le même que celui de la connexion native, donc un `account.add` qui suit un
+ * rattachement déjà fait est un rejeu sans effet). Tentative inconnue, échue,
+ * annulée ou d'un autre canal : rien n'est rattaché, le membre est prévenu quand
+ * on le connaît. Erreur de base : levée (500, le fournisseur rejoue).
+ */
+async function handleAccountConnected(supabase: SupabaseClient, payload: WebhookPayload) {
+  const accountId = payload.account_id;
+  console.log('[unipile-webhook] Account connected:', accountId, 'event:', payload.v2_event,
+    'provider:', payload.account_type ?? null, 'migrated_account:', Boolean(payload.v1_account_id));
+
+  let account = {
+    id: accountId,
+    provider: (payload.account_type ?? '').toLowerCase(),
+    name: typeof payload.data?.name === 'string' ? payload.data.name : null,
+    status: payload.provider_status ?? null,
+    is_locked: payload.is_locked ?? null,
+  };
+  let providerReadFailed = false;
+  if (!providerKind(account.provider)) {
+    // Fournisseur absent de l'enveloppe : relu sur le compte (l'événement est authentifié
+    // par le jeton ; le compte n'est pas encore rattaché, il n'y a pas de garde de propriété).
+    try {
+      const fresh = await getAccount(accountId);
+      account = {
+        id: accountId,
+        provider: String(fresh.provider ?? '').toLowerCase(),
+        name: fresh.name ?? account.name,
+        status: fresh.status ?? account.status,
+        is_locked: fresh.is_locked ?? account.is_locked,
+      };
+    } catch (e) {
+      providerReadFailed = true;
+      console.warn('[unipile-webhook] Account provider could not be read:', describeForLog(e));
+    }
+  }
+
+  const outcome = await claimForAttempt(supabase, { attemptId: payload.state, account });
+  // Fournisseur introuvable (enveloppe sans fournisseur et relecture en échec) : le refus
+  // « fournisseur différent » serait faux et définitif. Rien n'est décidé, le fournisseur rejoue.
+  if (providerReadFailed && !providerKind(account.provider) && outcome.outcome === 'refused' && outcome.reason === 'provider_mismatch') {
+    throw new Error('account provider unreadable');
+  }
+  // La reprise des inscriptions suit un compte réellement utilisable : rattaché, déjà
+  // rattaché par cette tentative, ou reconnexion sans tentative dont l'état rapporté est OK.
+  let resumeAllowed = false;
+  switch (outcome.outcome) {
+    case 'claimed':
+      console.log('[unipile-webhook] Account linked for the member of the connection attempt, kind:', outcome.result.kind);
+      resumeAllowed = true;
+      break;
+    case 'replayed':
+      console.log('[unipile-webhook] Account already linked by this connection attempt: nothing to do');
+      resumeAllowed = true;
+      break;
+    case 'failed':
+      console.error('[unipile-webhook] Account could not be linked:', outcome.reason);
+      await insertClaimNotification(supabase, {
+        userId: outcome.attempt.user_id,
+        organizationId: outcome.attempt.organization_id,
+        notice: outcome.notice,
+        accountId,
+      });
+      break;
+    case 'refused':
+      if (outcome.attempt && outcome.notice) {
+        console.warn('[unipile-webhook] Account not linked, connection attempt refused:', outcome.reason);
+        await insertClaimNotification(supabase, {
+          userId: outcome.attempt.user_id,
+          organizationId: outcome.attempt.organization_id,
+          notice: outcome.notice,
+          accountId,
+        });
+      } else {
+        // Ni lien d'authentification de Konekt ni flux natif connu (par exemple une
+        // reconnexion faite côté prestataire) : rien n'est rattaché ; l'état d'une liaison
+        // LinkedIn déjà en place suit celui de l'événement (même table de correspondance que
+        // le rattachement : LOCKED, DEGRADED et PARTIAL ne repassent jamais OK d'eux-mêmes),
+        // avec les règles de account.status.* : LOCKED ne remplace jamais CREDENTIALS ni ERROR,
+        // un passage en PARTIAL ou en LOCKED prévient une fois, des livraisons simultanées
+        // aussi (écriture conditionnelle au statut d'avant).
+        console.warn('[unipile-webhook] No connection attempt for this event, nothing to link:', outcome.reason);
+        const reportedStatus = informedStatus(account);
+        if (reportedStatus === null) {
+          // Statut absent ou mot hors de la spécification du prestataire, sans verrou : aucune information sur l'état
+          // du compte. Le statut enregistré est gardé, rien n'est écrit, personne n'est prévenu.
+          console.warn('[unipile-webhook] Event without a usable status, the stored status is kept:', payload.v2_event);
+        } else {
+          try {
+            let finalStatuses: string[] = [];
+            let statusError: unknown = null;
+            if (reportedStatus === 'LOCKED') {
+              const result = await moveLinkedInAccount(supabase, accountId, statusPatch(reportedStatus), LOCK_REPLACES_FILTER);
+              statusError = result.error;
+              await notifyAccountState(supabase, accountId, result.moved, 'locked');
+            } else {
+              ({ finalStatuses, error: statusError } = await applyLinkedInStatus(supabase, accountId, reportedStatus, typeof account.is_locked === 'boolean'));
+              // Lecture ou écriture en échec, conflit sans fin, relecture du compte impossible : rejoué (500).
+              if (statusError) throw transientFailure(statusError);
+            }
+            if (statusError) throw statusError;
+            resumeAllowed = reportedStatus === 'OK' && finalStatuses.every((status) => status === 'OK');
+          } catch (e) {
+            if (e instanceof TransientEventError) throw e;
+            console.warn('[unipile-webhook] Could not update account status (no connection attempt):', e);
+          }
+        }
+      }
+      break;
+    case 'error':
+      // Rien n'est décidé : le fournisseur rejoue (le rattachement est idempotent).
+      throw new Error(outcome.message);
+  }
+
+  // Lot P0-D : les inscriptions mises en pause à la déconnexion de ce
+  // compte reprennent d'elles-mêmes (pause explicite, reprise automatique).
+  // Jamais après un rattachement refusé ou en échec : la liaison n'a pas changé.
+  if (resumeAllowed) await resumeEnrollmentsAfterReconnect(supabase, accountId);
+}
+
+/**
+ * account.remove : le compte n'existe plus chez le prestataire. Ce n'est pas une
+ * déconnexion récupérable (reconnecter crée un autre compte) : la liaison est
+ * retirée et les envois du compte arrêtés (mapAccountRemoved), comme « Dissocier ».
+ * LinkedIn : arrêt des envois PUIS retrait de la liaison, jamais l'inverse (un arrêt
+ * en échec lève : 500, le fournisseur rejoue, la liaison reste). E-mail : liaison
+ * retirée. WhatsApp : liaison gardée en DELETED (un ancien identifiant ne peut pas
+ * être repris, comme « disconnect_whatsapp »). Idempotent.
+ */
+async function handleAccountRemoved(supabase: SupabaseClient, payload: WebhookPayload) {
+  const accountId = payload.account_id;
+  const removal = mapAccountRemoved();
+  console.warn('[unipile-webhook] Account removed at the provider:', accountId);
+
+  const { data: linkedRows, error: linkedError } = await supabase
+    .from('member_linkedin_accounts')
+    .select('id, user_id, organization_id, linkedin_account_name')
+    .eq('linkedin_account_id', accountId);
+  if (linkedError) throw linkedError;
+  const rows = (linkedRows ?? []) as Array<{ id: string; user_id: string; organization_id: string; linkedin_account_name: string | null }>;
+
+  // Chaque membre est prévenu juste après le retrait de SA liaison : si la suite lève (500, le
+  // fournisseur rejoue), les liaisons déjà retirées ne seront plus relues et leur membre ne serait
+  // jamais prévenu. Non bloquant.
+  const notifyRemoved = async (row: (typeof rows)[number]) => {
+    try {
+      const { error: notifError } = await supabase
+        .from('notifications')
+        .insert([linkedinDisconnectedNotification(row, accountId, { removed: true })]);
+      if (notifError) console.warn('[unipile-webhook] Could not create removal notification:', notifError);
+    } catch (e) {
+      console.warn('[unipile-webhook] Error creating removal notification:', e);
+    }
+  };
+
+  for (const row of rows) {
+    if (removal.stopSending) {
+      await stopLinkedInAccountSending(supabase, { organizationId: row.organization_id, accountId });
+    }
+    if (removal.unlink) {
+      const { error: removeError } = await supabase
+        .from('member_linkedin_accounts')
+        .delete()
+        .eq('id', row.id)
+        .eq('organization_id', row.organization_id);
+      if (removeError) throw removeError;
+    }
+    await notifyRemoved(row);
+  }
+
+  if (removal.unlink) {
+    const { error: emailError } = await supabase.from('member_email_accounts').delete().eq('email_account_id', accountId);
+    if (emailError) throw emailError;
+  }
+  const { error: whatsappError } = await supabase.from('member_whatsapp_accounts')
+    .update({ account_status: 'DELETED', updated_at: new Date().toISOString() })
+    .eq('whatsapp_account_id', accountId).neq('account_status', 'DELETED');
+  if (whatsappError) throw whatsappError;
+}
 
 async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPayload) {
   const { account_id } = payload;
-  
-  // Unipile sends flat payload: user_provider_id, user_full_name, user_public_identifier
-  // Also support legacy nested format: data.user.provider_id
-  const profileId = payload.user_provider_id 
-    || (payload.data?.user as { provider_id?: string; id?: string } | undefined)?.provider_id 
-    || (payload.data?.user as { provider_id?: string; id?: string } | undefined)?.id;
-  
+
+  // relation.new : l'identifiant de la personne (user_provider_id), son nom et son
+  // identifiant public (slug) viennent de `user` (flattenEnvelope). Un identifiant
+  // de la v2 peut différer de celui des inscriptions : le slug du profil sert de
+  // second rattachement.
+  const profileId = payload.user_provider_id;
   const userName = payload.user_full_name || '';
-  const publicIdentifier = payload.user_public_identifier || '';
-  
-  if (!profileId) {
+  const publicIdentifier = (payload.user_public_identifier || linkedInSlugOf(payload.user_profile_url) || '').toLowerCase();
+
+  if (!profileId && !publicIdentifier) {
     // Conformité LinkedIn : ne pas logger le payload brut (PII possibles)
-    console.log('[unipile-webhook] new_relation: No profile ID (event:', payload.event, 'account:', payload.account_id, ')');
+    console.log('[unipile-webhook] new_relation: No profile ID (event:', payload.v2_event, 'account:', payload.account_id, ')');
     return;
   }
 
-  console.log(`[unipile-webhook] new_relation: Profile connected: ${profileId} (${userName}, slug: ${publicIdentifier})`);
+  console.log(`[unipile-webhook] new_relation: Profile connected: ${profileId ?? '?'} (${userName}, slug: ${publicIdentifier})`);
 
   // Inscriptions de ce candidat sur ce compte, actives OU en pause (SEQ-012 :
   // une acceptation pendant une pause n'était jamais consignée). Plus de
@@ -1194,20 +1389,38 @@ async function handleNewRelation(supabase: SupabaseClient, payload: WebhookPaylo
   // inscriptions de l'interface, était exclu) : les inscriptions déjà
   // 'connected' sont ignorées dans la boucle.
   // Match on profile_id OR resolved_profile_id to handle Recruiter IDs (AEM -> ACo)
-  const { rows: enrollments, error: enrollError } = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
-    (column) => supabase
-      .from('sequence_enrollments')
-      .select('*')
-      .eq(column, account_id)
-      .in('status', OPEN_ENROLLMENT_STATUSES)
-      .or(`profile_id.eq.${sanitizeFilterId(profileId)},resolved_profile_id.eq.${sanitizeFilterId(profileId)},provider_id.eq.${sanitizeFilterId(profileId)}`),
-  );
+  let enrollments: SequenceEnrollment[] = [];
+  if (profileId) {
+    const byId = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+      (column) => supabase
+        .from('sequence_enrollments')
+        .select('*')
+        .eq(column, account_id)
+        .in('status', OPEN_ENROLLMENT_STATUSES)
+        .or(`profile_id.eq.${sanitizeFilterId(profileId)},resolved_profile_id.eq.${sanitizeFilterId(profileId)},provider_id.eq.${sanitizeFilterId(profileId)}`),
+    );
+    // Lecture impossible : on lève, le catch global purge la dédup et répond
+    // 500, le prestataire rejoue (SEQ-040).
+    if (byId.error) throw byId.error;
+    enrollments = byId.rows;
+  }
+  if (enrollments.length === 0 && publicIdentifier) {
+    const escapedSlug = publicIdentifier.replace(/([%_\\])/g, '\\$1');
+    const bySlug = await findEnrollmentsBySenderAccount<SequenceEnrollment>(
+      (column) => supabase
+        .from('sequence_enrollments')
+        .select('*')
+        .eq(column, account_id)
+        .in('status', OPEN_ENROLLMENT_STATUSES)
+        .ilike('profile_url', `%/in/${escapedSlug}%`),
+    );
+    if (bySlug.error) throw bySlug.error;
+    // Slug exact (le motif ilike accepte « marie-martin-4b2a1 » pour « marie-martin »).
+    enrollments = bySlug.rows.filter((e) => linkedInSlugOf(e.profile_url) === publicIdentifier);
+    if (enrollments.length > 0) console.log('[unipile-webhook] new_relation: matched via profile slug');
+  }
 
-  // Lecture impossible : on lève, le catch global purge la dédup et répond
-  // 500, le prestataire rejoue (SEQ-040).
-  if (enrollError) throw enrollError;
-
-  const toUpdate = (enrollments ?? []).filter((e) => e.connection_status !== 'connected');
+  const toUpdate = enrollments.filter((e) => e.connection_status !== 'connected');
   if (toUpdate.length === 0) {
     console.log('[unipile-webhook] No enrollment waiting for this connection');
     return;
@@ -1344,60 +1557,34 @@ async function markChatNotificationsRead(
   }
 }
 
-/** Participant d'une conversation, tel que le rend GET /chats/{id}/attendees. */
-interface ChatAttendee {
-  is_self?: unknown;
-  role?: unknown;
-  provider_id?: unknown;
-  public_identifier?: unknown;
-  profile_url?: unknown;
-  name?: unknown;
-  specifics?: { public_identifier?: unknown } | null;
-}
-
 const textOrNull = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /**
- * Candidat d'une conversation à deux : le seul participant qui n'est pas le
- * compte. Aucun ou plusieurs (conversation de groupe) : null, pour ne jamais
- * attribuer un message au mauvais candidat.
+ * Candidat d'une conversation à deux : `user`, l'autre participant, tel que le
+ * rend GET /{compte}/chats/{chat}. Une conversation de groupe ou de canal : null,
+ * pour ne jamais attribuer un message au mauvais candidat.
  */
-function otherParticipantRef(attendees: unknown[]): CandidateRef | null {
-  const others = attendees.filter((a): a is ChatAttendee => {
-    if (!a || typeof a !== 'object') return false;
-    const att = a as ChatAttendee;
-    return !(att.is_self === true || att.is_self === 1 || att.role === 'self');
-  });
-  if (others.length !== 1) return null;
-  const other = others[0];
+function otherParticipantRef(chat: { type?: unknown; is_1to1?: unknown; user?: unknown; user_id?: unknown } | null): CandidateRef | null {
+  if (!chat) return null;
+  if (!(chat.type === '1to1' || chat.is_1to1 === true)) return null;
+  const user = (chat.user && typeof chat.user === 'object' ? chat.user : {}) as {
+    id?: unknown; public_identifier?: unknown; profile_url?: unknown; display_name?: unknown;
+  };
   const ref = candidateRef({
-    ids: [textOrNull(other.provider_id)],
-    slug: textOrNull(other.public_identifier) ?? textOrNull(other.specifics?.public_identifier),
-    profileUrl: textOrNull(other.profile_url),
-    name: textOrNull(other.name),
+    ids: [textOrNull(user.id), textOrNull(chat.user_id)],
+    slug: textOrNull(user.public_identifier),
+    profileUrl: textOrNull(user.profile_url),
+    name: textOrNull(user.display_name),
   });
   return ref.ids.length > 0 || ref.slug ? ref : null;
 }
 
 /** Autre participant d'une conversation, lu auprès du prestataire ; null si illisible. */
-async function fetchChatOtherParticipant(
-  uCreds: { apiKey: string; dsn: string },
-  chatId: string,
-): Promise<CandidateRef | null> {
+async function fetchChatOtherParticipant(accountId: string, chatId: string): Promise<CandidateRef | null> {
   try {
-    const res = await fetchWithTimeout(`${uCreds.dsn}/api/v1/chats/${encodeURIComponent(chatId)}/attendees`, {
-      headers: { 'X-API-KEY': uCreds.apiKey },
-    });
-    if (!res.ok) {
-      await res.text(); // consume body
-      console.warn(`[unipile-webhook] Own message: chat attendees unavailable (status ${res.status})`);
-      return null;
-    }
-    const body = await res.json();
-    const attendees = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [];
-    return otherParticipantRef(attendees);
+    return otherParticipantRef(await getChat(accountId, chatId));
   } catch (e) {
-    console.warn('[unipile-webhook] Own message: chat attendees lookup failed:', e);
+    console.warn('[unipile-webhook] Own message: chat lookup failed:', describeForLog(e));
     return null;
   }
 }
@@ -1459,7 +1646,6 @@ async function missionLinkOnAccount(
  */
 async function handleOwnMessage(
   supabase: SupabaseClient,
-  uCreds: { apiKey: string; dsn: string },
   accountId: string | undefined,
   chatId: string | undefined,
   messageId: string | null,
@@ -1498,7 +1684,7 @@ async function handleOwnMessage(
         try {
           let linked = await missionLinkOnAccount(supabase, organizationId, accountId, chatId, otherParticipant?.ids ?? []);
           if (!linked && !otherParticipant && chatId) {
-            if (fetched === undefined) fetched = await fetchChatOtherParticipant(uCreds, chatId);
+            if (fetched === undefined) fetched = await fetchChatOtherParticipant(accountId, chatId);
             if (fetched) linked = await missionLinkOnAccount(supabase, organizationId, accountId, chatId, fetched.ids);
           }
           if (!linked) {
@@ -1513,7 +1699,7 @@ async function handleOwnMessage(
       if (otherParticipant && await erased(otherParticipant)) continue;
       let result = await call(otherParticipant);
       if (result.ok && result.data.result === 'no_candidate' && !otherParticipant && chatId) {
-        if (fetched === undefined) fetched = await fetchChatOtherParticipant(uCreds, chatId);
+        if (fetched === undefined) fetched = await fetchChatOtherParticipant(accountId, chatId);
         if (fetched && !(await erased(fetched))) result = await call(fetched);
       }
       if (result.ok) console.log(`[unipile-webhook] Own message in org ${organizationId}: ${result.data.result}`);
@@ -1524,137 +1710,110 @@ async function handleOwnMessage(
   }
 }
 
-async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload, uCreds: { apiKey: string; dsn: string }, eventKey: string) {
+async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayload, eventKey: string) {
   const { account_id, data } = payload;
-  
-  // Handle two payload formats:
-  // 1. new_message: { data: { message: {...}, chat: {...} } }
-  // 2. message_received: { chat_id, sender: {...}, attendees: [...] } (flat, no data)
-  
-  let chatId: string | undefined;
-  let senderId: string | undefined;
-  let isSenderSelf: boolean | undefined;
-  let senderAttendeeId: string | undefined;
-  let needsAttendeeVerification = false;
-  // Identifiant du message (même source que la clé de dédoublonnage) : écho d'un envoi Konekt.
-  let messageId: string | null = payload.message_id || null;
 
-  if (payload.sender && payload.chat_id) {
-    // message_received format (flat)
-    console.log('[unipile-webhook] Processing message_received format');
-    chatId = payload.chat_id;
-    senderId = payload.sender.attendee_provider_id;
-    senderAttendeeId = payload.sender.attendee_id;
-    // NB: do NOT assume the sender is the other person. Unipile fires
-    // message_received for the invitation note WE sent once the chat
-    // materialises after acceptance — sender_attendee_id can collapse to our
-    // own attendee. Force attendees-API verification below; otherwise we mark
-    // candidates as "replied" for our own outbound invite note (bug:
-    // candidates showing in "Répondu" without replying).
-    isSenderSelf = undefined;
-    needsAttendeeVerification = true;
-  } else if (data) {
-    // new_message format (nested)
-    console.log('[unipile-webhook] Processing new_message format');
-    const message = data.message as { 
-      id?: string;
-      sender_id?: string; 
-      attendee_provider_id?: string;
-      sender?: { provider_id?: string; id?: string };
-      is_sender?: boolean;
-      is_sender_self?: boolean;
-      sender_attendee_id?: string;
-      chat_id?: string;
-    } | undefined;
-    
-    const chat = data.chat as { id?: string } | undefined;
-    chatId = message?.chat_id || chat?.id;
-    senderId = message?.sender?.provider_id || message?.sender?.id || message?.sender_id || message?.attendee_provider_id;
-    isSenderSelf = message?.is_sender === true || message?.is_sender_self === true ? true : 
-                   message?.is_sender === false || message?.is_sender_self === false ? false : undefined;
-    senderAttendeeId = message?.sender_attendee_id;
-    messageId = messageId || message?.id || null;
-  } else {
+  // message.new, aplati par flattenEnvelope : { data: { message: {...}, chat: {...} } }.
+  // La v2 donne toujours is_sender (obligatoire dans l'objet Message) : plus aucune
+  // lecture des participants de la conversation pour savoir qui écrit.
+  const message = data?.message as {
+    id?: string;
+    sender_id?: string;
+    sender?: { id?: string; name?: string };
+    is_sender?: boolean;
+    is_event?: boolean;
+    is_hidden?: boolean;
+    is_deleted?: boolean;
+    message_type?: string | null;
+    chat_id?: string;
+  } | undefined;
+  if (!message) {
     console.log('[unipile-webhook] handleNewMessage: Unrecognized payload format, keys:', Object.keys(payload));
     return;
   }
-  
-  // Skip if this is a message WE sent
-  if (isSenderSelf === true) {
+  const chat = data?.chat as { id?: string } | undefined;
+  const chatId: string | undefined = message.chat_id || chat?.id;
+  const senderId: string | undefined = message.sender?.id || message.sender_id;
+  let isSenderSelf: boolean | undefined = message.is_sender === true ? true : message.is_sender === false ? false : undefined;
+  // Identifiant du message (même source que la clé de dédoublonnage) : écho d'un envoi Konekt.
+  const messageId: string | null = payload.message_id || message.id || null;
+
+  // Ligne système (appel manqué, épinglage...), masquée ou supprimée : ni une
+  // réponse du candidat, ni un message écrit depuis le compte du recruteur.
+  if (message.is_event === true || message.is_hidden === true || message.is_deleted === true) {
+    console.log('[unipile-webhook] Skipping - system, hidden or deleted message row');
+    return;
+  }
+
+  // Message écrit depuis notre compte : traité avant toute lecture des membres, comme avant
+  // (ce chemin est non bloquant : une lecture en échec n'y fait pas répondre 500, ce qui
+  // purgerait la clé de dédoublonnage et ferait rejouer chaque écho d'un envoi).
+  const handleSentByUs = async () => {
     await markChatNotificationsRead(supabase, account_id, chatId);
     // Candidat inconnu ici : celui de la conversation liée, sinon ses participants.
-    await handleOwnMessage(supabase, uCreds, account_id, chatId, messageId, null);
+    await handleOwnMessage(supabase, account_id, chatId, messageId, null);
     console.log('[unipile-webhook] Skipping - this is our own sent message');
+  };
+  if (isSenderSelf === true) {
+    await handleSentByUs();
     return;
   }
-  
-  // For ambiguous cases (is_sender undefined), resolve via chat attendees API.
-  // For message_received payloads we fail-closed: if we cannot positively
-  // confirm the sender is NOT our own attendee, skip — better to miss a reply
-  // than to mark a candidate "Répondu" for our own outbound invitation note.
-  // Format new_message sans is_sender (décision 11) : expéditeur non vérifié
-  // = échec (500) et rejeu du prestataire, jamais une clôture à l'aveugle.
-  if (isSenderSelf === undefined && chatId && senderAttendeeId) {
-    let confirmedNotSelf = false;
-    // Vérification IMPOSSIBLE (réponse non OK, délai, réseau) ≠ expéditeur
-    // confirmé comme nous (SEQ-040) : dans le premier cas, pour le format
-    // message_received, on lève pour que le prestataire rejoue l'événement,
-    // au lieu d'abandonner la réponse avec un 200.
+
+  // Membres reliés à ce compte (lus une fois : étape du candidat et notifications
+  // plus bas). Compte non relié à Konekt : aucune lecture auprès du prestataire,
+  // la clé du service étant commune à toutes les organisations.
+  const { data: memberRows, error: membersReadError } = await supabase
+    .from('member_linkedin_accounts')
+    .select('user_id, organization_id')
+    .eq('linkedin_account_id', account_id);
+  // Lecture impossible : on lève (catch global → 500 → rejeu), comme les autres lectures.
+  if (membersReadError) throw membersReadError;
+  const linkedMembers = (memberRows ?? []) as Array<{ user_id: string; organization_id: string | null }>;
+
+  // is_sender absent (charge mal formée) : le message est relu auprès du
+  // prestataire. Expéditeur non vérifié = échec (500) et rejeu, jamais une
+  // clôture à l'aveugle (décision 11).
+  if (isSenderSelf === undefined && chatId && messageId && linkedMembers.length > 0) {
     let verificationUnavailable: unknown = null;
     try {
-      const attRes = await fetchWithTimeout(`${uCreds.dsn}/api/v1/chats/${chatId}/attendees`, { headers: { 'X-API-KEY': uCreds.apiKey } });
-      if (attRes.ok) {
-        const attData = await attRes.json();
-        const attendees = attData.items || attData || [];
-        const attendeeList = Array.isArray(attendees) ? attendees : [];
-        // deno-lint-ignore no-explicit-any
-        const ownAttendee = attendeeList.find((a: any) => a.is_self === true || a.is_self === 1 || a.role === 'self');
-        if (ownAttendee) {
-          const ownIds = [ownAttendee.id, ownAttendee.provider_id, ownAttendee.attendee_id].filter(Boolean);
-          if (ownIds.includes(senderAttendeeId)) {
-            // Format v1 (message_received) : c'est ici qu'une réponse envoyée
-            // depuis LinkedIn (mobile par exemple) est reconnue comme la nôtre.
-            // C'est aussi la forme de l'écho de notre note d'invitation.
-            await markChatNotificationsRead(supabase, account_id, chatId);
-            await handleOwnMessage(supabase, uCreds, account_id, chatId, messageId, otherParticipantRef(attendeeList));
-            console.log('[unipile-webhook] Skipping - sender is our own attendee');
-            return;
-          }
-          confirmedNotSelf = true;
-        }
-      } else {
-        await attRes.text(); // consume body
-        verificationUnavailable = new Error(`attendee verification unavailable (status ${attRes.status})`);
-      }
+      const fresh = await getMessage(account_id, chatId, messageId);
+      isSenderSelf = fresh.is_sender === true ? true : fresh.is_sender === false ? false : undefined;
     } catch (e) {
-      console.warn('[unipile-webhook] Failed to verify sender via attendees:', e);
+      console.warn('[unipile-webhook] Failed to verify sender by reading the message:', describeForLog(e));
       verificationUnavailable = e;
     }
-    if (!confirmedNotSelf) {
-      if (verificationUnavailable) {
-        console.error('[unipile-webhook] Sender verification unavailable — event will be retried');
-        throw verificationUnavailable instanceof Error
-          ? verificationUnavailable
-          : new Error('attendee verification unavailable');
-      }
-      if (!needsAttendeeVerification) {
-        console.error('[unipile-webhook] new_message: no own attendee to verify the sender — event will be retried');
-        throw new Error('new_message sender not verifiable (no own attendee)');
-      }
-      // Réponse OK sans participant « nous » identifiable : cas persistant, un
-      // rejeu échouerait de même. Échec fermé comme avant.
-      console.log('[unipile-webhook] Skipping - cannot confirm sender is not self (fail-closed for message_received)');
-      return;
+    if (isSenderSelf === undefined && verificationUnavailable) {
+      console.error('[unipile-webhook] Sender verification unavailable — event will be retried');
+      throw verificationUnavailable instanceof Error
+        ? verificationUnavailable
+        : new Error('sender verification unavailable');
     }
-  } else if (needsAttendeeVerification) {
-    // message_received without chat_id or sender.attendee_id → cannot verify
-    console.log('[unipile-webhook] Skipping - message_received missing fields needed to verify sender');
-    return;
-  } else if (isSenderSelf === undefined) {
-    console.error('[unipile-webhook] new_message without sender indication nor fields to verify it — event will be retried');
-    throw new Error('new_message sender not verifiable (no is_sender, chat or sender attendee)');
   }
-  
+
+  // Message dont la relecture montre qu'il est de nous.
+  if (isSenderSelf === true) {
+    await handleSentByUs();
+    return;
+  }
+
+  // Compte relié à aucune organisation de Konekt : il n'y a personne pour qui agir et rien à
+  // relire (la clé du service est commune à toutes les organisations). Acquitté, jamais rejoué.
+  if (isSenderSelf === undefined && linkedMembers.length === 0) {
+    console.log('[unipile-webhook] new_message on an account linked to no organisation, sender not indicated: ignored');
+    return;
+  }
+
+  if (isSenderSelf === undefined) {
+    console.error('[unipile-webhook] new_message without sender indication nor fields to verify it — event will be retried');
+    throw new Error('new_message sender not verifiable (no is_sender, chat or message id)');
+  }
+
+  // Invitation ou réponse d'InMail de cycle de vie (acceptation, refus) : pas une réponse écrite.
+  if (!isCandidateReplyCandidate(message)) {
+    console.log('[unipile-webhook] Skipping - lifecycle row (invitation or InMail status), not a written answer');
+    return;
+  }
+
   if (!senderId) {
     console.log('[unipile-webhook] No sender ID found in payload');
     return;
@@ -1711,26 +1870,19 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   const resolveSenderAltIds = async (): Promise<string[]> => {
     if (senderAltIds) return senderAltIds;
     senderAltIds = [];
+    // Compte non relié à Konekt : rien à rattacher, aucune lecture de profil.
+    if (linkedMembers.length === 0) return senderAltIds;
     try {
-      const userRes = await fetchWithTimeout(`${uCreds.dsn}/api/v1/users/${encodeURIComponent(senderId as string)}?account_id=${encodeURIComponent(account_id)}`, {
-        headers: { 'X-API-KEY': uCreds.apiKey },
-      });
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        const altIds = new Set<string>();
-        for (const candidate of [userData?.provider_id, userData?.id, userData?.profile?.provider_id]) {
-          if (typeof candidate === 'string' && candidate && candidate !== senderId) altIds.add(candidate);
-        }
-        senderAltIds = [...altIds];
-        if (typeof userData?.public_identifier === 'string' && userData.public_identifier) {
-          senderPublicIdentifier = userData.public_identifier.toLowerCase();
-        }
-        if (senderAltIds.length > 0) console.log(`[unipile-webhook] Resolved sender ${senderId} → alt IDs:`, senderAltIds);
-      } else {
-        await userRes.text(); // consume body
+      const profile = await getProfile(account_id, senderId);
+      const altIds = new Set<string>();
+      if (typeof profile.id === 'string' && profile.id && profile.id !== senderId) altIds.add(profile.id);
+      senderAltIds = [...altIds];
+      if (typeof profile.public_identifier === 'string' && profile.public_identifier) {
+        senderPublicIdentifier = profile.public_identifier.toLowerCase();
       }
+      if (senderAltIds.length > 0) console.log(`[unipile-webhook] Resolved sender ${senderId} → alt IDs:`, senderAltIds);
     } catch (e) {
-      console.warn('[unipile-webhook] Failed to resolve sender alternative IDs:', e);
+      console.warn('[unipile-webhook] Failed to resolve sender alternative IDs:', describeForLog(e));
     }
     return senderAltIds;
   };
@@ -1992,12 +2144,6 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
   // décision 3). Décision 9 : erreur transitoire → rejeu (500), levé après les
   // notifications ; refus métier ou fonction absente → journal seul. Le rejeu
   // refait l'appel sans effet.
-  const { data: memberRows, error: membersReadError } = await supabase
-    .from('member_linkedin_accounts')
-    .select('user_id, organization_id')
-    .eq('linkedin_account_id', account_id);
-  if (membersReadError) failures.push(membersReadError);
-  const linkedMembers = (memberRows ?? []) as Array<{ user_id: string; organization_id: string | null }>;
   const stageCandidate = candidateRef({ ids: candidate.ids, slug: candidateSlugs(candidate.slugs)[0] ?? null });
   const stageOrgIds = [...new Set([...linkedMembers.map((m) => m.organization_id), ...anchorsByOrg.keys()]
     .filter((org): org is string => !!org))];
@@ -2092,7 +2238,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
         alerts.push({
           organizationId: orgId,
           userIds: [...members.filter((m) => m.organization_id === orgId).map((m) => m.user_id), ...orgRows.map((e) => e.created_by)],
-          candidateName: orgRows[0]?.profile_name || payload.sender?.attendee_name || null,
+          candidateName: orgRows[0]?.profile_name || message.sender?.name || null,
           sequenceId: orgRows[0]?.sequence_id ?? null,
           enrollmentIds: orgRows.map((e) => e.id),
           // Sans séquence : l'identifiant de l'InMail au /pipeline, sinon l'expéditeur.
@@ -2106,8 +2252,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
 
   // ── Create notification for new message ──
   // Find the user(s) linked to this LinkedIn account
-  const senderName = payload.sender?.attendee_name 
-    || (data?.message as any)?.sender?.name 
+  const senderName = message.sender?.name
     || senderId || 'Quelqu\'un';
   // Membres reliés au compte : lus plus haut (étape du candidat).
 
@@ -2279,8 +2424,7 @@ async function handleNewMessage(supabase: SupabaseClient, payload: WebhookPayloa
       const serviceKey = (Deno.env.get('SB_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
       const orgId = linkedMembers?.[0]?.organization_id;
       if (supabaseUrl && serviceKey && orgId) {
-        const senderName = payload.sender?.attendee_name
-          || (data?.message as any)?.sender?.name
+        const senderName = message.sender?.name
           || senderId;
         await fetchWithTimeout(`${supabaseUrl}/functions/v1/ingest-context`, {
           method: 'POST',
@@ -2365,6 +2509,22 @@ async function resolveMailboxOrganizations(supabase: SupabaseClient, accountId: 
     .filter((org): org is string => !!org))];
 }
 
+/**
+ * Adresse(s) de la boîte qui reçoit (member_email_accounts), en minuscules, seulement celles
+ * qui ressemblent à une adresse (une liaison créée avec un nom d'affichage n'en porte pas).
+ * Lève en cas d'erreur de lecture.
+ */
+async function resolveMailboxAddresses(supabase: SupabaseClient, accountId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('member_email_accounts')
+    .select('email_address')
+    .eq('email_account_id', accountId);
+  if (error) throw error;
+  return [...new Set(((data ?? []) as Array<{ email_address: string | null }>)
+    .map((row) => normalizeEmail(row.email_address))
+    .filter((address): address is string => !!address))];
+}
+
 interface MailEnrollment {
   id: string;
   sequence_id: string;
@@ -2423,7 +2583,7 @@ async function findOpenEnrollmentsByEmail(
 }
 
 /**
- * Handler pour les emails reçus (Unipile event `mail_received`).
+ * Handler pour les emails reçus (événement email.new, handler `mail_received`).
  * Détecte si l'email entrant est une réponse à une étape de séquence email
  * et stoppe les étapes restantes de la séquence pour ce candidat.
  *
@@ -2451,8 +2611,8 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
   }
 
   // Email de l'expéditeur (= candidat qui répond)
-  // Per Unipile docs, from_attendee est un objet { display_name, identifier }
-  // où identifier contient l'adresse email.
+  // from_attendee est un objet { display_name, identifier } (flattenEnvelope le
+  // construit depuis from[0] de l'e-mail v2) où identifier contient l'adresse email.
   const senderEmail = (from_attendee?.identifier || '').toLowerCase().trim();
   if (!senderEmail) {
     console.log('[unipile-webhook][mail] No sender email, skipping');
@@ -2460,6 +2620,33 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
   }
 
   const subjectLower = (subject || '').toLowerCase();
+
+  // Boîte reliée à aucune organisation de Konekt : il n'y a personne pour qui agir, et le
+  // rattachement par in_reply_to (indépendant du compte) clorait des inscriptions d'une autre
+  // organisation. Acquitté, jamais rejoué.
+  const mailboxOrgs = await resolveMailboxOrganizations(supabase, account_id);
+  if (mailboxOrgs.length === 0) {
+    console.log('[unipile-webhook][mail] Skipping - mailbox linked to no organisation');
+    return;
+  }
+
+  // Courrier écrit depuis la boîte elle-même : email.new n'indique pas de sens
+  // (envoyé ou reçu), et un courrier envoyé qui répond à un message suivi serait
+  // pris pour la réponse du candidat. Jamais une réponse. Liaison sans adresse lisible
+  // (nom d'affichage) : l'adresse du compte, relue chez le prestataire, la remplace.
+  let mailboxAddresses = await resolveMailboxAddresses(supabase, account_id);
+  if (mailboxAddresses.length === 0) {
+    try {
+      const own = normalizeEmail((await getAccount(account_id)).name);
+      if (own) mailboxAddresses = [own];
+    } catch (e) {
+      console.warn('[unipile-webhook][mail] Mailbox address could not be read:', describeForLog(e));
+    }
+  }
+  if (mailboxAddresses.includes(senderEmail)) {
+    console.log('[unipile-webhook][mail] Skipping - mail sent from the mailbox itself');
+    return;
+  }
 
   // === HARD BOUNCE ===
   // Un NDR (mailer-daemon/postmaster, ou sujet type "Undelivered"/"Delivery
@@ -2481,8 +2668,8 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
     return;
   }
 
-  // Skip si c'est un email QU'ON A ENVOYÉ (cas Unipile inclut sent in webhook)
-  // Vérifier que le sender ne match pas l'identifier du compte connecté
+  // Un courrier envoyé depuis la boîte elle-même est écarté plus haut (adresse de
+  // la boîte). Ici : au moins un destinataire est exigé.
   const recipientEmails = (to_attendees || [])
     .map(a => (a.identifier || '').toLowerCase().trim())
     .filter(Boolean);
@@ -2495,8 +2682,6 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
     `[unipile-webhook][mail] from=${senderEmail} to=${recipientEmails.join(',')} ` +
     `account=${account_id} email_id=${email_id || '?'} subject="${subjectLower.slice(0, 80)}"`,
   );
-
-  const mailboxOrgs = await resolveMailboxOrganizations(supabase, account_id);
 
   // 1. Rattachement par le message d'origine (in_reply_to), normalisé par la
   //    règle partagée avec sequence-webhooks-handler (chaîne ou objet
@@ -2530,8 +2715,8 @@ async function handleNewMail(supabase: SupabaseClient, payload: WebhookPayload, 
           .select(MAIL_ENROLLMENT_COLUMNS)
           .in('id', enrollmentIds)
           .in('status', OPEN_ENROLLMENT_STATUSES);
-        // Une boîte connue ne clôt que des inscriptions de son organisation.
-        if (mailboxOrgs.length > 0) byThread = byThread.in('organization_id', mailboxOrgs);
+        // Une boîte ne clôt que des inscriptions de son organisation.
+        byThread = byThread.in('organization_id', mailboxOrgs);
         const { data: threadRows, error: threadError } = await byThread;
         if (threadError) throw threadError;
         enrollments = (threadRows ?? []) as MailEnrollment[];

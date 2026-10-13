@@ -1,0 +1,142 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "GET /v2/{account_id}/emails (Email with headers, spec email-calendar.md)"
+  },
+  "context": {
+    "accountId": "acc_test_mail",
+    "accountEmail": "Recruteur@konekt.example"
+  },
+  "input": {
+    "object": "Email",
+    "id": "em_0001",
+    "message_id": "<abc123@mail.example>",
+    "thread_id": "th_77",
+    "body": "<p>Bonjour, je suis intéressé.</p>",
+    "body_plain": "Bonjour, je suis intéressé.",
+    "snippet": "Bonjour, je suis intéressé.",
+    "subject": "Re: Poste de directeur",
+    "headers": [
+      {
+        "name": "In-Reply-To",
+        "value": "<orig@mail.example>"
+      },
+      {
+        "name": "References",
+        "value": "<root@mail.example> <orig@mail.example>"
+      },
+      {
+        "name": "Auto-Submitted",
+        "value": "auto-replied"
+      }
+    ],
+    "from": [
+      {
+        "email": "Candidat@Example.com",
+        "display_name": "Candi Dat"
+      }
+    ],
+    "to": [
+      {
+        "email": "recruteur@konekt.example",
+        "display_name": "Recruteur"
+      }
+    ],
+    "cc": [
+      {
+        "email": "copie@konekt.example"
+      }
+    ],
+    "bcc": [],
+    "reply_to": [],
+    "date": "2026-10-01T09:30:00.000Z",
+    "attachments": [
+      {
+        "object": "Attachment",
+        "id": "att_1",
+        "type": "file",
+        "filename": "cv.pdf",
+        "mimetype": "application/pdf",
+        "url": "https://files.example/cv",
+        "is_inline": false,
+        "file_size": 12345
+      }
+    ],
+    "folders": [
+      "INBOX"
+    ],
+    "is_unread": true
+  },
+  "expected": {
+    "id": "em_0001",
+    "provider_id": "em_0001",
+    "message_id": "<abc123@mail.example>",
+    "account_id": "acc_test_mail",
+    "thread_id": "th_77",
+    "thread_key": "th_77",
+    "subject": "Re: Poste de directeur",
+    "body": "<p>Bonjour, je suis intéressé.</p>",
+    "body_plain": "Bonjour, je suis intéressé.",
+    "snippet": "Bonjour, je suis intéressé.",
+    "date": "2026-10-01T09:30:00.000Z",
+    "from_attendee": {
+      "display_name": "Candi Dat",
+      "identifier": "Candidat@Example.com"
+    },
+    "to_attendees": [
+      {
+        "display_name": "Recruteur",
+        "identifier": "recruteur@konekt.example"
+      }
+    ],
+    "cc_attendees": [
+      {
+        "display_name": null,
+        "identifier": "copie@konekt.example"
+      }
+    ],
+    "bcc_attendees": [],
+    "reply_to_attendees": [],
+    "in_reply_to": "<orig@mail.example>",
+    "references": [
+      "root@mail.example",
+      "orig@mail.example"
+    ],
+    "has_attachments": true,
+    "attachments": [
+      {
+        "id": "att_1",
+        "type": "file",
+        "mimetype": "application/pdf",
+        "filename": "cv.pdf",
+        "name": "cv.pdf",
+        "size": 12345,
+        "url": "https://files.example/cv",
+        "url_expires_at": null,
+        "is_inline": false,
+        "is_unavailable": null,
+        "content_id": null
+      }
+    ],
+    "folders": [
+      "INBOX"
+    ],
+    "is_unread": true,
+    "is_sender": false,
+    "headers": [
+      {
+        "name": "In-Reply-To",
+        "value": "<orig@mail.example>"
+      },
+      {
+        "name": "References",
+        "value": "<root@mail.example> <orig@mail.example>"
+      },
+      {
+        "name": "Auto-Submitted",
+        "value": "auto-replied"
+      }
+    ]
+  }
+}

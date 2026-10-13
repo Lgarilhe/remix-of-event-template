@@ -66,9 +66,25 @@ export interface ConnectionFacts {
 }
 
 /**
+ * Degré de relation retenu pour décider : celui du profil lu, sinon celui
+ * enregistré à l'inscription. « Sinon » vaut quand la lecture a échoué (profil
+ * absent) ET quand elle a réussi sans degré : en API v2 `specifics.network_distance`
+ * est facultatif, une lecture réussie qui n'en porte pas ne dit pas « hors
+ * relation ». `null` quand aucune des deux sources ne le donne.
+ */
+export function effectiveNetworkDistance(
+  enrollment: ConnectionFacts,
+  profile: { network_distance?: unknown } | null | undefined,
+): string | null {
+  const read = profile ? normalizeNetworkDistance(profile.network_distance) : null;
+  return read ?? normalizeNetworkDistance(enrollment.network_distance);
+}
+
+/**
  * Le candidat est-il en relation directe avec le compte d'envoi ?
  * Lecture du profil d'abord ; « connecté » connu en base vaut aussi ; le degré
- * enregistré à l'inscription ne sert que si la lecture du profil a échoué.
+ * enregistré à l'inscription ne sert que si la lecture du profil a échoué ou
+ * n'a rendu aucun degré (`effectiveNetworkDistance`).
  * Même règle pour le contrôle des crédits, le mode d'envoi et le type de
  * message rédigé par l'IA.
  */
@@ -76,10 +92,8 @@ export function isFirstDegreeCandidate(
   enrollment: ConnectionFacts,
   profile: { network_distance?: unknown } | null | undefined,
 ): boolean {
-  if (profile && normalizeNetworkDistance(profile.network_distance) === 'FIRST_DEGREE') return true;
   if (enrollment.connection_status === 'connected') return true;
-  if (!profile && normalizeNetworkDistance(enrollment.network_distance) === 'FIRST_DEGREE') return true;
-  return false;
+  return effectiveNetworkDistance(enrollment, profile) === 'FIRST_DEGREE';
 }
 
 /** Un InMail ou un smart_message part en InMail payant seulement hors relation directe. */
@@ -110,7 +124,9 @@ export const INVITE_RECENTLY_SENT_SKIP_REASON = 'Invitation déjà envoyée réc
 export function inviteRejectionSkipReason(status: number, body: string): string | null {
   if (status < 400 || status >= 500 || status === 429) return null;
   const b = (body || '').toLowerCase();
-  if (/already[_\s-]?connected|already (a )?connection|already in (your )?network|first[_\s-]degree/.test(b)) {
+  // `existing relation` : formulation de la documentation de l'API v2 (« Trying to send a
+  // relation request to an existing relation will fail »), corps réel à confirmer en direct.
+  if (/already[_\s-]?connected|already (a )?connection|already (a )?relation|existing[_\s-]?relation|already in (your )?network|first[_\s-]degree/.test(b)) {
     return ALREADY_CONNECTED_SKIP_REASON;
   }
   if (/already[_\s-]?invited|invitation[_\s-]?(is[_\s-]?)?(already|pending)|pending[_\s-]?invitation|already[_\s-]?pending/.test(b)) {
@@ -167,6 +183,81 @@ export function inmailQueueRetry(
     ? `Service LinkedIn momentanément indisponible, nouvel essai ${attempt}/${INMAIL_QUEUE_MAX_ATTEMPTS} dans 1 h`
     : `Service LinkedIn indisponible après ${INMAIL_QUEUE_MAX_ATTEMPTS} essais : replanifiez l'InMail`;
   return { retry, attempt, message };
+}
+
+// ─── API v2 : compte en état d'envoyer ──────────────────────────────────────
+
+/**
+ * Report d'un envoi dont le compte est limité (DEGRADED, PARTIAL, LOCKED). Ces
+ * états se règlent seuls (ou par le support) : pas de nouvel essai toutes les
+ * heures, et jamais de pause d'inscription ni d'échec pour autant.
+ */
+export const LIMITED_ACCOUNT_DEFER_MS = 6 * 60 * 60 * 1000;
+
+/** Texte lisible (file InMail, historique) d'un envoi reporté pour un compte limité. */
+export const LIMITED_ACCOUNT_MESSAGE = 'Compte LinkedIn temporairement limité : envoi reporté, reprise automatique.';
+
+/**
+ * Ce que l'état enregistré d'un compte (`member_*_accounts.account_status`)
+ * autorise (même règle que `isSendable` du client partagé `_shared/unipile/status.ts`,
+ * recopiée ici : ce module reste pur, sans import) :
+ *  - `send` : OK, ou liaison sans état connu ;
+ *  - `disconnected` : CREDENTIALS ou ERROR, le membre doit reconnecter le compte ;
+ *  - `limited` : DEGRADED, PARTIAL ou LOCKED, rien ne part et rien ne se met en
+ *    pause (isSendable du client) ;
+ *  - `unavailable` : tout autre état hérité (STOPPED, CONNECTING...).
+ */
+export type AccountSendGate = 'send' | 'disconnected' | 'limited' | 'unavailable';
+
+export function accountSendGate(status: unknown): AccountSendGate {
+  if (typeof status !== 'string' || status.trim() === '') return 'send';
+  const normalized = status.trim().toUpperCase();
+  if (normalized === 'OK') return 'send';
+  if (normalized === 'CREDENTIALS' || normalized === 'ERROR') return 'disconnected';
+  if (normalized === 'DEGRADED' || normalized === 'PARTIAL' || normalized === 'LOCKED') return 'limited';
+  return 'unavailable';
+}
+
+/** Texte de la file InMail quand le membre doit reconnecter le compte. */
+export const INMAIL_DISCONNECTED_MESSAGE = 'Compte LinkedIn déconnecté : envoi en pause, reprise automatique après reconnexion';
+
+/** Ce qu'il advient d'un InMail de la file dont le fournisseur a refusé l'envoi (rien n'est parti). */
+export type InmailRefusalPlan =
+  | { action: 'retry'; attempt: number; message: string; delayMs: number }
+  | { action: 'defer'; reason: 'disconnected' | 'limited'; message: string; delayMs: number }
+  | { action: 'fail'; message: string };
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * Décision après un refus (`refused` du client, jamais un envoi incertain) :
+ *  - compte à reconnecter : l'item reste programmé, repart après la reconnexion ;
+ *  - compte limité : reporté de 6 h, sans échec ;
+ *  - 429 : nouvel essai dans une heure, trois fois au plus (SEQ-103) ;
+ *  - tout autre refus : échec définitif, avec le code HTTP dans le texte (le
+ *    texte du fournisseur reste dans les journaux).
+ * `kind` est l'`ErrorKind` normalisé du client (`_shared/unipile/errors.ts`).
+ */
+export function inmailRefusalPlan(
+  kind: string,
+  status: number | null,
+  previousError: string | null | undefined,
+): InmailRefusalPlan {
+  if (kind === 'account_disconnected') {
+    return { action: 'defer', reason: 'disconnected', message: INMAIL_DISCONNECTED_MESSAGE, delayMs: HOUR_MS };
+  }
+  if (kind === 'account_degraded') {
+    return { action: 'defer', reason: 'limited', message: LIMITED_ACCOUNT_MESSAGE, delayMs: LIMITED_ACCOUNT_DEFER_MS };
+  }
+  const retry = inmailQueueRetry(status, previousError);
+  if (retry.retry) return { action: 'retry', attempt: retry.attempt, message: retry.message, delayMs: HOUR_MS };
+  if (retry.attempt > 0) return { action: 'fail', message: retry.message };
+  return {
+    action: 'fail',
+    message: status === null
+      ? "Le service de connexion LinkedIn a refusé l'envoi"
+      : `Le service de connexion LinkedIn a refusé l'envoi (code ${status})`,
+  };
 }
 
 // ─── SEQ-035 / SEQ-091 : message rédigé par l'IA ────────────────────────────

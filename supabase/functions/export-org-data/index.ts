@@ -12,7 +12,6 @@
  * - Phone calls (phone_calls, lot A1), their analyses (phone_call_insights) and transcriptions
  *   (phone_call_transcripts, lot A5, the most recent ones: the cap is reported in _meta)
  * - Reminders and tasks (candidate_reminders): candidate name, mission, free note, due date
- * - Messages sent (from Unipile logs if available)
  *
  * Only admins can trigger this export.
  */

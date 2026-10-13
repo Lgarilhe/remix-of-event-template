@@ -143,8 +143,12 @@ async function openAs(browser: Browser, user: TestUser, accountId: string, profi
     if (fn === 'unipile-accounts' && body.action === 'list') {
       return reply({
         success: true,
-        accounts: [{ id: accountId, status: 'OK', account_status: 'OK', provider: 'LINKEDIN', type: 'LINKEDIN', name: 'Camille Recruteuse' }],
+        accounts: [{ id: accountId, status: 'OK', account_status: 'OK', provider: 'LINKEDIN', type: 'LINKEDIN', name: 'Camille Recruteuse', subscriptions: { classic: true, recruiter: true, sales_navigator: false } }],
       });
+    }
+    if (fn === 'unipile-accounts' && body.action === 'list_contracts') {
+      // Licence active du compte (InMail groupé) : contrat Recruiter sélectionné.
+      return reply({ success: true, contracts: [{ id: 'contract-recruiter', name: 'Recruiter', product: 'recruiter', selected: true }] });
     }
     if (fn === 'unipile-accounts' && body.action === 'inmail_balance') {
       return reply({ success: true, balance: { premium: 0, recruiter: 100, sales_navigator: 0 } });

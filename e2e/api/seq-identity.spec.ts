@@ -16,12 +16,10 @@
  * la stack locale ; LinkedIn est simulé par e2e/local-stack/vendor-mock.mjs.
  * Ignoré sans la stack locale (e2e/local-stack/up.sh).
  *
- * Harnais : le faux prestataire ne rattache GET /chats/{id}/messages à aucun
- * compte (pas d'account_id dans la requête), donc une réponse du candidat ne
- * se scripte qu'avec la clé '*', interdite entre suites parallèles. Le test de
- * détection par le moteur donne à la conversation un identifiant qui porte le
- * compte (« chat…/messages?account_id=…# ») : le moteur l'insère tel quel dans
- * l'URL, le fragment est retiré par fetch, la route scriptée du compte répond.
+ * Harnais : le faux prestataire LinkedIn parle l'API v2 (e2e/local-stack/vendor-mock.mjs).
+ * Les réponses du candidat arrivent en enveloppes message.new (`v2.messageNew`) ; la
+ * conversation et ses messages d'un compte se scriptent par `routes.chatLookup` et
+ * `routes.messages`, le profil lu auprès du prestataire par `routes.profile`.
  */
 import { test, expect } from '@playwright/test';
 import {
@@ -44,13 +42,15 @@ import {
   enroll,
   messageSequence,
   minutesFromNow,
-  mockCalls,
+  callsOf,
   rand,
+  routes,
   runCycle,
   schedule,
   sendingOrg,
   sentTexts,
   setMockMode,
+  v2,
   webhook,
 } from '../helpers/sequence-engine';
 
@@ -96,17 +96,20 @@ function track(org: TestOrg, ...extra: TestUser[]) {
 const aco = (tag: string) => `ACoAAID${tag}${rand()}${rand()}`;
 const aem = (tag: string) => `AEMAAID${tag}${rand()}${rand()}`;
 
-/** Réponse LinkedIn du candidat reçue sur `accountId` (format message_received). */
-function replyFrom(accountId: string, senderId: string, messageId = `msg_${rand()}`) {
-  return webhook({
-    event: 'message_received',
-    account_id: accountId,
-    account_type: 'LINKEDIN',
-    chat_id: `chat_${rand()}`,
-    message_id: messageId,
-    message: 'Bonjour, oui avec plaisir',
-    sender: { attendee_provider_id: senderId, attendee_id: 'att_candidate', attendee_name: 'Jean Dupont' },
-  });
+/**
+ * Réponse LinkedIn du candidat reçue sur `accountId` (enveloppe v2 message.new). `eventId` (evt_...)
+ * rejoue le même événement : c'est lui, et non plus l'identifiant du message, qui sert au dédoublonnage.
+ */
+function replyFrom(accountId: string, senderId: string, opts: { messageId?: string; eventId?: string } = {}) {
+  return webhook(v2.messageNew({
+    accountId,
+    chatId: `chat_${rand()}`,
+    messageId: opts.messageId ?? `msg_${rand()}`,
+    senderId,
+    senderName: 'Jean Dupont',
+    text: 'Bonjour, oui avec plaisir',
+    id: opts.eventId,
+  }));
 }
 
 /** Premier message déjà parti il y a `days` jours. */
@@ -224,7 +227,8 @@ test.describe('Identité du candidat : réponse reçue par le webhook LinkedIn',
     const f2 = await laterStep(org, e2.enrollmentId, s2.steps[1]);
 
     const firstMessage = `msg_${rand()}`;
-    await replyFrom(accountId, aco1, firstMessage);
+    const firstEvent = v2.envelope('message.new', accountId, {}).id;
+    await replyFrom(accountId, aco1, { messageId: firstMessage, eventId: firstEvent });
     const afterFirst = await state(e1.enrollmentId);
     expect(afterFirst.status, 'E1 close par la réponse (provider_id)').toBe('replied');
     expect(afterFirst.replied_at).not.toBeNull();
@@ -241,7 +245,7 @@ test.describe('Identité du candidat : réponse reçue par le webhook LinkedIn',
     expect(await repliesReceived(s2.sequenceId), 'une réponse comptée pour S2').toBe(1);
 
     // Rejeu du même événement, puis nouveaux messages des mêmes candidats : rien ne change.
-    await replyFrom(accountId, aco1, firstMessage);
+    await replyFrom(accountId, aco1, { messageId: firstMessage, eventId: firstEvent });
     await replyFrom(accountId, aco1);
     await replyFrom(accountId, aco2);
     expect((await state(e1.enrollmentId)).status).toBe('replied');
@@ -263,10 +267,7 @@ test.describe('Identité du candidat : réponse reçue par le webhook LinkedIn',
     const followUp = await laterStep(org, e.enrollmentId, seq.steps[1]);
     // LinkedIn : l'expéditeur classique correspond à l'identifiant Recruiter inscrit.
     await setMockMode(accountId, {
-      routes: [{
-        method: 'GET', path: `^/api/v1/users/${senderId}$`, status: 200,
-        body: { object: 'UserProfile', provider: 'LINKEDIN', provider_id: senderId, id: recruiterId, public_identifier: `jean-dupont-${rand()}` },
-      }],
+      routes: [routes.profile({ id: recruiterId, slug: `jean-dupont-${rand()}` }, { path: `/users/${senderId}$` })],
     });
 
     await replyFrom(accountId, senderId);
@@ -275,7 +276,7 @@ test.describe('Identité du candidat : réponse reçue par le webhook LinkedIn',
     expect(after.status, 'inscription Recruiter close par la réponse classique').toBe('replied');
     expect(after.resolved_profile_id, 'identifiant de l’expéditeur mémorisé').toBe(senderId);
     expect((await execution(followUp)).status, 'relance annulée').toBe('cancelled');
-    const lookups = (await mockCalls(accountId)).filter((c) => c.method === 'GET' && c.path === `/api/v1/users/${senderId}`);
+    const lookups = (await callsOf(accountId, 'getUserProfile')).filter((c) => c.path.endsWith(`/users/${senderId}`));
     expect(lookups.length, 'identifiants alternatifs demandés au prestataire').toBeGreaterThan(0);
     expect(await repliesReceived(seq.sequenceId)).toBe(1);
   });
@@ -385,10 +386,7 @@ test.describe('Identité du candidat : arrêt des autres inscriptions après une
     const recruiterId = aem('K');
     // LinkedIn : l'identifiant classique et l'identifiant Recruiter sont la même personne.
     await setMockMode(c1, {
-      routes: [{
-        method: 'GET', path: `^/api/v1/users/${candidate}$`, status: 200,
-        body: { object: 'UserProfile', provider: 'LINKEDIN', provider_id: candidate, id: recruiterId, public_identifier: `jean-${rand()}` },
-      }],
+      routes: [routes.profile({ id: recruiterId, slug: `jean-${rand()}` }, { path: `/users/${candidate}$` })],
     });
 
     const e1 = await enroll(org, s1.sequenceId, owner, c1, { profile_id: candidate, current_step_order: 1 });
@@ -529,17 +527,8 @@ test.describe('Identité du candidat : réponses traitées par le moteur', () =>
     const chat = `chatid${rand()}`;
     await setMockMode(c1, {
       routes: [
-        {
-          method: 'GET', path: `^/api/v1/chat_attendees/${candidate}/chats$`, status: 200,
-          body: { object: 'ChatList', items: [{ id: `${chat}/messages?account_id=${c1}#` }], cursor: null },
-        },
-        {
-          method: 'GET', path: `^/api/v1/chats/${chat}/messages$`, status: 200,
-          body: {
-            object: 'MessageList', cursor: null,
-            items: [{ id: `msg_${rand()}`, is_sender: 0, text: 'Merci, je suis intéressé', timestamp: minutesFromNow(-24 * 60) }],
-          },
-        },
+        routes.chatLookup([chat]),
+        routes.messages(chat, [{ from: 'candidate', text: 'Merci, je suis intéressé', at: minutesFromNow(-24 * 60) }]),
       ],
     });
     // Relance due, insérée en dernier.
@@ -547,7 +536,7 @@ test.describe('Identité du candidat : réponses traitées par le moteur', () =>
 
     await runCycle();
 
-    const checked = (await mockCalls(c1)).filter((c) => c.method === 'GET' && c.path === `/api/v1/chats/${chat}/messages`);
+    const checked = (await callsOf(c1, 'getMessagesList')).filter((c) => c.path.endsWith(`/chats/${chat}/messages`));
     expect(checked.length, 'la conversation du candidat a été relue avant la relance').toBeGreaterThan(0);
     expect((await state(e1.enrollmentId)).status, 'inscription close par la réponse détectée').toBe('replied');
     expect((await execution(e1FollowUp)).status, 'relance annulée').toBe('cancelled');

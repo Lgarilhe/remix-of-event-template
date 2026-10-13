@@ -58,6 +58,7 @@ import {
   sentTexts,
   setMockMode,
   setPaidPlan,
+  v2,
   webhook,
 } from '../helpers/sequence-engine';
 
@@ -199,17 +200,11 @@ async function rest(method: 'POST' | 'PATCH', path: string, token: string, body:
   return { status: res.status, body: parsed };
 }
 
-/** Message du candidat, format à plat (message_received). */
+/** Message du candidat (enveloppe v2 message.new). */
 function replyFrom(accountId: string, profileId: string, chatId: string) {
-  return {
-    event: 'message_received',
-    account_id: accountId,
-    account_type: 'LINKEDIN',
-    chat_id: chatId,
-    message_id: `msg_${rand()}${rand()}`,
-    message: 'Bonjour, je suis intéressé',
-    sender: { attendee_provider_id: profileId, attendee_id: 'att_candidate', attendee_name: 'Camille Martin' },
-  };
+  return v2.messageNew({
+    accountId, chatId, messageId: `msg_${rand()}${rand()}`, senderId: profileId, senderName: 'Camille Martin', text: 'Bonjour, je suis intéressé',
+  });
 }
 
 /** Laisse finir l'analyse lancée en tâche de fond par le webhook (lecture de la conversation). */
@@ -969,8 +964,9 @@ test.describe('@critical Recette : arrêt aux moments limites', () => {
 
   /** Envoi LinkedIn lent (le moteur coupe à 15 s) : l'arrêt arrive après son dernier contrôle, pendant l'appel. */
   async function slowSend(accountId: string, delayMs: number) {
+    // '/chats/send$' vaut pour la route par boîte comme pour la route sans boîte (startChatFromInbox, startChat).
     await setMockMode(accountId, { routes: [{
-      method: 'POST', path: '^/api/v1/chats', status: 201, delay_ms: delayMs, times: 1,
+      method: 'POST', path: '/chats/send$', status: 200, delay_ms: delayMs, times: 1,
       body: { object: 'ChatStarted', chat_id: `chat_lent_${rand()}`, message_id: `msg_lent_${rand()}` },
     }] });
   }
@@ -1085,7 +1081,7 @@ test.describe('@critical Recette : arrêt aux moments limites', () => {
     const stopped = await stop(token, org.orgId, [c.enrollmentId]);
     expect(resultOf(stopped, c.enrollmentId)?.outcome).toBe('stopped');
 
-    await webhook({ event: 'account_disconnected', account_id: accountId, account_type: 'LINKEDIN' });
+    await webhook(v2.accountStatus(accountId, 'disconnected'));
     const { data: link } = await admin().from('member_linkedin_accounts').select('account_status')
       .eq('organization_id', org.orgId).eq('linkedin_account_id', accountId).single();
     expect(link?.account_status, 'compte passé déconnecté').toBe('CREDENTIALS');
@@ -1106,7 +1102,7 @@ test.describe('@critical Recette : arrêt aux moments limites', () => {
     expect(heldExec.status).toBe('cancelled');
     expect(heldExec.skip_reason).toBe(ACCOUNT_DISCONNECTED_SKIP_REASON);
 
-    await webhook({ event: 'account_connected', account_id: accountId, account_type: 'LINKEDIN' });
+    await webhook(v2.accountReconnect({ accountId }));
     const resumed = await enrRow(c.enrollmentId);
     expect(resumed.status, 'reconnexion : reprise automatique').toBe('active');
     expect(resumed.pause_reason).toBeNull();
@@ -1142,10 +1138,9 @@ test.describe('@critical Recette : arrêt aux moments limites', () => {
     };
     const a = await seedWaiting(org.owner.userId, accountId);
     const b = await seedWaiting(colleague.user.userId, colleague.accountId);
-    const accepted = (acc: string, profileId: string) => webhook({
-      event: 'new_relation', account_id: acc, account_type: 'LINKEDIN',
-      user_provider_id: profileId, user_full_name: 'Camille Martin', user_public_identifier: `camille-${rand()}`,
-    });
+    const accepted = (acc: string, profileId: string) => webhook(v2.relationNew({
+      accountId: acc, userId: profileId, name: 'Camille Martin', slug: `camille-${rand()}`,
+    }));
 
     const stopped = await stop(token, org.orgId, [a.enrollmentId, b.enrollmentId]);
     expect(stopped.counts.stopped).toBe(2);

@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useMemberLinkedInAccounts } from '@/hooks/useMemberLinkedInAccounts';
-import { classifyLinkedInStatus, type LinkedInHealth } from '@/lib/linkedinStatus';
+import { toastStepFor, type ToastMemory } from '@/components/connections/disconnectToast';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -51,7 +51,7 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
   const prevUserIdRef = React.useRef<string | null>(null);
 
   /**
-   * @param includeOrgAccounts si true, retourne aussi les comptes Unipile org
+   * @param includeOrgAccounts si true, retourne aussi les comptes de l'organisation
    * non encore mappés à un user (utile pour le claim manuel après webhook foiré)
    */
   const reload = useCallback(async (includeOrgAccounts = false) => {
@@ -133,31 +133,31 @@ export const LinkedInAccountsProvider: React.FC<{ children: React.ReactNode }> =
   // ─── Alerte de déconnexion : le compte de l'utilisateur courant seulement ─────
   // Avant, chaque membre recevait celle des comptes de ses collègues (et des
   // orphelins listés en mode revendication), et UNKNOWN, STOPPED ou
-  // PERMISSIONS passaient pour une panne dès la sortie de OK.
+  // PERMISSIONS passaient pour une panne dès la sortie de OK. Une connexion
+  // limitée (DEGRADED) se rétablit seule : pas d'alerte ; une connexion partielle
+  // (PARTIAL) a la sienne, avec « Reconnecter » ; un compte restreint (LOCKED) en a
+  // une aussi, sans « Reconnecter ». La décision vient de toastStepFor, qui lit
+  // la cause comme les cartes et ignore une entrée que le serveur n'a pas pu lire
+  // (`unverified`) : elle ne lève rien et ne remplace pas l'état retenu.
   const { getUserLinkedAccountId } = useMemberLinkedInAccounts();
   const myAccountId = user?.id ? getUserLinkedAccountId(user.id) : null;
-  const prevHealthRef = useRef<{ accountId: string; health: LinkedInHealth } | null>(null);
+  const prevHealthRef = useRef<ToastMemory | null>(null);
   const navigate = useNavigate();
   useEffect(() => {
     const acc = myAccountId ? accounts.find(a => a.id === myAccountId) : undefined;
     if (!acc) return;
-    const health = classifyLinkedInStatus(acc.status);
-    const prev = prevHealthRef.current;
-    prevHealthRef.current = { accountId: acc.id, health };
-    if (prev?.accountId !== acc.id) return; // premier passage pour ce compte : pas d'alerte
-    if (prev.health === 'connected' && health === 'needs_reconnect') {
-      const isCredentials = (acc.status || '').trim().toUpperCase() === 'CREDENTIALS';
-      toast.error(`${acc.name || 'Compte LinkedIn'} déconnecté`, {
-        description: isCredentials
-          ? 'Les identifiants ne sont plus valides. Reconnectez le compte.'
-          : 'Le compte ne répond plus. Vérifiez sa configuration.',
-        duration: 12000,
-        action: {
-          label: 'Reconnecter',
-          onClick: () => navigate('/settings/account/connections'),
-        },
-      });
-    }
+    const step = toastStepFor(prevHealthRef.current, acc);
+    prevHealthRef.current = step.memory;
+    const alert = step.toast;
+    if (!alert) return;
+    toast.error(alert.title, {
+      description: alert.description,
+      duration: 12000,
+      action: {
+        label: alert.actionLabel,
+        onClick: () => navigate('/settings/account/connections'),
+      },
+    });
   }, [accounts, myAccountId, navigate]);
 
   const contextValue = useMemo(() => ({

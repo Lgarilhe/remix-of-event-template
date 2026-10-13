@@ -102,8 +102,10 @@ export function isEmailStep(step?: { action_type?: unknown; step_channel?: unkno
  * CONNECTED, sans tenir compte de la casse. EXACTEMENT la règle de
  * sequence-send-email (isUsableMailboxStatus) et de l'écran Connexions
  * (isUsableEmailAccountStatus) : tout autre état (CREDENTIALS, ERROR, STOPPED,
- * CONNECTING, PAUSED…) est à reconnecter. Avant, le moteur ne bloquait que
- * quatre états et laissait sequence-send-email refuser les autres (SEQ-067).
+ * CONNECTING, PAUSED…) est à reconnecter, sauf DEGRADED, PARTIAL et LOCKED
+ * (isMailboxLimited : à reporter, pas à reconnecter). Avant, le moteur ne
+ * bloquait que quatre états et laissait sequence-send-email refuser les
+ * autres (SEQ-067).
  */
 export function isUsableMailboxStatus(status: unknown): boolean {
   if (typeof status !== 'string' || !status.trim()) return true;
@@ -111,9 +113,23 @@ export function isUsableMailboxStatus(status: unknown): boolean {
   return normalized === 'OK' || normalized === 'CONNECTED';
 }
 
-/** Boîte à reconnecter avant tout envoi : négation de isUsableMailboxStatus. */
+/**
+ * Boîte limitée par le fournisseur (DEGRADED, PARTIAL, LOCKED) : rien ne part
+ * pour le moment, mais il n'y a rien à reconnecter. L'étape est reportée, sans
+ * pause de l'inscription ni échec (isSendable du client partagé).
+ */
+export function isMailboxLimited(status: unknown): boolean {
+  if (typeof status !== 'string') return false;
+  const normalized = status.trim().toUpperCase();
+  return normalized === 'DEGRADED' || normalized === 'PARTIAL' || normalized === 'LOCKED';
+}
+
+/**
+ * Boîte à reconnecter avant tout envoi : ni utilisable (isUsableMailboxStatus)
+ * ni limitée (isMailboxLimited).
+ */
 export function isMailboxDisconnected(status: unknown): boolean {
-  return !isUsableMailboxStatus(status);
+  return !isUsableMailboxStatus(status) && !isMailboxLimited(status);
 }
 
 export type EmailStepSender =

@@ -2,11 +2,25 @@ import { useCallback, useRef, useState } from 'react';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 
 /**
+ * Où lire la photo d'un interlocuteur : la conversation (et son compte) d'abord,
+ * sinon la personne elle-même (`attendeeId` est son identifiant LinkedIn).
+ */
+export interface AttendeePictureSource {
+  chatId?: string | null;
+  accountId?: string | null;
+}
+
+export interface AttendeePictureRequest extends AttendeePictureSource {
+  attendeeId: string;
+}
+
+/**
  * Hook managing a session-level cache for attendee profile pictures.
- * Fetches pictures lazily from the get_attendee_picture edge function action.
+ * Fetches pictures lazily from the get_attendee_picture edge function action,
+ * which answers an address (picture_url), never the image itself.
  */
 export function useAttendeePictures(organizationId: string | null) {
-  // Cache: attendeeId -> url string | null (null = not found / error)
+  // Cache: attendeeId -> url string | null (null = photo non disponible, réponse du serveur)
   const cacheRef = useRef<Map<string, string | null>>(new Map());
   // Pending fetches to avoid duplicate requests
   const pendingRef = useRef<Set<string>>(new Set());
@@ -22,7 +36,7 @@ export function useAttendeePictures(organizationId: string | null) {
   );
 
   const fetchPicture = useCallback(
-    async (attendeeId: string): Promise<string | null> => {
+    async (attendeeId: string, source: AttendeePictureSource = {}): Promise<string | null> => {
       // Already cached
       if (cacheRef.current.has(attendeeId)) {
         return cacheRef.current.get(attendeeId) ?? null;
@@ -34,22 +48,24 @@ export function useAttendeePictures(organizationId: string | null) {
       pendingRef.current.add(attendeeId);
 
       try {
-        const { data } = await invokeEdgeFunction<{
-          data_url?: string;
+        const { data, error } = await invokeEdgeFunction<{
           picture_url?: string;
         }>('unipile-accounts', {
           action: 'get_attendee_picture',
-          attendee_id: attendeeId,
+          user_id: attendeeId,
+          ...(source.chatId ? { chat_id: source.chatId } : {}),
+          ...(source.accountId ? { account_id: source.accountId } : {}),
           organization_id: organizationId,
         });
 
-        const url = data?.data_url || data?.picture_url || null;
+        // Panne passagère (réseau, délai, 429, 5xx) : rien n'est mémorisé, la photo sera redemandée.
+        // Seule une réponse du serveur (photo trouvée, ou « Photo non disponible ») est gardée.
+        if (error && (error.status === undefined || error.status === 429 || error.status >= 500)) return null;
+        const url = data?.success ? data.picture_url || null : null;
         cacheRef.current.set(attendeeId, url);
         bump();
         return url;
       } catch {
-        cacheRef.current.set(attendeeId, null);
-        bump();
         return null;
       } finally {
         pendingRef.current.delete(attendeeId);
@@ -59,9 +75,9 @@ export function useAttendeePictures(organizationId: string | null) {
   );
 
   const preloadPictures = useCallback(
-    (attendeeIds: string[]) => {
-      const toFetch = attendeeIds.filter(
-        (id) => !cacheRef.current.has(id) && !pendingRef.current.has(id)
+    (requests: AttendeePictureRequest[]) => {
+      const toFetch = requests.filter(
+        (r) => !cacheRef.current.has(r.attendeeId) && !pendingRef.current.has(r.attendeeId)
       );
       if (toFetch.length === 0) return;
 
@@ -71,7 +87,7 @@ export function useAttendeePictures(organizationId: string | null) {
         const batch = toFetch.slice(idx, idx + 3);
         if (batch.length === 0) return;
         idx += 3;
-        Promise.all(batch.map((id) => fetchPicture(id))).then(next);
+        Promise.all(batch.map((r) => fetchPicture(r.attendeeId, r))).then(next);
       };
       next();
     },

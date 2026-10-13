@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { bootHandler } from './unipile-search-harness.mjs';
 
 const root = new URL('../../', import.meta.url);
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -31,10 +32,15 @@ const scoring = compile('supabase/functions/_shared/scoring-context.ts');
 const experience = compile('supabase/functions/_shared/profile-experience.ts');
 const profileData = compile('supabase/functions/_shared/profile-data.ts', experience);
 const models = compile('supabase/functions/_shared/ai-config.ts');
+// Petits modules du client partagé du prestataire, compilés tels quels : identifiants, états, erreurs.
+const unipileErrors = compile('supabase/functions/_shared/unipile/errors.ts');
+const unipileIds = compile('supabase/functions/_shared/unipile/ids.ts', unipileErrors);
+const unipileStatus = compile('supabase/functions/_shared/unipile/status.ts');
 const stableKey = value => JSON.stringify(value, (_key, next) => next && typeof next === 'object' && !Array.isArray(next)
   ? Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b))) : next);
 const slug = value => { try { return new URL(value).pathname.match(/\/in\/([^/]+)/)?.[1]?.toLowerCase() ?? null; } catch { return null; } };
-const imports = { ...filter, ...profileData, ...models, ...experience, SOURCING_SCORING_ENGINE_VERSION: scoring.SOURCING_SCORING_ENGINE_VERSION, stableScoringContextKey: stableKey, linkedInProfileSlug: slug };
+const imports = { ...filter, ...profileData, ...models, ...experience, errorKindOf: unipileErrors.errorKindOf,
+  describeForLog: unipileErrors.describeForLog, isV2AccountId: unipileIds.isV2AccountId, mapAccountStatus: unipileStatus.mapAccountStatus, SOURCING_SCORING_ENGINE_VERSION: scoring.SOURCING_SCORING_ENGINE_VERSION, stableScoringContextKey: stableKey, linkedInProfileSlug: slug };
 const shared = compile('supabase/functions/_shared/continuous-sourcing.ts', imports);
 const now = Date.parse('2026-10-08T20:00:00.000Z');
 const organizationId = '11111111-1111-4111-8111-111111111111';
@@ -179,7 +185,7 @@ test('the fifth calibration score requires a human review instead of autonomous 
   assert.equal(h.calls.checkpoints.at(-1).last_reason, 'CALIBRATION_REQUIRED');
 });
 test('LinkedIn details are prepared in their own durable phase before scoring', async () => {
-  const h = harness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' }, candidates: [candidate('ready')] });
+  const h = harness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' }, candidates: [candidate('ready')] });
   assert.equal((await h.run()).phase, 'prepare');
   assert.equal(h.calls.prepare, 1);
   assert.equal(h.calls.evaluate + h.calls.reserve, 0);
@@ -187,7 +193,7 @@ test('LinkedIn details are prepared in their own durable phase before scoring', 
   assert.equal(h.calls.writes[0].patch.provenance.profile_prepared_at, new Date(now).toISOString());
 });
 test('a different identity returned by a profile lookup is never saved or scored', async () => {
-  const h = harness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'classic' },
+  const h = harness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'classic' },
     candidates: [candidate('ready')], prepared: profile('different-person') });
   assert.equal((await h.run()).reason, 'PROFILE_IDENTITY_CHANGED');
   assert.equal(h.calls.writes.length + h.calls.evaluate, 0);
@@ -254,7 +260,7 @@ test('context fingerprints include the entire brief, filters, source, model and 
 });
 
 async function adapterHarness(options = {}) {
-  const calls = { queries: [], requests: [], rpc: [], quotas: [], creditChecks: 0 };
+  const calls = { queries: [], requests: [], rpc: [], quotas: [], creditChecks: 0, providerReads: [] };
   const mission = { id: projectId, organization_id: organizationId, created_by: userId, kind: 'mission', status: 'active',
     name: 'Engineer', job_details: { title: 'Engineer', skills_must_have: ['Go'] }, filters_snapshot: options.filtersSnapshot || { keywords: 'Go' } };
   const current = agent({ lease_until: new Date(Date.now() + 300_000).toISOString(), ...options.agent });
@@ -262,7 +268,7 @@ async function adapterHarness(options = {}) {
     from(table) {
       const call = { table, filters: {} }; calls.queries.push(call);
       const data = () => table === 'sourcing_agents' ? current : table === 'sourcing_projects' ? mission :
-        table === 'organization_members' ? { role: 'owner' } : table === 'member_linkedin_accounts' ? [{ linkedin_account_id: 'own-account' }] :
+        table === 'organization_members' ? { role: 'owner' } : table === 'member_linkedin_accounts' ? [{ linkedin_account_id: options.accountRowId || 'acc_own' }] :
           table === 'job_candidate_status' ? [{ id: '55555555-5555-4555-8555-555555555555', created_at: '2026-10-08T18:00:00.000000+00:00', candidate_id: 'pool-person', candidate_name: 'Alice',
             linkedin_profile_url: profile('pool-person').profile_url, linkedin_profile_data: { ...profile('pool-person'), no_ai_scoring: options.sourceNoAi === true } }] : [];
       const query = { select(fields) { call.fields = fields; return query; }, eq(key, value) { call.filters[key] = value; return query; },
@@ -279,7 +285,11 @@ async function adapterHarness(options = {}) {
     loadSourcingMemoryContext: async (_admin, input) => ({ versionKey: input.effect + '-v' + (options.memoryRevision || 1),
       provenance: input.effect === 'search' && options.searchMemory ? [{ id: 'confirmed-rule', version: 2 }] : [] }),
     getSubscriptionGate: async () => ({ effectivePlanId: 'pro', seatCount: 1, seatLimit: 2, status: 'active' }),
-    resolveUnipileCredentials: async () => ({ dsn: 'https://provider.test', apiKey: 'fake-provider-key' }),
+    // Le prestataire (API v2) : l'état du compte puis ses contrats, sans réseau.
+    getAccount: async id => { calls.providerReads.push('account:' + id);
+      return { id, provider: 'linkedin', name: 'Mon compte', status: options.accountStatus || 'running', is_locked: false }; },
+    listContracts: async id => { calls.providerReads.push('contracts:' + id);
+      return options.contracts || [{ id: 'contract-a', product: 'recruiter', name: 'Recruiter', selected: true }]; },
     getUserQuotas: async () => ({ timezone: 'Europe/Paris', business_hours_start: 9, business_hours_end: 18 }),
     isWithinBusinessHours: () => options.withinHours !== false,
     nextBusinessHoursStart: () => '2026-10-09T07:00:00.000Z',
@@ -287,8 +297,6 @@ async function adapterHarness(options = {}) {
     assertCredits: async () => { calls.creditChecks++; return { ok: options.creditOk !== false, remaining: options.balance === undefined ? 100 : options.balance }; },
     isCandidateErasedForOrg: async () => options.erased === true,
     fetch: async (url, init) => {
-      if (url.startsWith('https://provider.test/')) return new Response(JSON.stringify({ id: 'own-account', type: 'LINKEDIN',
-        sources: [{ status: 'OK' }], connection_params: { im: { premiumFeatures: options.features || ['recruiter'] } } }));
       const body = JSON.parse(init.body); calls.requests.push({ url, body });
       if (url.endsWith('/unipile-search')) return new Response(JSON.stringify({ success: true,
         profile: profile(options.returnedPerson || 'ready'), results: options.searchProfiles || [profile('new')], cursor: options.searchCursor ?? null }));
@@ -313,17 +321,17 @@ test('personal pool queries remain actor/org scoped even when the actor is an ow
 });
 test('LinkedIn search gates actual hours and auto quotas before any search call', async () => {
   for (const options of [{ withinHours: false, expected: 'OUTSIDE_HOURS' }, { quota: false, expected: 'QUOTA_REACHED' }]) {
-    const h = await adapterHarness({ ...options, agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' } });
+    const h = await adapterHarness({ ...options, agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' } });
     await assert.rejects(h.deps.discover(h.current, 5), error => error.code === options.expected);
     assert.equal(h.calls.requests.length, 0);
   }
 });
 test('LinkedIn search uses only the saved source account and accounts quota in auto mode', async () => {
-  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' } });
+  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' } });
   await h.deps.discover(h.current, 5);
   assert.equal(h.calls.quotas[0].mode, 'auto');
   assert.equal(h.calls.quotas[0].actionType, 'search');
-  assert.equal(h.calls.requests[0].body.account_id, 'own-account');
+  assert.equal(h.calls.requests[0].body.account_id, 'acc_own');
   assert.equal(h.calls.requests[0].body.organization_id, organizationId);
   assert.equal(h.calls.requests[0].body.api, 'recruiter');
   assert.equal(h.calls.requests[0].body.keywords, 'Go');
@@ -343,7 +351,7 @@ test('the worker applies calculated experience bounds while preserving incomplet
     { keywords: 'Go', last_manual_edit: '2026-10-09', calculated_experience_min: 3, calculated_experience_max: 8 },
     { keywords: 'Go', skills_keywords: [], years_of_experience_min: 3, years_of_experience_max: 8 },
   ]) {
-    const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' },
+    const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' },
       filtersSnapshot, searchProfiles: profiles, searchCursor: 'page-two' });
     const result = await h.deps.discover(h.current, 10);
     assert.deepEqual(plain(result.profiles.map(profile => profile.id)), ['fit', 'summary', 'education-only', 'unknown']);
@@ -356,7 +364,7 @@ test('the worker applies calculated experience bounds while preserving incomplet
 });
 
 test('a page entirely filtered by calculated experience does not exhaust a provider search with a next page', async () => {
-  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' },
+  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' },
     filtersSnapshot: { keywords: 'Go', last_manual_edit: '2026-10-09', calculated_experience_max: 5 },
     searchProfiles: [{ ...profile('long'), work_experience: [{ start: { year: 2000, month: 1 }, current: true }] }],
     searchCursor: 'next-page' });
@@ -367,7 +375,7 @@ test('a page entirely filtered by calculated experience does not exhaust a provi
 });
 
 test('an engine update invalidates a previous agent context before a provider operation', async () => {
-  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' } });
+  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' } });
   assert.equal(h.current.context_snapshot.scoring_engine_version, 'sourcing-v3');
   const previousInputs = { ...h.current.context_snapshot };
   delete previousInputs.context_key;
@@ -381,13 +389,13 @@ test('an engine update invalidates a previous agent context before a provider op
 });
 
 test('a pause after quota reservation still prevents the outbound LinkedIn operation', async () => {
-  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'classic' },
+  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'classic' },
     afterQuota: current => { current.status = 'paused'; } });
   await assert.rejects(h.deps.discover(h.current, 5), error => error.code === 'LEASE_LOST');
   assert.equal(h.calls.requests.length, 0);
 });
 test('preparation uses a separately gated profile visit and rejects identity substitution', async () => {
-  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'classic' }, returnedPerson: 'different' });
+  const h = await adapterHarness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'classic' }, returnedPerson: 'different' });
   await assert.rejects(h.deps.prepare(h.current, candidate('ready')), error => error.code === 'PROFILE_IDENTITY_CHANGED');
   assert.equal(h.calls.quotas[0].actionType, 'profile_view');
   assert.equal(h.calls.quotas[0].mode, 'auto');
@@ -417,10 +425,23 @@ test('stored profile scoring can work outside LinkedIn hours and carries the fen
   assert.equal(body.continuous_context_key, h.current.context_snapshot.context_key);
   assert.equal(body.expected_memory_version_key, 'scoring-v1');
 });
-test('Recruiter Lite metadata never grants the full Recruiter search API', async () => {
-  const h = await adapterHarness({ features: ['recruiter_lite'], agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' } });
+test('a Recruiter Lite contract never grants the full Recruiter search API', async () => {
+  const h = await adapterHarness({ contracts: [{ id: 'contract-a', product: 'recruiter', name: 'Recruiter Lite', selected: true }], agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' } });
   await assert.rejects(h.deps.eligibility(h.current, async () => {}), error => error.code === 'LICENSE_UNAVAILABLE');
   assert.equal(h.calls.requests.length, 0);
+});
+test('an agent saved with an outdated account identifier asks for a reconnection, without any provider read', async () => {
+  const h = await adapterHarness({ accountRowId: 'old-identifier', agent: { source: 'linkedin', account_id: 'old-identifier', api: 'classic' } });
+  await assert.rejects(h.deps.eligibility(h.current, async () => {}), error => error.code === 'ACCOUNT_RECONNECT');
+  assert.deepEqual(h.calls.providerReads, []);
+});
+test('a revoked or locked LinkedIn account blocks the agent, one that runs reads its contracts once', async () => {
+  const blocked = await adapterHarness({ accountStatus: 'disconnected', agent: { source: 'linkedin', account_id: 'acc_own', api: 'classic' } });
+  await assert.rejects(blocked.deps.eligibility(blocked.current, async () => {}), error => error.code === 'ACCOUNT_RECONNECT');
+  assert.deepEqual(blocked.calls.providerReads, ['account:acc_own']);
+  const running = await adapterHarness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' } });
+  await running.deps.eligibility(running.current, async () => {});
+  assert.deepEqual(running.calls.providerReads, ['account:acc_own', 'contracts:acc_own']);
 });
 test('a verified erasure or explicit no-AI flag prevents scoring consent', async () => {
   const h = await adapterHarness({ erased: true });
@@ -430,7 +451,7 @@ test('a verified erasure or explicit no-AI flag prevents scoring consent', async
 test('a daily profile or credit cap prevents LinkedIn discovery and profile visits before they consume quotas', async () => {
   for (const limits of [{ profiles_used: 20 }, { credits_used: 95 }]) {
     for (const candidates of [[], [candidate('ready')]]) {
-      const h = harness({ agent: { source: 'linkedin', account_id: 'own-account', api: 'classic', ...limits }, candidates });
+      const h = harness({ agent: { source: 'linkedin', account_id: 'acc_own', api: 'classic', ...limits }, candidates });
       assert.equal((await h.run()).phase, 'budget');
       assert.equal(h.calls.discover + h.calls.prepare + h.calls.evaluate + h.calls.reserve, 0);
     }
@@ -544,7 +565,7 @@ async function controlHarness(options = {}) {
     },
   };
   let handler;
-  compile('supabase/functions/sourcing-agent/index.ts', { ...shared,
+  compile('supabase/functions/sourcing-agent/index.ts', { ...shared, isV2AccountId: unipileIds.isV2AccountId,
     estimateCredits: options.estimatedQuote === undefined ? models.estimateCredits : () => options.estimatedQuote,
     createClient: () => admin,
     requireAuth: async () => ({ userId: options.serviceRole ? null : userId }),
@@ -552,7 +573,7 @@ async function controlHarness(options = {}) {
     loadContinuousContext: async (...args) => { calls.contextReads++; if (options.contextReadError) throw new Error('Memory RPC unavailable'); return contextFor(...args); },
     readOwnAgentAccounts: async () => { calls.accountReads++; if (options.accountReadError) throw new Error('Provider unavailable');
       if (options.accountNeverResponds) return new Promise(() => {});
-      return [{ id: 'own-account', name: 'Mon compte', apis: ['classic'], status: 'OK' }]; },
+      return [{ id: options.ownAccountId || 'acc_own', name: 'Mon compte', apis: ['classic'], status: 'OK' }]; },
     requireAgentPlan: async () => { if (options.planBlocked) throw new shared.ContinuousError('PLAN_REQUIRED', 'Abonnement requis.', 403); },
     Deno: { env: { get: () => 'local-only-fake' }, serve: fn => { handler = fn; } },
   });
@@ -601,6 +622,15 @@ test('mutations reject a stale revision and calibration requires the viewed comp
   assert.equal((await h.request({ action: 'pause', expected_revision: 1 })).body.error_code, 'REVISION_CONFLICT');
   assert.equal((await h.request({ action: 'start_calibration', expected_revision: 2, expected_context_key: 'old' })).body.error_code, 'CONTEXT_CHANGED');
   assert.equal(h.calls.rpc.filter(call => call.name === 'mutate_sourcing_agent').length, 0);
+});
+test('configure refuses an account identifier from before the move to the current connection service', async () => {
+  const h = await controlHarness({ ownAccountId: 'old-identifier' });
+  const outdated = await h.request({ action: 'configure', expected_revision: 2, source: 'linkedin', api: 'classic', account_id: 'old-identifier' });
+  assert.equal(outdated.status, 409);
+  assert.equal(outdated.body.error_code, 'ACCOUNT_RECONNECT');
+  assert.equal(h.calls.rpc.filter(call => call.name === 'mutate_sourcing_agent').length, 0);
+  const current = controlHarness();
+  assert.equal((await (await current).request({ action: 'configure', expected_revision: 2, source: 'linkedin', api: 'classic', account_id: 'acc_own' })).status, 200);
 });
 test('a forged LinkedIn account or unsupported model is refused on configure', async () => {
   const h = await controlHarness();
@@ -656,16 +686,15 @@ test('review uses the suggestion UUID, a five-character human reason and actor r
   assert.equal(call.args.p_expected_revision, 2);
 });
 
-function linkedinHandlerHarness(options = {}) {
+async function linkedinHandlerHarness(options = {}) {
   const calls = { requests: [], rpc: [], quota: [] };
-  const saved = agent({ source: 'linkedin', account_id: 'own-account', api: 'classic' });
+  const saved = agent({ source: 'linkedin', account_id: 'acc_own', api: 'classic' });
   const admin = {
     auth: { getUser: async () => ({ data: { user: { id: userId } }, error: null }) },
     from(table) {
-      const value = () => table === 'organization_integrations' ? { unipile_connected: true,
-        unipile_api_key: 'fake-unipile-key', unipile_dsn: 'provider.test' } : table === 'member_linkedin_accounts'
-        ? [{ linkedin_account_id: 'own-account' }] : table === 'organization_members' ? { id: 'member-a' } : [];
-      const query = { select() { return query; }, eq() { return query; }, insert() { return query; },
+      const value = () => table === 'member_linkedin_accounts'
+        ? [{ id: 'link-a', user_id: userId }] : table === 'organization_members' ? { id: 'member-a' } : [];
+      const query = { select() { return query; }, eq() { return query; }, insert() { return query; }, limit() { return query; },
         single: async () => ({ data: value(), error: null }), maybeSingle: async () => ({ data: value(), error: null }),
         then(resolve, reject) { return Promise.resolve({ data: value(), error: null }).then(resolve, reject); } };
       return query;
@@ -678,41 +707,40 @@ function linkedinHandlerHarness(options = {}) {
       throw new Error('Unexpected LinkedIn RPC: ' + name);
     },
   };
-  let handler;
-  compile('supabase/functions/unipile-search/index.ts', {
-    ...boolean,
+  const h = await bootHandler({
+    env: { SUPABASE_URL: 'http://local.test', SB_SECRET_KEY: 'fake-service-key', SUPABASE_ANON_KEY: 'fake-anon-key', UNIPILE_V2_API_KEY: 'fake-provider-key' },
     createClient: () => admin,
     assertContinuousOperationContext: async () => {
       if (options.pauseDuringContext) options.leaseLost = true;
       if (options.contextChanged) throw new shared.ContinuousError('CONTEXT_CHANGED', 'Brief updated');
     },
     enforceLinkedInAction: async (_admin, gate) => { calls.quota.push(gate); return { allowed: options.quota !== false }; },
-    recordUsageSignal: async () => {}, parseUsagePct: () => null,
-    // Retry delays are virtual; no LinkedIn, sleeps or paid providers run in this suite.
-    setTimeout: (callback, milliseconds) => setTimeout(callback, milliseconds === 6000 || milliseconds === 15000 ? 0 : milliseconds),
-    fetch: async (url, init) => {
-      calls.requests.push({ url, body: init?.body ? JSON.parse(init.body) : null });
-      if (options.multipleSessions) return new Response(JSON.stringify({ type: 'multiple_sessions', detail: 'multiple sessions' }), { status: 502 });
-      return new Response(JSON.stringify(url.includes('/users/') ? profile('ready') : { items: [profile('ready')] }));
-    },
-    Deno: { env: { get: name => name === 'SUPABASE_URL' ? 'http://local.test' : name.includes('SERVICE_ROLE') || name === 'SB_SECRET_KEY'
-      ? 'fake-service-key' : 'fake-anon-key' }, serve: fn => { handler = fn; } },
   });
+  // Le prestataire (API v2, transport factice) : un profil par lecture, une page par recherche.
+  const provider = request => {
+    calls.requests.push({ method: request.method, path: request.path, query: Object.fromEntries(request.query),
+      body: request.body });
+    if (options.providerDown) return { status: 503, body: { detail: 'indisponible' } };
+    if (request.path.includes('/users/')) return { body: profile('ready') };
+    return { body: { data: [profile('ready')] } };
+  };
   return { calls, async request(action, patch = {}) {
-    const body = { action, account_id: 'own-account', organization_id: organizationId, api: 'classic', keywords: 'Go',
+    const body = { action, account_id: 'acc_own', organization_id: organizationId, api: 'classic', keywords: 'Go',
       profile_id: 'ready', continuous_agent_run: !options.manual, continuous_agent_id: saved.id,
       continuous_lease_token: saved.lease_token, continuous_context_key: saved.context_snapshot.context_key,
       user_id: userId, ...patch };
-    const response = await handler(new Request('http://local.test/functions/v1/unipile-search', {
-      method: 'POST', headers: { Authorization: 'Bearer ' + (options.userJwt ? 'fake-user-jwt' : 'fake-service-key'), 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }));
-    return { status: response.status, body: await response.json() };
+    return h.withMockTransport(provider, async () => {
+      const response = await h.handler(new Request('http://local.test/functions/v1/unipile-search', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + (options.userJwt ? 'fake-user-jwt' : 'fake-service-key'), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }));
+      return { status: response.status, body: await response.json() };
+    });
   } };
 }
 test('the actual LinkedIn handler fences a stopped agent immediately before search and profile fetch', async () => {
   for (const action of ['search', 'get_profile']) {
-    const h = linkedinHandlerHarness({ leaseLost: true });
+    const h = await linkedinHandlerHarness({ leaseLost: true });
     const result = await h.request(action);
     assert.equal(result.status, 409);
     assert.equal(result.body.error_code, 'AGENT_LEASE_CHANGED');
@@ -720,32 +748,50 @@ test('the actual LinkedIn handler fences a stopped agent immediately before sear
   }
 });
 test('the actual LinkedIn handler allows only read actions for a continuous service request', async () => {
-  const h = linkedinHandlerHarness();
+  const h = await linkedinHandlerHarness();
   const result = await h.request('send_message', { chat_id: 'chat-a', text: 'Unwanted message' });
   assert.equal(result.status, 403);
   assert.equal(h.calls.requests.length, 0);
 });
 test('the actual profile handler preserves the working manual path and the fenced continuous path', async () => {
   for (const options of [{}, { manual: true, userJwt: true }]) {
-    const h = linkedinHandlerHarness(options);
+    const h = await linkedinHandlerHarness(options);
     const result = await h.request('get_profile');
     assert.equal(result.status, 200);
     assert.equal(result.body.profile.id, 'ready');
     assert.equal(h.calls.requests.length, 1);
-    assert.match(h.calls.requests[0].url, /\/users\/ready\?account_id=own-account$/);
+    assert.equal(h.calls.requests[0].method, 'GET');
+    assert.equal(h.calls.requests[0].path, '/acc_own/users/ready');
     assert.equal(h.calls.rpc.some(call => call.name === 'sourcing_agent_assert_lease'), !options.manual);
   }
 });
-test('continuous search makes one accounted provider attempt while manual search retains existing retries', async () => {
+test('continuous search makes one accounted provider attempt while manual search retains the client retries', async () => {
   for (const [manual, count] of [[false, 1], [true, 3]]) {
-    const h = linkedinHandlerHarness({ manual, multipleSessions: true });
+    const h = await linkedinHandlerHarness({ manual, providerDown: true });
     const result = await h.request('search');
     assert.equal(result.status, 502);
     assert.equal(h.calls.requests.length, count);
   }
 });
+test('a fenced profile read makes one accounted provider attempt while the manual read retains the client retries', async () => {
+  for (const [manual, count] of [[false, 1], [true, 3]]) {
+    const h = await linkedinHandlerHarness({ manual, userJwt: manual, providerDown: true });
+    const result = await h.request('get_profile');
+    assert.equal(result.status, 502);
+    assert.equal(h.calls.requests.length, count);
+    assert.equal(h.calls.rpc.filter(call => call.name === 'sourcing_agent_assert_lease').length, manual ? 0 : 2, 'une barrière, relue une fois');
+  }
+});
+test('a continuous search the licence cannot apply as reviewed stops before any provider call', async () => {
+  const h = await linkedinHandlerHarness();
+  const result = await h.request('search', { api: 'recruiter', location: [{ id: '1', priority: 'MUST_HAVE' }], location_within_area: 25 });
+  assert.equal(result.status, 422);
+  assert.equal(result.body.error_code, 'FILTERS_UNSUPPORTED');
+  assert.match(result.body.error, /Rayon autour du lieu/);
+  assert.equal(h.calls.requests.length, 0);
+});
 test('a JWT caller cannot forge the continuous flag to bypass the manual LinkedIn quota', async () => {
-  const h = linkedinHandlerHarness({ userJwt: true, quota: false });
+  const h = await linkedinHandlerHarness({ userJwt: true, quota: false });
   const result = await h.request('get_profile', { continuous_agent_run: true });
   assert.equal(result.status, 429);
   assert.equal(h.calls.requests.length, 0);
@@ -756,7 +802,7 @@ test('a JWT caller cannot forge the continuous flag to bypass the manual LinkedI
 test('search memories require saved filters from the same reviewed version before any LinkedIn work', async () => {
   for (const metadata of [undefined, { effect: 'search', versionKey: 'search-v0', provenance: [] }]) {
     const h = await adapterHarness({ searchMemory: true, filtersSnapshot: { keywords: 'Go', memory_context: metadata },
-      agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' } });
+      agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' } });
     await assert.rejects(h.deps.eligibility(h.current, async () => {}), error => error.code === 'FILTERS_MEMORY_STALE');
     assert.equal(h.calls.requests.length, 0);
     assert.equal(h.calls.queries.some(call => call.table === 'member_linkedin_accounts'), false, 'stale query is blocked even before account metadata lookup');
@@ -765,7 +811,7 @@ test('search memories require saved filters from the same reviewed version befor
 test('current filter memory provenance permits LinkedIn while personal pool needs no LinkedIn query', async () => {
   const matched = await adapterHarness({ searchMemory: true,
     filtersSnapshot: { keywords: 'Go', memory_context: { effect: 'search', versionKey: 'search-v1', provenance: [{ id: 'confirmed-rule' }] } },
-    agent: { source: 'linkedin', account_id: 'own-account', api: 'recruiter' } });
+    agent: { source: 'linkedin', account_id: 'acc_own', api: 'recruiter' } });
   await matched.deps.eligibility(matched.current, async () => {});
   const pool = await adapterHarness({ searchMemory: true });
   await pool.deps.eligibility(pool.current, async () => {});
@@ -777,7 +823,7 @@ test('removing a previously applied search rule also requires reviewing the old 
   error => error.code === 'FILTERS_MEMORY_STALE');
 });
 test('control API exposes outdated filter memories and refuses calibration until they are reviewed', async () => {
-  const h = await controlHarness({ searchMemory: true, agent: { source: 'linkedin', api: 'classic', account_id: 'own-account' } });
+  const h = await controlHarness({ searchMemory: true, agent: { source: 'linkedin', api: 'classic', account_id: 'acc_own' } });
   const opened = await h.request({ action: 'get' });
   assert.equal(opened.status, 200);
   assert.equal(opened.body.eligibility.allowed, false);
@@ -880,7 +926,7 @@ test('provider boundary context checks detect live brief, filter and memory edit
 });
 test('live context edits at the actual LinkedIn provider boundary block both search and profile visits', async () => {
   for (const action of ['search', 'get_profile']) {
-    const h = linkedinHandlerHarness({ contextChanged: true });
+    const h = await linkedinHandlerHarness({ contextChanged: true });
     const result = await h.request(action);
     assert.equal(result.status, 409);
     assert.equal(result.body.error_code, 'CONTEXT_CHANGED');
@@ -978,7 +1024,7 @@ test('all interrupted operations remain visible and blocking beyond the bounded 
 });
 test('a pause acknowledged during the final live-context read fences search and profile providers', async () => {
   for (const action of ['search', 'get_profile']) {
-    const h = linkedinHandlerHarness({ pauseDuringContext: true });
+    const h = await linkedinHandlerHarness({ pauseDuringContext: true });
     const response = await h.request(action);
     assert.equal(response.status, 409);
     assert.equal(response.body.error_code, 'AGENT_LEASE_CHANGED');

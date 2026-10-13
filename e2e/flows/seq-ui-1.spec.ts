@@ -133,8 +133,13 @@ async function openAs(browser: Browser, user: TestUser, accounts: MockAccount[],
           provider: 'LINKEDIN',
           type: 'LINKEDIN',
           name: a.name ?? 'Compte E2E',
+          subscriptions: { classic: true, recruiter: true, sales_navigator: false },
         })),
       });
+    }
+    if (fn === 'unipile-accounts' && body.action === 'list_contracts') {
+      // Licence active du compte (InMail groupé) : contrat Recruiter sélectionné.
+      return reply({ success: true, contracts: [{ id: 'contract-recruiter', name: 'Recruiter', product: 'recruiter', selected: true }] });
     }
     if (fn === 'unipile-accounts' && body.action === 'inmail_balance') {
       return reply({ success: true, balance: { premium: 0, recruiter: 100, sales_navigator: 0 } });

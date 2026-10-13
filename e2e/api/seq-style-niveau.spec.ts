@@ -60,6 +60,7 @@ import {
 import {
   ENGINE_SKIP_REASON,
   MOCK_URL,
+  PROVIDER_ENV,
   callFunction,
   engineAvailable,
   mockCalls,
@@ -292,6 +293,7 @@ function proposeLikeChat(orgId: string, user: TestUser, tool: string, params: Js
     input: JSON.stringify({ tool, params, userId: user.userId, organizationId: orgId, userBearer: null, modelId }),
     env: {
       ...process.env,
+      ...PROVIDER_ENV,
       SUPABASE_URL: E2E.supabaseUrl,
       SUPABASE_SERVICE_ROLE_KEY: E2E.serviceRoleKey,
       VENDOR_MOCK_URL: MOCK_URL,

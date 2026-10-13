@@ -80,14 +80,19 @@ test('SEQ-005 — un 5xx ou un délai du POST d’envoi ne déclenche ni second 
   assert.equal(rules.classifySendStatus(502), 'uncertain');
   assert.equal(rules.classifySendStatus(429), 'rate_limited');
 
-  // La nouvelle conversation n'est tentée que derrière allowsNewChatFallback.
-  assert.match(executeStep, /if \(r && !r\.ok && rules\.allowsNewChatFallback\(r\.status\)\)/);
-  assert.doesNotMatch(executeStep, /if \(!r\.ok\) \{\s*console\.warn\(`\[executeStepAction\] Send to existing chat/, 'ancien repli inconditionnel');
-  assert.match(executeStep, /rules\.classifySendStatus\(status\) === 'uncertain'[\s\S]{0,120}rules\.sendUncertainError\('LinkedIn'\)/);
+  // API v2 : la nouvelle conversation n'est tentée que pour un refus (jamais une issue
+  // incertaine), de la famille d'une conversation inutilisable, derrière allowsNewChatFallback.
+  assert.match(executeStep, /outcome\.outcome === 'refused' && CHAT_FALLBACK_KINDS\.includes\(outcome\.kind\)\s*&& outcome\.error\.status !== null && rules\.allowsNewChatFallback\(outcome\.error\.status\)/);
+  assert.match(sequences, /const CHAT_FALLBACK_KINDS: readonly ErrorKind\[\] = \['validation', 'not_found', 'forbidden'\];/);
+  // Un envoi d'issue inconnue ne part jamais deux fois et n'est jamais compté envoyé.
+  const failed = sliceBetween(sequences, 'function failedSendResult(', '\n}\n');
+  assert.match(failed, /if \(outcome\.outcome === 'uncertain'\) \{[\s\S]*?sendUncertainError\(channel\)[\s\S]*?errorKind: 'uncertain'/);
+  assert.match(executeStep, /if \(outcome\.outcome !== 'sent'\) return failedSendResult\(outcome, 'LinkedIn', needsInMail\);/);
 
-  // isRetryableError refuse toute erreur « send_uncertain ».
+  // isRetryableError refuse toute erreur « send_uncertain », et la famille « uncertain ».
   const retryable = sliceBetween(sequences, 'function isRetryableError(', '\n}\n');
   assert.match(retryable, /if \(e\.includes\('send_uncertain'\)\) return false;/);
+  assert.match(retryable, /if \(kind\) return kind === 'server' \|\| kind === 'network' \|\| kind === 'auth' \|\| kind === 'config';/);
   const err = rules.sendUncertainError('LinkedIn');
   assert.ok(rules.isSendUncertain(err));
   assert.doesNotMatch(err, /\b5\d\d\b|429/, 'un code HTTP rendrait l’erreur relançable');
@@ -103,10 +108,11 @@ test('SEQ-011 — file InMail : compte exigé dans l’organisation de l’item 
   assert.ok(claimAt > failAt, 'le contrôle doit précéder le claim');
   assert.match(loop, /status: "failed", error_message: ACCOUNT_NOT_IN_ORG_MESSAGE/);
   assert.match(inmailQueue, /const ACCOUNT_NOT_IN_ORG_MESSAGE = "Compte non rattaché à l'organisation";/);
-  // Statut du compte lu dans l'organisation de l'item, credentials de cette organisation.
+  // Statut du compte lu dans l'organisation de l'item. Le service de connexion est global
+  // (une clé côté serveur) : plus de credentials par organisation à résoudre.
   assert.match(loop, /\.eq\('organization_id', itemOrgId as string\)\s*\.eq\('linkedin_account_id', item\.account_id\)/);
-  assert.match(loop, /await getCredsFor\(itemOrgId as string\)/);
-  assert.doesNotMatch(inmailQueue, /getCredsFor\(item\.created_by\)/);
+  assert.match(loop, /if \(!isUnipileConfigured\(\)\)/);
+  assert.doesNotMatch(inmailQueue, /getCredsFor|resolveUnipileCredentials/);
 });
 
 // ---------------------------------------------------------------- SEQ-013 (critical)
@@ -169,9 +175,9 @@ test('SEQ-036 — invitation à une relation ou à un candidat déjà invité : 
   assert.equal(rules.inviteRejectionSkipReason(503, 'already invited'), null);
   const invite = sliceBetween(executeStep, "case 'connection_request': {", "default: return { success: false, error: '__SKIP_UNSUPPORTED__' };");
   const skipAt = invite.indexOf("skipReason: rules.ALREADY_CONNECTED_SKIP_REASON");
-  const postAt = invite.indexOf('/api/v1/users/invite');
+  const postAt = invite.indexOf('await sendRelationRequest(');
   assert.ok(skipAt > 0 && skipAt < postAt, 'le cas « déjà en relation » doit précéder l’invitation');
-  assert.match(invite, /const skipReason = rules\.inviteRejectionSkipReason\(r\.status, e\);/);
+  assert.match(invite, /const skipReason = rules\.inviteRejectionSkipReason\(refusal\.status \?\? 0, probeText\(refusal\.debug\.body\)\);/);
   // Profil introuvable : plus de pause muette de l'inscription (SEQ-121).
   assert.doesNotMatch(invite, /status: 'paused'/);
   assert.match(invite, /candidateError: true/);
@@ -239,7 +245,7 @@ test('SEQ-096 — la note d’invitation ne s’arrête jamais sur « Node. »',
   const cut = rules.smartTruncate(long, 300);
   assert.ok(cut.length <= 300);
   assert.doesNotMatch(cut, /Node\.$/);
-  assert.match(executeStep, /return \{ success: true, message: invitePayload\.message \};/);
+  assert.match(executeStep, /return \{ success: true, message: note \};/);
 });
 
 test('SEQ-103/126 — file InMail : 429 relancé, 5xx incertain, annulation sans liste = toute la file en attente', () => {

@@ -1,6 +1,6 @@
 // Gardes pures des contrôles de fond de process-sequences, vague finale de
 // l'audit séquences 2026-09-25 (lot E2) : expéditeur d'un message relu chez le
-// fournisseur, attente de connexion déjà satisfaite, lecture des attentes par
+// fournisseur (API v2 : `is_sender` toujours renseigné, les participants ne sont plus lus), attente de connexion déjà satisfaite, lecture des attentes par
 // pages et échéance d'une vérification de réponse. Sans accès base ni réseau.
 //
 //   deno test --no-check supabase/functions/_shared/sequence-wait-guards.test.ts
@@ -69,15 +69,6 @@ export function messageSender(m: ChatMessageLike, attendees: ChatAttendeeIdsLike
   // Candidat identifié parmi les participants, expéditeur hors de sa liste : nous.
   if (attendees.resolved && attendees.otherIds.size > 0) return 'self';
   return 'unknown';
-}
-
-/**
- * Faut-il lire les participants de la conversation ? Seulement si un message
- * postérieur à la date de référence n'a aucun indicateur d'expéditeur : un
- * message antérieur ne peut pas être une réponse.
- */
-export function needsAttendeeResolution(messages: ChatMessageLike[], afterTimestamp: number): boolean {
-  return messages.some((m) => messageTimeMs(m) > afterTimestamp && flaggedSender(m) === null);
 }
 
 /**

@@ -57,20 +57,28 @@ import {
   CRON_SECRET,
   ENGINE_SKIP_REASON,
   MOCK_URL,
+  PROVIDER_ENV,
+  callBody,
   callFunction,
   engineAvailable,
   enrollmentRow,
   executionsOf,
+  inviteNoteOf,
+  inviteTargetOf,
+  isNewChat,
   messageSequence,
   minutesFromNow,
   mockCalls,
   postJson,
   rand,
+  recipientOf,
+  routes,
   runCycle,
   runEngine,
   sendingOrg,
   sentInvites,
   setMockMode,
+  v2,
   webhook,
   type MockCall,
 } from '../helpers/sequence-engine';
@@ -297,8 +305,7 @@ async function eraseLinkedInUrl(url: string) {
 
 /** Nouvelles conversations ouvertes depuis ce compte vers ce destinataire. */
 async function newChatsTo(accountId: string, recipient: string): Promise<MockCall[]> {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'POST' && c.path === '/api/v1/chats'
-    && (c.body as Record<string, unknown>)?.attendees_ids === recipient);
+  return (await mockCalls(accountId)).filter((c) => isNewChat(c) && recipientOf(c) === recipient);
 }
 
 async function postsFrom(accountId: string): Promise<MockCall[]> {
@@ -306,27 +313,16 @@ async function postsFrom(accountId: string): Promise<MockCall[]> {
 }
 
 /**
- * Propriétaire d'une conversation scripté sur un compte du test. Le faux
- * prestataire range un appel sous un compte d'après account_id de la requête ;
- * GET /chats/{id} n'en porte pas et la clé '*' est interdite sur la stack
- * partagée. Des identifiants LinkedIn propres à l'organisation
- * (organization_integrations, lus par unipile-search) dont l'adresse finit par
- * « /api/v1/chats/<chat>?account_id=<compte>&suite= » amènent tous les appels
- * de cette organisation sur ce chemin, sous ce compte : GET /chats/<chat>
- * répond alors { account_id: <compte> }, et un envoi éventuel est journalisé
- * sous ce même compte (POST sur ce chemin).
+ * Conversation portée par un autre compte que ceux de l'appelant. Une conversation v2 n'a pas de compte
+ * propre : elle ne répond que sous le compte qui la porte (GET /v2/{acc}/chats/{id}), et l'assistant la
+ * cherche seulement dans les comptes reliés de l'appelant. Le faux prestataire répond 200 pour tout
+ * identifiant de conversation sur tout compte : on fait répondre « introuvable » au compte de l'appelant,
+ * la conversation reste donc lisible sur le seul compte du collègue (ou de l'autre organisation), qui
+ * garde sa réponse par défaut.
  */
-async function scriptChatOwner(orgId: string, chatId: string, ownerAccountId: string) {
-  const { error } = await admin().from('organization_integrations').upsert({
-    organization_id: orgId,
-    unipile_connected: true,
-    unipile_api_key: `e2e-${rand()}`,
-    unipile_dsn: `e2e-${rand()}.mock.test/api/v1/chats/${chatId}?account_id=${ownerAccountId}&suite=`,
-  }, { onConflict: 'organization_id' });
-  if (error) throw new Error(`organization_integrations: ${error.message}`);
-  await setMockMode(ownerAccountId, {
-    routes: [{ method: 'GET', path: `^/api/v1/chats/${chatId}$`, status: 200, body: { object: 'Chat', id: chatId, account_id: ownerAccountId } }],
-  });
+async function chatCarriedElsewhere(callerAccountId: string, chatId: string) {
+  await setMockMode(callerAccountId, { routes: [routes.fail('getChat', 'not_found', { path: `/chats/${chatId}$` })] });
+  cleanups.push(() => setMockMode(callerAccountId, {}));
 }
 
 async function actionLogCount(accountId: string): Promise<number> {
@@ -441,7 +437,7 @@ test.describe('@critical Assistant : send_linkedin_message', () => {
       track(org, colleague);
       const colleagueAccount = await seedLinkedInAccount(org.orgId, colleague.userId, `acc_${rand()}`, 'OK');
       const chatId = `chat_col_${rand()}`;
-      await scriptChatOwner(org.orgId, chatId, colleagueAccount);
+      await chatCarriedElsewhere(accountId, chatId);
       await openBusinessHours(org.orgId, org.owner.userId);
 
       const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
@@ -513,7 +509,7 @@ test.describe('@critical Assistant : send_linkedin_message', () => {
       track(other);
       const otherAccount = await seedLinkedInAccount(other.orgId, other.owner.userId, `acc_${rand()}`, 'OK');
       const chatId = `chat_b_${rand()}`;
-      await scriptChatOwner(org.orgId, chatId, otherAccount);
+      await chatCarriedElsewhere(accountId, chatId);
       await openBusinessHours(org.orgId, org.owner.userId);
 
       const id = await propose(org.orgId, org.owner.userId, 'send_linkedin_message', {
@@ -975,11 +971,11 @@ test.describe('Assistant : get_candidate_outreach', () => {
       const chatId = `chat_m_${rand()}`;
       await setMockMode(memberAccount, {
         routes: [
-          { method: 'GET', path: `^/api/v1/chat_attendees/${candidate}/chats$`, body: { object: 'ChatList', items: [{ id: chatId, account_id: memberAccount }], cursor: null } },
-          { method: 'GET', path: `^/api/v1/chats/${chatId}/messages$`, body: { object: 'MessageList', items: [
-            { id: 'm1', text: 'Conversation privée du collègue', is_sender: 1, timestamp: minutesFromNow(-60) },
-            { id: 'm2', text: 'Réponse du candidat au collègue', is_sender: 0, timestamp: minutesFromNow(-30) },
-          ], cursor: null } },
+          routes.chatLookup([chatId], { path: `/users/${candidate}/chat$` }),
+          routes.messages(chatId, [
+            { from: 'self', text: 'Conversation privée du collègue', at: minutesFromNow(-60) },
+            { from: 'candidate', text: 'Réponse du candidat au collègue', at: minutesFromNow(-30) },
+          ]),
         ],
       });
 
@@ -1110,8 +1106,12 @@ test.describe('Assistant : create_sequence', () => {
     test('séquence rédigée puis inscription par l’assistant : l’invitation (étape 0) est planifiée et part avec sa note au cycle où elle est due, sans variable brute', async () => {
       const { org, accountId } = await sendingOrg('E2E CS première étape');
       track(org);
-      // Candidat pas encore en relation : l'invitation part vraiment.
-      await setMockMode(accountId, { distance: 'SECOND_DEGREE' });
+      // Candidat pas encore en relation : l'invitation part vraiment. La lecture de son profil (par son adresse)
+      // rend son identifiant LinkedIn, comme le vrai service : l'invitation lui est adressée.
+      const candidate = newProfileId();
+      const candidateSlug = `marie-martin-${rand()}`;
+      await setMockMode(accountId, { routes: [routes.profile({ distance: 'SECOND_DEGREE', id: candidate, slug: candidateSlug })] });
+      cleanups.push(() => setMockMode(accountId, {}));
       const token = await tokenOf(org.owner);
       const mission = await seedMission(org.orgId, org.owner.userId);
       const created = await approve(token, await propose(org.orgId, org.owner.userId, 'create_sequence', csParams(mission)));
@@ -1121,10 +1121,9 @@ test.describe('Assistant : create_sequence', () => {
         [0, 'connection_request'], [1, 'wait_connection'], [2, 'message'], [3, 'message'], [4, 'message'],
       ]);
 
-      const candidate = newProfileId();
       const enrolled = await approve(token, await propose(org.orgId, org.owner.userId, 'enroll_in_sequence', {
         sequence_id: sequenceId, candidate_id: candidate, profile_name: 'Marie Martin', job_id: mission,
-        profile_url: `https://www.linkedin.com/in/marie-martin-${rand()}`,
+        profile_url: `https://www.linkedin.com/in/${candidateSlug}`,
       }));
       expect(enrolled.body.success, JSON.stringify(enrolled.body)).toBe(true);
       const enrollmentId = (enrolled.body.data as Record<string, unknown>).enrollment_id as string;
@@ -1138,9 +1137,9 @@ test.describe('Assistant : create_sequence', () => {
       await pullDue([enrollmentId]);
       await runCycle();
       expect((await executionsOf(enrollmentId))[0].status).toBe('sent');
-      const invites = (await sentInvites(accountId)).filter((c) => (c.body as Record<string, unknown>)?.provider_id === candidate);
+      const invites = (await sentInvites(accountId)).filter((c) => inviteTargetOf(c) === candidate);
       expect(invites).toHaveLength(1);
-      const note = String((invites[0].body as Record<string, unknown>).message ?? '');
+      const note = String(inviteNoteOf(invites[0]) ?? '');
       expect(note.startsWith('Bonjour')).toBe(true);
       expect(note).not.toMatch(/[{}]/);
     });
@@ -1198,11 +1197,10 @@ test.describe('Assistant : create_sequence', () => {
       }
 
       // Le candidat répond : inscription « répondue », plus rien en attente.
-      await webhook({
-        event: 'message_received', account_id: accountId, account_type: 'LINKEDIN',
-        chat_id: `chat_${rand()}`, message_id: `msg_${rand()}`, message: 'Bonjour, oui avec plaisir',
-        sender: { attendee_provider_id: answering.candidate, attendee_id: 'att_candidate', attendee_name: 'Marie Martin' },
-      });
+      await webhook(v2.messageNew({
+        accountId, chatId: `chat_${rand()}`, messageId: `msg_${rand()}`, senderId: answering.candidate,
+        text: 'Bonjour, oui avec plaisir', senderName: 'Marie Martin',
+      }));
       expect((await enrollmentRow(answering.enrollmentId)).status).toBe('replied');
       const answeringPending = (await executionsOf(answering.enrollmentId))
         .filter((e) => ['scheduled', 'waiting_event', 'quota_blocked'].includes(e.status));
@@ -1211,7 +1209,7 @@ test.describe('Assistant : create_sequence', () => {
       // Sans réponse : le délai passe, la relance part.
       await pullDue(ids);
       await runCycle();
-      const silentTexts = (await newChatsTo(accountId, silent.candidate)).map((c) => String((c.body as Record<string, unknown>).text));
+      const silentTexts = (await newChatsTo(accountId, silent.candidate)).map((c) => String(callBody(c).text));
       expect(silentTexts).toHaveLength(2);
       expect(silentTexts[1]).toContain('je reviens vers vous');
       expect(silentTexts[1]).not.toMatch(/[{}]/);
@@ -1263,6 +1261,7 @@ function proposeLikeChat(orgId: string, user: TestUser, tool: string, params: Re
     input: JSON.stringify({ tool, params, userId: user.userId, organizationId: orgId, userBearer: userBearer ?? null }),
     env: {
       ...process.env,
+      ...PROVIDER_ENV,
       SUPABASE_URL: E2E.supabaseUrl,
       SUPABASE_SERVICE_ROLE_KEY: E2E.serviceRoleKey,
       VENDOR_MOCK_URL: MOCK_URL,
@@ -1359,8 +1358,12 @@ test.describe('@critical Assistant : garde-fous d’envoi (lot 5a)', () => {
       const mission = await seedMission(org.orgId, org.owner.userId);
       const template = 'Bonjour {{prenom}}, votre rôle de {{poste_actuel}} chez {{entreprise_actuelle}} m’intéresse pour un poste de {{poste_recherche}}.';
       const { sequenceId } = await messageSequence(org, org.owner.userId, [template]);
-      const url = `https://www.linkedin.com/in/claire-dubois-${rand()}`;
+      const slug = `claire-dubois-${rand()}`;
+      const url = `https://www.linkedin.com/in/${slug}`;
       const candidate = await seedCandidate(org.orgId, org.owner.userId, { name: 'Claire Dubois', url, projectId: mission });
+      // La lecture du profil par son adresse rend l'identifiant LinkedIn du candidat, comme le vrai service.
+      await setMockMode(accountId, { routes: [routes.profile({ id: candidate, slug })] });
+      cleanups.push(() => setMockMode(accountId, {}));
       await admin().from('job_candidate_status').update({
         candidate_headline: 'Lead Developer chez Qonto',
         linkedin_profile_data: { work_experience: [{ company: 'Qonto', role: 'Lead Developer', current: true }] },
@@ -1396,7 +1399,7 @@ test.describe('@critical Assistant : garde-fous d’envoi (lot 5a)', () => {
       await runCycle();
       const sent = await newChatsTo(accountId, candidate);
       expect(sent).toHaveLength(1);
-      expect(String((sent[0].body as Record<string, unknown>).text)).toBe(expected);
+      expect(String(callBody(sent[0]).text)).toBe(expected);
     });
 
     test('candidat absent de la mission : aperçu construit avec son seul nom, sans refus nouveau', async () => {

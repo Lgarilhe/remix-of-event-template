@@ -18,11 +18,11 @@ export interface UserQuotaConfig {
   business_hours_end: number;
   max_actions_per_day: number;
   timezone: string;
-  /** Daily cap on profile views (get_profile). Unipile reco ≈100/j. */
+  /** Daily cap on profile views (get_profile). Recommended: about 100/day. */
   max_profile_visits_per_day: number;
   /** Daily cap on search calls. */
   max_searches_per_day: number;
-  /** Daily cap on InMails. Unipile reco 30–50/j. */
+  /** Daily cap on InMails. Recommended: 30 to 50/day. */
   max_inmails_per_day: number;
 }
 
@@ -120,7 +120,7 @@ async function getAccountRampFactor(admin: SupabaseClient, accountId: string): P
 }
 
 /**
- * Weekly invitation ceiling. LinkedIn's hard limit is ~200/week (Unipile docs);
+ * Weekly invitation ceiling. LinkedIn's hard limit is ~200/week;
  * we stay deliberately conservative at 100 (réduit par le palier de montée en
  * charge du compte). Shared so every send path agrees.
  */
@@ -371,7 +371,7 @@ export async function checkLinkedInQuota(
 // UNIFIED LEDGER GATE — single source of truth for ALL LinkedIn send paths
 // ============================================================================
 // process-sequences, process-inmail-queue, agent-tools-mutations and
-// unipile-search ALL funnel through enforceLinkedInAction so the daily/weekly
+// the LinkedIn search/send function ALL funnel through enforceLinkedInAction so the daily/weekly
 // caps are a real ceiling per LinkedIn account, regardless of origin.
 // Conformité LinkedIn warning #260513-007211.
 
@@ -435,7 +435,13 @@ export function quotaPauseUntilTomorrow(_timezone?: string): string {
   return new Date(Date.now() + 16 * 3600 * 1000).toISOString();
 }
 
-/** Extract the provider `usage` percentage from a Unipile response body, if present. */
+/**
+ * Extract the provider `usage` percentage from a response body, if present.
+ * Responses of the current API carry none, so this returns null: the daily and
+ * weekly caps come from the ledger (`linkedin_action_log`) and a provider limit
+ * error is recorded with `recordUsageSignal(…, 100)`. Kept so existing callers
+ * compile; remove it with them.
+ */
 export function parseUsagePct(body: unknown): number | null {
   if (!body || typeof body !== 'object') return null;
   const u = (body as Record<string, unknown>).usage;

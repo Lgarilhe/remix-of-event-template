@@ -87,8 +87,8 @@ test('envoi : les refus tombent dans l’ordre, tous avant l’appel au prestata
     'isCandidateErasedForOrg(',
     'from("suppressed_emails")',
     'from("member_email_accounts")',
-    'resolveUnipileCredentials(',
-    '/api/v1/emails',
+    'assertAccountOwnedByOrg(',
+    'sendEmail(',
     'from("candidate_notes")',
   ];
   const positions = order.map((needle) => indexOf(send, needle));
@@ -110,13 +110,17 @@ test('envoi : liste d’exclusion respectée, boîte de la personne qui envoie e
   assert.match(send, /NO_MAILBOX/);
 });
 
-test('envoi : appel au prestataire borné dans le temps, adresse d’hôte sans double préfixe, corps neutralisé', () => {
-  assert.match(send, /function fetchWithTimeout/);
-  assert.match(send, /fetchWithTimeout\(`\$\{baseDsn\}\/api\/v1\/emails`/);
-  assert.match(send, /creds\.dsn\.startsWith\("http"\) \? creds\.dsn : `https:\/\/\$\{creds\.dsn\}`/);
-  assert.match(send, /body: textToHtml\(payload\.body\)/);
-  assert.match(send, /account_id: sender\.email_account_id/);
-  assert.doesNotMatch(send, /https:\/\/\$\{creds\.dsn\}`\s*[,;]\s*\n.*\n.*https:\/\/\$\{creds\.dsn\}/);
+test('envoi : un seul envoi par le client partagé, sur la boîte de la personne, jamais repris', () => {
+  // La boîte est prouvée liée à cette personne avant l'envoi ; le client borne le délai et ne reprend jamais un envoi.
+  assert.match(send, /assertAccountOwnedByOrg\(adminClient, organizationId, sender\.email_account_id, \{ userId, kinds: \["email"\] \}\)/);
+  assert.match(send, /sendEmail\(\{\s*accountId: sender\.email_account_id,/);
+  assert.match(send, /to: \[\{ email: payload\.to_email, display_name: payload\.to_name \|\| payload\.to_email \}\]/);
+  assert.match(send, /html: textToHtml\(payload\.body\)/);
+  assert.doesNotMatch(send, /api\/v1|resolveUnipileCredentials|\.dsn|baseDsn|X-API-KEY|fetchWithTimeout|identifier:/);
+  // Un envoi incertain n'est ni donné pour parti ni noté : il a son propre code, avant la note.
+  assert.match(send, /outcome\.outcome === "uncertain"[\s\S]*SEND_UNCERTAIN/);
+  assert.ok(indexOf(send, 'SEND_UNCERTAIN') < indexOf(send, 'from("candidate_notes")'));
+  assert.match(send, /outcome\.outcome === "refused"[\s\S]*SEND_FAILED/);
 });
 
 test('envoi : une note sur la fiche, jamais de changement d’étape du pipeline', () => {
