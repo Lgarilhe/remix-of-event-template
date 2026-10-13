@@ -32,6 +32,18 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — SHIP — Bascule v2, préparation : limites de débit et habillage de la page de connexion (application « Konekt app / Production »)
+
+**Contexte** : préparation de la bascule (guide `docs/unipile-v2-bascule.md`, parties 3.4 et 4.1), faite dans le tableau de bord du prestataire par le propriétaire avec un assistant de navigation. Aucune clé créée ni supprimée.
+**Fait** : limites de débit LinkedIn. Avant (toutes marquées « Recom. », donc des valeurs recommandées enregistrées, rien de personnalisé) : toutes méthodes 10 par minute et 100 par jour ; lire une société et lire un utilisateur 1 par seconde. Après, relues après rechargement : toutes méthodes 50 par minute (maximum de l'écran, 60 demandés) et 1000 par jour ; lire une société et lire un utilisateur 3 par seconde (maximum de l'écran, 5 demandés). Limites d'envoi (demande de relation, message) inchangées. Habillage de la page de connexion : nom Konekt, logo, forme Pill, police Roboto et lien de confidentialité déjà en place ; couleur passée de #201F1D à #000000. Lien de conditions vide. Lien d'aide : `mailto:` de l'adresse personnelle du propriétaire, laissé en place en attendant sa décision (le guide, partie 5 ligne 6, prévoit de le laisser vide).
+**Raison** : 100 appels par jour et par compte s'épuisent en une journée de recherche et de notation (guide, partie 3.4).
+**Impact** : réglages du prestataire seulement, aucun fichier de code.
+**Reste à faire** :
+- [ ] Propriétaire : vider le lien d'aide ou le remplacer par une adresse partagée.
+- [ ] Si 60 par minute et 5 par seconde sont voulus : demander au prestataire de lever le plafond de l'écran.
+- [ ] Revoir ces limites après les 24 premières heures (guide, partie 7).
+**Refs** : `docs/unipile-v2-bascule.md` parties 3.4 et 4.1.
+
 ## 2026-10-12 — DECISION — Bascule v2, deuxième série de correctifs : règle du collaborateur générale, PARTIAL prévient, F13 retiré (troisième et quatrième passes le 13 octobre)
 
 **Contexte** : une revue contradictoire (sécurité, écrans) et un rejeu ont relu la première série (entrée suivante) contre le code, sur la même pile locale (données fictives, faux prestataire ; ni clé réelle, ni production). Elles ont montré une règle du collaborateur contournable (`get_parameters` rendait les projets Recruiter et les recherches enregistrées d'une collègue, et `get_profile`, `mark_as_read`, `endorse_skill` et les deux actions d'invitation restaient ouvertes), une décision sur PARTIAL contraire à la spécification de l'API (partial : un produit demande une nouvelle authentification, le membre doit reconnecter), des notifications dupliquées sous livraisons simultanées, et des défauts d'écran (marque de lecture non vérifiée jamais posée par le serveur, retrait WhatsApp voulu réaffiché « À reconnecter », carte d'un compte restreint en désaccord avec la notification). Les correctifs sont au commit `b7ed89d`. Une seconde revue (sécurité, écrans) et un nouveau rejeu de cette série ont relevé d'autres défauts, corrigés par une troisième passe le 13 octobre (bloc « Troisième passe » de « Fait »), commit `0ed2d0e`. Une troisième revue (sécurité, écrans, gardes statiques) et un troisième rejeu ont relevé d'autres défauts de cette passe, corrigés par une quatrième passe le même jour (bloc « Quatrième passe » de « Fait »).
