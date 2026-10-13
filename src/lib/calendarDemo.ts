@@ -1,6 +1,7 @@
 import { addDays, addMinutes, setHours, setMinutes } from 'date-fns';
 import type { CalendarEvent } from '@/hooks/useCalendarEvents';
 import type { InterviewLinks } from '@/lib/sidebarSignals';
+import type { ScorecardCriterion } from '@/components/ats/ScorecardEditor';
 
 export type CalendarDemoService = 'outlook' | 'google_calendar' | 'teams' | 'google_meet';
 
@@ -8,7 +9,19 @@ export interface CalendarDemoCriterion {
   id: string;
   label: string;
   question: string;
+  description: string;
+  category: ScorecardCriterion['category'];
+  weight: number;
+  ratingRubric: Record<string, string>;
 }
+
+const DEMO_RUBRIC = {
+  '1': 'Aucun exemple concret permettant de vérifier ce critère.',
+  '2': 'Un exemple partiel, avec un rôle ou un résultat encore imprécis.',
+  '3': 'Un exemple concret qui montre une pratique autonome.',
+  '4': 'Une démarche structurée, des choix expliqués et un résultat mesuré.',
+  '5': 'Plusieurs exemples solides, avec du recul et des enseignements transférables.',
+};
 
 export interface CalendarDemoInterview {
   event: CalendarEvent;
@@ -55,9 +68,9 @@ export function createCalendarDemo(now = new Date()): CalendarDemoInterview[] {
         education: [{ school: 'École de design (fictive)', degree: 'Master Design d’interaction', start: { year: 2018 }, end: { year: 2020 } }],
       },
       criteria: [
-        { id: 'research', label: 'Recherche utilisateur', question: 'Comment avez-vous transformé un retour utilisateur en amélioration du produit ?' },
-        { id: 'collaboration', label: 'Collaboration avec les développeurs', question: 'Comment gérez-vous les compromis entre expérience et contraintes techniques ?' },
-        { id: 'motivation', label: 'Motivation pour le poste', question: 'Qu’aimeriez-vous retrouver dans votre prochaine équipe ?' },
+        { id: 'research', label: 'Recherche utilisateur', question: 'Comment avez-vous transformé un retour utilisateur en amélioration du produit ?', description: 'Vérifier la méthode de recherche et son impact sur les décisions produit.', category: 'technical', weight: 2, ratingRubric: DEMO_RUBRIC },
+        { id: 'collaboration', label: 'Collaboration avec les développeurs', question: 'Comment gérez-vous les compromis entre expérience et contraintes techniques ?', description: 'Comprendre comment les arbitrages sont construits avec les développeurs.', category: 'soft_skill', weight: 2, ratingRubric: DEMO_RUBRIC },
+        { id: 'motivation', label: 'Motivation pour le poste', question: 'Qu’aimeriez-vous retrouver dans votre prochaine équipe ?', description: 'Relier les attentes du candidat au poste et au fonctionnement de l’équipe.', category: 'motivation', weight: 1, ratingRubric: DEMO_RUBRIC },
       ],
       transcript: [
         { speaker: 'Recruteur', text: 'Camille, pouvez-vous me parler d’un projet où la recherche a changé votre approche ?' },
@@ -84,9 +97,9 @@ export function createCalendarDemo(now = new Date()): CalendarDemoInterview[] {
         education: [{ school: 'École de commerce (fictive)', degree: 'Master Management commercial', start: { year: 2019 }, end: { year: 2021 } }],
       },
       criteria: [
-        { id: 'sales', label: 'Gestion du cycle de vente', question: 'Décrivez une vente complexe que vous avez menée de bout en bout.' },
-        { id: 'discovery', label: 'Découverte des besoins', question: 'Comment identifiez-vous les décideurs et les priorités du client ?' },
-        { id: 'motivation', label: 'Motivation pour le poste', question: 'Qu’est-ce qui vous attire dans cette équipe et ce marché ?' },
+        { id: 'sales', label: 'Gestion du cycle de vente', question: 'Décrivez une vente complexe que vous avez menée de bout en bout.', description: 'Identifier le rôle du candidat, les étapes de la vente et le résultat obtenu.', category: 'technical', weight: 2, ratingRubric: DEMO_RUBRIC },
+        { id: 'discovery', label: 'Découverte des besoins', question: 'Comment identifiez-vous les décideurs et les priorités du client ?', description: 'Vérifier la démarche de découverte et la validation des priorités du client.', category: 'soft_skill', weight: 2, ratingRubric: DEMO_RUBRIC },
+        { id: 'motivation', label: 'Motivation pour le poste', question: 'Qu’est-ce qui vous attire dans cette équipe et ce marché ?', description: 'Relier les motivations exprimées aux réalités du poste et du marché.', category: 'motivation', weight: 1, ratingRubric: DEMO_RUBRIC },
       ],
       transcript: [
         { speaker: 'Recruteur', text: 'Alex, comment avez-vous abordé votre dernier contrat avec plusieurs décideurs ?' },

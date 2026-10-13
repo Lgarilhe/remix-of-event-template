@@ -246,6 +246,17 @@ export const STAGE_READER_KEYS: readonly (readonly string[])[] = [
   ['sourcing-project'],
 ];
 
+/**
+ * Liste des candidats contactés d'une mission (lot 5f-2b). Hors STAGE_READER_KEYS :
+ * un geste d'étape ne change pas les inscriptions, et cette lecture est lourde.
+ */
+export const MISSION_CONTACTED_KEY = 'mission-contacted';
+
+/** À appeler après une inscription en séquence : la liste et la pastille la montrent aussitôt. */
+export function invalidateMissionContacted(queryClient: Pick<QueryClient, 'invalidateQueries'>): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: [MISSION_CONTACTED_KEY] });
+}
+
 /** À appeler après chaque geste d'étape et chaque annulation. */
 export function invalidateStageReaders(queryClient: Pick<QueryClient, 'invalidateQueries'>): Promise<void> {
   return Promise.all(

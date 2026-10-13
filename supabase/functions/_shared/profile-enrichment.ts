@@ -2,26 +2,35 @@
 // Profile enrichment — shared worker logic (decoupled queue, Phase 2)
 // ============================================================================
 // Conformité LinkedIn warning #260513-007211 : l'enrichissement de profil
-// (GET /users/{id} = une VUE DE PROFIL) ne doit JAMAIS partir en burst. Cette
-// logique est appelée UNIQUEMENT par le cron process-enrichment-queue, qui la
-// throttle (1 profil à la fois, espacé, heures ouvrées). Le scoring ne fetch
-// plus aucun profil en direct — il met en file (profile_enrichment_queue).
+// (une lecture de profil par le compte LinkedIn du membre) ne doit JAMAIS partir
+// en burst. Cette logique est appelée UNIQUEMENT par le cron
+// process-enrichment-queue, qui la throttle (1 profil à la fois, espacé, heures
+// ouvrées). Le scoring ne fetch plus aucun profil en direct — il met en file
+// (profile_enrichment_queue).
 //
-// Le parsing ci-dessous est porté depuis score-profile-job/maybeEnrichProfile :
-// il produit le MÊME shape `enriched_data` que celui lu par readEnrichmentCache,
-// donc le scoring hydrate sans changement.
+// API v2 du prestataire (client partagé _shared/unipile) : une lecture de profil
+// n'enregistre PAS de visite (la visite est un appel explicite, jamais fait ici).
+// Le profil lu est normalisé par toKonektProfile, puis mis en forme ci-dessous :
+// on produit le MÊME shape `enriched_data` que celui lu par readEnrichmentCache
+// (score-profile-job), donc le scoring hydrate sans changement.
 // ============================================================================
 
-import { enforceLinkedInAction, recordUsageSignal, parseUsagePct } from "./linkedin-quotas.ts";
+import { enforceLinkedInAction, recordUsageSignal } from "./linkedin-quotas.ts";
+import {
+  assertAccountOwnedByOrg,
+  assertV2AccountId,
+  describeForLog,
+  errorKindOf,
+  getProfile,
+  toKonektProfile,
+  userRef,
+  type KonektProfile,
+  type ProfileSection,
+  type UserRefInput,
+} from "./unipile/index.ts";
 
 // deno-lint-ignore no-explicit-any
 type AnyClient = any;
-
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
 
 function canonicalizeLinkedinUrl(url: string | undefined | null): string | null {
   if (!url) return null;
@@ -34,10 +43,14 @@ function canonicalizeLinkedinUrl(url: string | undefined | null): string | null 
   }
 }
 
-const ENRICH_SECTIONS = [
-  "experience", "about", "skills", "education",
-  "recommendations", "projects", "certifications",
-  "languages", "volunteer_experience",
+/**
+ * Sections demandées en UNE lecture. « À propos » n'est pas une section : le
+ * texte est toujours renvoyé à la racine du profil (`bio`).
+ */
+export const ENRICH_SECTIONS: readonly ProfileSection[] = [
+  "linkedin_experience", "linkedin_skills", "linkedin_education",
+  "linkedin_recommendations", "linkedin_projects", "linkedin_certifications",
+  "linkedin_languages", "linkedin_volunteer_experience",
 ];
 
 export interface EnrichResult {
@@ -46,14 +59,13 @@ export interface EnrichResult {
   /** quota gate scope when blocked (provider_pause, profile_view, ...) */
   scope?: string;
   sectionsFilled: string[];
+  /** Plus de pourcentage d'usage côté prestataire (API v2) : toujours null. */
   usagePct: number | null;
 }
 
 export interface EnrichDeps {
   supabase: AnyClient;
-  apiKey: string;
-  /** DSN WITHOUT protocol, or with — normalized internally. */
-  dsn: string;
+  /** Identifiant de compte courant (`acc_...`). */
   accountId: string;
   organizationId: string | null;
   userId: string | null;
@@ -70,138 +82,123 @@ const formatDuration = (m: number) => {
   return `${y} an${y > 1 ? "s" : ""} ${mo} mois`;
 };
 
+/** « École - Diplôme - Domaine (année de fin) », comme ProfileData.education (profile-data.ts). */
+function educationLine(e: NonNullable<KonektProfile["education"]>[number]): string {
+  const year = e.end?.year ? ` (${e.end.year})` : "";
+  return [e.school, e.degree, e.field_of_study].filter(Boolean).join(" - ") + year;
+}
+
 /**
- * Parse a Unipile profile response into the `enriched_data` shape persisted in
- * candidate_enrichment_cache (consumed by score-profile-job/readEnrichmentCache).
+ * Met un profil normalisé (toKonektProfile) dans la forme `enriched_data`
+ * persistée dans candidate_enrichment_cache (consommée par
+ * score-profile-job/readEnrichmentCache). Pure : aucune lecture réseau.
  */
-// deno-lint-ignore no-explicit-any
-function parseUnipileProfile(data: any): { enrichedData: Record<string, unknown>; sectionsFilled: string[] } {
+export function buildEnrichedData(
+  profile: KonektProfile,
+  now: Date = new Date(),
+): { enrichedData: Record<string, unknown>; sectionsFilled: string[] } {
   const sectionsFilled: string[] = [];
 
   // ── Experience ──
-  const enrichedExp = (data.work_experience || data.positions || data.experiences || []).slice(0, 5);
-  // deno-lint-ignore no-explicit-any
-  const workExperience = enrichedExp.map((exp: any) => {
-    const role = exp.role || exp.position || exp.title || "";
-    const company = exp.company || exp.company_name || "";
-    const description = exp.description || "";
-    // deno-lint-ignore no-explicit-any
-    const skills = (exp.skills || []).map((s: any) => (typeof s === "string" ? s : s.name));
+  const workExperience = (profile.work_experience ?? []).slice(0, 5).map((exp) => {
     let durationMonths = 0;
-    const startYear = exp.start?.year || (typeof exp.start === "string" ? parseInt(exp.start.split("-")[0]) : null);
-    const endYear = exp.end?.year || (typeof exp.end === "string" ? parseInt(exp.end.split("-")[0]) : null) || new Date().getFullYear();
+    const startYear = exp.start?.year;
+    const endYear = exp.end?.year || now.getFullYear();
     if (startYear) {
       const startMonth = exp.start?.month || 1;
-      const endMonth = exp.end?.month || new Date().getMonth() + 1;
+      const endMonth = exp.end?.month || now.getMonth() + 1;
       durationMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
     }
     return {
-      role,
-      company,
+      role: exp.role ?? "",
+      company: exp.company ?? "",
       duration: durationMonths > 0 ? formatDuration(durationMonths) : undefined,
       durationMonths,
-      description: description.slice(0, 500) || undefined,
-      skills: skills.slice(0, 8),
+      description: (exp.description ?? "").slice(0, 500) || undefined,
+      skills: (exp.skills ?? []).map((s) => s.name).slice(0, 8),
     };
   });
   if (workExperience.length > 0) sectionsFilled.push("experience");
 
   // ── Summary / about ──
   let summary: string | undefined;
-  if (data.about || data.summary) {
-    summary = (data.about || data.summary).slice(0, 700);
+  if (profile.summary) {
+    summary = profile.summary.slice(0, 700);
     sectionsFilled.push("about");
   }
 
   // ── Skills (+ endorsements) ──
   let skills: string[] | undefined;
-  // deno-lint-ignore no-explicit-any
-  let skillsWithEndorsements: any[] | undefined;
-  if (Array.isArray(data.skills) && data.skills.length > 0) {
-    // deno-lint-ignore no-explicit-any
-    skills = (data.skills as any[]).map((s: any) => (typeof s === "string" ? s : s.name)).slice(0, 15);
-    // deno-lint-ignore no-explicit-any
-    skillsWithEndorsements = (data.skills as any[]).slice(0, 15).map((s: any) => ({
-      name: typeof s === "string" ? s : s.name,
-      endorsements: typeof s === "object" ? (s.endorsement_count || s.endorsements) : undefined,
-    })).filter((s: { name?: string }) => s.name);
+  let skillsWithEndorsements: Array<{ name: string; endorsements?: number }> | undefined;
+  if (profile.skills && profile.skills.length > 0) {
+    skills = profile.skills.map((s) => s.name).slice(0, 15);
+    skillsWithEndorsements = profile.skills.slice(0, 15).map((s) => ({
+      name: s.name,
+      endorsements: s.endorsement_count ?? undefined,
+    }));
     sectionsFilled.push("skills");
   }
 
-  // ── Education ──
-  // deno-lint-ignore no-explicit-any
-  let education: any[] | undefined;
-  if (Array.isArray(data.education) && data.education.length > 0) {
-    education = data.education;
+  // ── Education (lignes de texte, la forme de ProfileData.education) ──
+  let education: string[] | undefined;
+  const educationLines = (profile.education ?? []).map(educationLine).filter((line) => line.trim().length > 0);
+  if (educationLines.length > 0) {
+    education = educationLines;
     sectionsFilled.push("education");
   }
 
   // ── Recommendations (received) ──
-  const recosReceived = data.recommendations?.received || data.recommendations || [];
-  // deno-lint-ignore no-explicit-any
-  let recommendations: any[] | undefined;
-  if (Array.isArray(recosReceived) && recosReceived.length > 0) {
-    // deno-lint-ignore no-explicit-any
-    recommendations = recosReceived.slice(0, 4).map((r: any) => ({
+  let recommendations: Array<{ text: string; author?: string; authorHeadline?: string }> | undefined;
+  const recosReceived = profile.recommendations?.received ?? [];
+  if (recosReceived.length > 0) {
+    recommendations = recosReceived.slice(0, 4).map((r) => ({
       text: (r.text || r.caption || "").slice(0, 250),
       author: r.actor ? `${r.actor.first_name || ""} ${r.actor.last_name || ""}`.trim() : undefined,
-      authorHeadline: r.actor?.headline,
-    })).filter((r: { text: string }) => r.text && r.text.length > 20);
-    if (recommendations && recommendations.length > 0) sectionsFilled.push("recommendations");
+      authorHeadline: r.actor?.headline ?? undefined,
+    })).filter((r) => r.text && r.text.length > 20);
+    if (recommendations.length > 0) sectionsFilled.push("recommendations");
   }
 
   // ── Projects ──
-  // deno-lint-ignore no-explicit-any
-  let projects: any[] | undefined;
-  if (Array.isArray(data.projects) && data.projects.length > 0) {
-    // deno-lint-ignore no-explicit-any
-    projects = data.projects.slice(0, 5).map((p: any) => ({
-      name: p.name || "",
+  let projects: Array<{ name: string; description?: string; skills?: string[] }> | undefined;
+  if (profile.projects && profile.projects.length > 0) {
+    projects = profile.projects.slice(0, 5).map((p) => ({
+      name: p.name ?? "",
       description: p.description?.slice(0, 120),
-      skills: Array.isArray(p.skills)
-        // deno-lint-ignore no-explicit-any
-        ? p.skills.slice(0, 5).map((s: any) => typeof s === "string" ? s : s.name).filter(Boolean)
-        : undefined,
-    })).filter((p: { name?: string }) => p.name);
-    if (projects && projects.length > 0) sectionsFilled.push("projects");
+      skills: p.skills ? p.skills.slice(0, 5) : undefined,
+    })).filter((p) => p.name);
+    if (projects.length > 0) sectionsFilled.push("projects");
   }
 
   // ── Certifications ──
-  // deno-lint-ignore no-explicit-any
-  let certifications: any[] | undefined;
-  if (Array.isArray(data.certifications) && data.certifications.length > 0) {
-    // deno-lint-ignore no-explicit-any
-    certifications = data.certifications.slice(0, 8).map((c: any) => ({
-      name: c.name || "",
-      organization: c.organization || c.authority || c.issuer,
-    })).filter((c: { name?: string }) => c.name);
-    if (certifications && certifications.length > 0) sectionsFilled.push("certifications");
+  let certifications: Array<{ name: string; organization?: string }> | undefined;
+  if (profile.certifications && profile.certifications.length > 0) {
+    certifications = profile.certifications.slice(0, 8).map((c) => ({
+      name: c.name ?? "",
+      organization: c.organization ?? undefined,
+    })).filter((c) => c.name);
+    if (certifications.length > 0) sectionsFilled.push("certifications");
   }
 
   // ── Volunteering ──
-  const volSrc = data.volunteer_experience || data.volunteering_experience || data.volunteering;
-  // deno-lint-ignore no-explicit-any
-  let volunteering: any[] | undefined;
-  if (Array.isArray(volSrc) && volSrc.length > 0) {
-    // deno-lint-ignore no-explicit-any
-    volunteering = volSrc.slice(0, 3).map((v: any) => ({
-      role: v.role || v.position,
-      company: v.company || v.organization,
+  let volunteering: Array<{ role?: string; company?: string; description?: string }> | undefined;
+  if (profile.volunteering_experience && profile.volunteering_experience.length > 0) {
+    volunteering = profile.volunteering_experience.slice(0, 3).map((v) => ({
+      role: v.role ?? undefined,
+      company: v.company ?? undefined,
       description: v.description?.slice(0, 100),
-    })).filter((v: { role?: string; company?: string }) => v.role || v.company);
-    if (volunteering && volunteering.length > 0) sectionsFilled.push("volunteer_experience");
+    })).filter((v) => v.role || v.company);
+    if (volunteering.length > 0) sectionsFilled.push("volunteer_experience");
   }
 
   // ── Languages ──
-  // deno-lint-ignore no-explicit-any
-  let languages: any[] | undefined;
-  if (Array.isArray(data.languages) && data.languages.length > 0) {
-    // deno-lint-ignore no-explicit-any
-    languages = data.languages.map((l: any) => ({
-      name: l.name || l.language || "",
-      proficiency: l.proficiency || l.level,
-    })).filter((l: { name: string }) => l.name);
-    if (languages && languages.length > 0) sectionsFilled.push("languages");
+  let languages: Array<{ name: string; proficiency?: string }> | undefined;
+  if (profile.languages && profile.languages.length > 0) {
+    languages = profile.languages.map((l) => ({
+      name: l.name,
+      proficiency: l.proficiency ?? undefined,
+    })).filter((l) => l.name);
+    if (languages.length > 0) sectionsFilled.push("languages");
   }
 
   const enrichedData: Record<string, unknown> = {
@@ -221,16 +218,55 @@ function parseUnipileProfile(data: any): { enrichedData: Record<string, unknown>
 }
 
 /**
+ * Référence de lecture d'une personne : UNE seule forme (l'identifiant du
+ * prestataire de préférence, sinon le pseudo), jamais un nom. Le client essaie
+ * sinon chaque forme à la suite : une lecture de plus que le registre
+ * `profile_view` ne compte, ce que la file d'enrichissement ne doit pas faire.
+ */
+export function profileReference(providerId?: string | null, profileUrl?: string | null): UserRefInput | null {
+  // Un « identifiant » de file qui est en fait un pseudo est classé par userRef, comme une adresse.
+  const fromId = providerId ? userRef(providerId) : null;
+  const fromUrl = profileUrl ? userRef(profileUrl) : null;
+  const id = fromId?.providerId ?? fromUrl?.providerId ?? null;
+  const slug = fromId?.slug ?? fromUrl?.slug ?? null;
+  if (id) return { providerId: id };
+  return slug ? { slug } : null;
+}
+
+/**
  * THROTTLED, GATED single-profile enrichment. Called one profile at a time by
- * the queue cron. Gates through the unified ledger (profile_view), fetches ONE
- * GET /users/{id}, parses, and upserts candidate_enrichment_cache.
+ * the queue cron. Gates through the unified ledger (profile_view), reads ONE
+ * profile, parses, and upserts candidate_enrichment_cache.
  *
  * Returns ok=false (with scope) when the quota gate blocks (cap reached / account
  * paused) — the caller should reschedule, NOT retry immediately.
  */
 export async function enrichProfileToCache(deps: EnrichDeps): Promise<EnrichResult> {
-  const baseUrl = `${deps.dsn.startsWith("http") ? deps.dsn : `https://${deps.dsn}`}/api/v1`;
   const name = deps.profileName || deps.providerId || deps.profileUrl || "unknown";
+  const failed = (reason: string, extra: Partial<EnrichResult> = {}): EnrichResult => ({
+    ok: false, reason, sectionsFilled: [], usagePct: null, ...extra,
+  });
+
+  // 0. Le compte doit être un identifiant courant ET relié, dans l'organisation,
+  //    au membre pour qui la lecture est faite (la clé du prestataire est commune
+  //    à toutes les organisations : un identifiant reçu d'une requête n'est pas
+  //    digne de confiance). Avant tout passage au registre des actions.
+  try {
+    assertV2AccountId(deps.accountId);
+  } catch (err) {
+    console.warn(`[enrich-worker] ${describeForLog(err)}`);
+    return failed("outdated_account_id");
+  }
+  if (!deps.organizationId) return failed("account_not_linked");
+  try {
+    await assertAccountOwnedByOrg(deps.supabase, deps.organizationId, deps.accountId, {
+      kinds: ["linkedin"],
+      ...(deps.userId ? { userId: deps.userId } : {}),
+    });
+  } catch (err) {
+    console.warn(`[enrich-worker] ${describeForLog(err)}`);
+    return failed(errorKindOf(err) === "forbidden" ? "account_not_linked" : "ownership_check_failed");
+  }
 
   // 1. Unified ledger gate (profile_view) — global daily cap + provider pause.
   const gate = await enforceLinkedInAction(deps.supabase, {
@@ -241,48 +277,36 @@ export async function enrichProfileToCache(deps: EnrichDeps): Promise<EnrichResu
     source: "enrichment_queue",
   });
   if (!gate.allowed) {
-    return { ok: false, reason: gate.reason, scope: gate.scope, sectionsFilled: [], usagePct: null };
+    return failed(gate.reason ?? "blocked", { scope: gate.scope });
   }
 
-  // 2. Resolve a profile identifier (provider_id preferred, else slug from URL).
-  let resolvedId = deps.providerId || deps.profileUrl || "";
-  if (resolvedId.includes("linkedin.com")) {
-    resolvedId = resolvedId.replace(/\/+$/, "").split("/").pop() || resolvedId;
-  }
-  if (!resolvedId) {
-    return { ok: false, reason: "no profile identifier", sectionsFilled: [], usagePct: null };
-  }
+  // 2. Resolve a profile reference (slug and/or provider id).
+  const reference = profileReference(deps.providerId, deps.profileUrl);
+  if (!reference) return failed("no profile identifier");
 
-  const sectionsParams = ENRICH_SECTIONS.map((s) => `linkedin_sections=${encodeURIComponent(s)}`).join("&");
-
-  // 3. ONE fetch (no /posts — empreinte minimale).
-  let resp: Response | null = null;
+  // 3. ONE read (no /posts — empreinte minimale), all the sections the scoring uses.
+  let profile: KonektProfile;
+  let throttled: string[] = [];
   try {
-    resp = await fetchWithTimeout(
-      `${baseUrl}/users/${encodeURIComponent(resolvedId)}?account_id=${deps.accountId}&${sectionsParams}&notify=false`,
-      { headers: { "X-API-KEY": deps.apiKey, Accept: "application/json" } },
-    );
+    const raw = await getProfile(deps.accountId, reference, { sections: ENRICH_SECTIONS });
+    profile = toKonektProfile(raw);
+    throttled = profile.throttled_sections ?? [];
   } catch (err) {
-    return { ok: false, reason: `fetch error: ${err instanceof Error ? err.message : "unknown"}`, sectionsFilled: [], usagePct: null };
-  }
-
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
+    const kind = errorKindOf(err);
+    console.error(`[enrich-worker] profile read failed for ${name}: ${describeForLog(err)}`);
     // Provider hard-limit → pause the account so every path backs off.
-    if (/too_many_requests|limit_exceeded|cannot_resend/i.test(body)) {
+    if (kind === "provider_limit") {
       await recordUsageSignal(deps.supabase, deps.accountId, 100, undefined);
     }
-    return { ok: false, reason: `HTTP ${resp.status}: ${body.slice(0, 160)}`, sectionsFilled: [], usagePct: null };
+    return failed(`profile_read_${kind}`);
+  }
+  if (throttled.length > 0) {
+    console.warn(`[enrich-worker] throttled sections for ${name}: ${throttled.join(",")}`);
   }
 
-  // deno-lint-ignore no-explicit-any
-  const data: any = await resp.json().catch(() => ({}));
-  const usagePct = parseUsagePct(data);
-  await recordUsageSignal(deps.supabase, deps.accountId, usagePct, undefined);
-
-  const { enrichedData, sectionsFilled } = parseUnipileProfile(data);
+  const { enrichedData, sectionsFilled } = buildEnrichedData(profile);
   if (sectionsFilled.length === 0) {
-    return { ok: false, reason: "no usable sections in response", sectionsFilled: [], usagePct };
+    return failed(throttled.length > 0 ? "no usable sections in response (throttled)" : "no usable sections in response");
   }
 
   // 4. Upsert candidate_enrichment_cache (same shape as score-profile-job).
@@ -300,9 +324,9 @@ export async function enrichProfileToCache(deps: EnrichDeps): Promise<EnrichResu
       enriched_by: deps.userId,
     }, { onConflict });
   } catch (err) {
-    return { ok: false, reason: `cache write error: ${err instanceof Error ? err.message : "unknown"}`, sectionsFilled, usagePct };
+    return { ok: false, reason: `cache write error: ${err instanceof Error ? err.message : "unknown"}`, sectionsFilled, usagePct: null };
   }
 
   console.info(`[enrich-worker] cached ${name}: ${sectionsFilled.join(",")}`);
-  return { ok: true, sectionsFilled, usagePct };
+  return { ok: true, sectionsFilled, usagePct: null };
 }

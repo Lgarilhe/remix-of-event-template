@@ -19,6 +19,27 @@ export function candidateLinkedInSlug(value?: string | null): string | null {
   } catch { return null; }
 }
 
+/** Une identité ou un intitulé de recherche ne constituent pas un parcours détaillé. */
+export function hasCandidateProfileDetails(profile: Pick<LinkedInProfile, 'summary' | 'work_experience' | 'education' | 'skills' | 'languages'>): boolean {
+  return !!(profile.summary?.trim() || profile.work_experience?.length || profile.education?.length || profile.skills?.length || profile.languages?.length);
+}
+
+/** Une réponse partielle ne doit pas effacer les rubriques déjà consultées. */
+export function mergeCandidateProfileDetails(previous: LinkedInProfile | null | undefined, next: LinkedInProfile | null): LinkedInProfile | null {
+  if (!next) return previous ?? null;
+  if (!previous) return next;
+  return {
+    ...next,
+    headline: next.headline || previous.headline,
+    location: next.location || previous.location,
+    summary: next.summary || previous.summary,
+    work_experience: next.work_experience?.length ? next.work_experience : previous.work_experience,
+    education: next.education?.length ? next.education : previous.education,
+    skills: next.skills?.length ? next.skills : previous.skills,
+    languages: next.languages?.length ? next.languages : previous.languages,
+  };
+}
+
 /** Les instantanés de recherche et les profils détaillés utilisent plusieurs formats. Aucun parcours n'est tronqué. */
 export function normalizeCandidateProfile(value: unknown, id: string, name?: string): LinkedInProfile {
   const raw = record(value);
@@ -26,6 +47,7 @@ export function normalizeCandidateProfile(value: unknown, id: string, name?: str
   return {
     id, name: text(raw.name) || [text(raw.first_name), text(raw.last_name)].filter(Boolean).join(' ') || name,
     headline: text(raw.headline), summary: text(raw.summary) || text(raw.about),
+    throttled_sections: list(raw.throttled_sections).map(text).filter((value): value is string => !!value),
     location: text(raw.location) || text(record(raw.location).name), industry: named(raw.industry),
     profile_url: text(raw.public_profile_url) || text(raw.profile_url), provider_id: text(raw.provider_id),
     work_experience: rows(raw.work_experience, raw.positions, raw.experiences).map(value => {

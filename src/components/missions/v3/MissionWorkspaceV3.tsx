@@ -57,6 +57,9 @@ function wasPushedFor(state: unknown, kind: PushKind): boolean {
 /** Paramètre d'onglet du panneau Prise de contact (repris de l'ancienne vue). */
 const OUTREACH_TAB_PARAM = 'outreach';
 
+/** Lot 5f-2c : « contacter=1 » ouvre le panneau Prise de contact en mode Contacter (la sélection du Pipeline). */
+const CONTACT_PARAM = 'contacter';
+
 function withParams(search: string, set: Record<string, string>, remove: readonly string[]): string {
   const params = new URLSearchParams(search);
   for (const name of remove) params.delete(name);
@@ -65,7 +68,7 @@ function withParams(search: string, set: Record<string, string>, remove: readonl
   return out ? `?${out}` : '';
 }
 
-const PANEL_PARAMS: readonly string[] = [V3_PARAM.panel, V3_PARAM.candidate, OUTREACH_TAB_PARAM];
+const PANEL_PARAMS: readonly string[] = [V3_PARAM.panel, V3_PARAM.candidate, OUTREACH_TAB_PARAM, CONTACT_PARAM];
 
 // --------------------------------------------------------------- états
 
@@ -202,13 +205,19 @@ function MissionWorkspaceLoaded({ project }: { project: SourcingProject }) {
 
   const openCandidate = useCallback(
     (rowId: string, opts?: { replace?: boolean }) => {
-      openPanel({ [V3_PARAM.panel]: 'fiche', [V3_PARAM.candidate]: rowId }, [OUTREACH_TAB_PARAM], opts);
+      openPanel({ [V3_PARAM.panel]: 'fiche', [V3_PARAM.candidate]: rowId }, [OUTREACH_TAB_PARAM, CONTACT_PARAM], opts);
     },
     [openPanel],
   );
 
   const openContactPanel = useCallback(() => {
-    openPanel({ [V3_PARAM.panel]: 'contact' }, [V3_PARAM.candidate]);
+    openPanel({ [V3_PARAM.panel]: 'contact' }, [V3_PARAM.candidate, CONTACT_PARAM]);
+  }, [openPanel]);
+
+  // Panneau Prise de contact en mode Contacter (interrupteur des séquences allumé) : la
+  // sélection du Pipeline est déjà posée dans son contexte, l'adresse ne porte que le mode.
+  const openContactFlow = useCallback(() => {
+    openPanel({ [V3_PARAM.panel]: 'contact', [CONTACT_PARAM]: '1' }, [V3_PARAM.candidate]);
   }, [openPanel]);
 
   const closePanel = useCallback(() => {
@@ -288,6 +297,7 @@ function MissionWorkspaceLoaded({ project }: { project: SourcingProject }) {
       goToScreen,
       openCandidate,
       openContactPanel,
+      openContactFlow,
       closePanel,
       setBilanOpen,
       visibleRowIds,
@@ -306,6 +316,7 @@ function MissionWorkspaceLoaded({ project }: { project: SourcingProject }) {
       goToScreen,
       openCandidate,
       openContactPanel,
+      openContactFlow,
       closePanel,
       setBilanOpen,
       visibleRowIds,

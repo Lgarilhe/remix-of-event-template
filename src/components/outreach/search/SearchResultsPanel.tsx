@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { NumberTicker } from '@/components/magicui/number-ticker';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
 import { LinkedInProfile } from '@/components/outreach/types';
+import type { SearchFiltersNotice } from '@/lib/searchFilterNotice';
+import { FiltersNoticeLines } from './FiltersNoticeLines';
 import { LinkedInResultCard } from '@/components/outreach/LinkedInResultCard';
 import { CompactResultsTable } from './CompactResultsTable';
 import { invokeUnipile } from '@/lib/invokeUnipile';
@@ -34,7 +36,7 @@ import {
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelPicker } from '@/components/ai/ModelPicker';
-import { SourcingResultsV3, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
+import { SourcingResultsV3, type SourcingResultGroup, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
 import { retainedStageLabel, sourcingGroupOf, sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
 import { useSourcingPanelSlot } from '@/components/missions/v3/shell/sourcingPanelContext';
 
@@ -49,6 +51,8 @@ interface SearchResultsPanelProps {
   hasMoreResults: boolean;
   cursor: string | null;
   total: number | null;
+  /** Filtres que le compte LinkedIn n'a pas appliqués dans la recherche affichée. */
+  filtersNotice?: SearchFiltersNotice | null;
   
   // Job & Scoring
   selectedJob: Job | null;
@@ -142,6 +146,10 @@ interface SearchResultsPanelProps {
   // Nouvelle page mission (Sourcing, trois groupes) : rendu propre, passé
   // seulement par SourcingScreen. Défaut : le rendu actuel, inchangé.
   layout?: 'default' | 'mission-v3';
+  group?: SourcingResultGroup;
+  onGroupChange?: (group: SourcingResultGroup) => void;
+  searchScopeKey?: string;
+  searchSuccessKey?: number;
   chipsDirty?: boolean;
   onRerun?: () => void;
   onSetSelection?: (ids: string[]) => void;
@@ -163,6 +171,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   hasMoreResults,
   cursor,
   total,
+  filtersNotice,
   selectedJob,
   selectedProfiles,
   jobScores,
@@ -225,6 +234,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   openToWorkSupported = false,
   onToggleOpenToWork,
   layout = 'default',
+  group,
+  onGroupChange,
+  searchScopeKey,
+  searchSuccessKey,
   chipsDirty = false,
   onRerun,
   onSetSelection,
@@ -258,13 +271,13 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   }, []);
 
   // Nouvelle page mission : affichage des profils à trier (Tri, Liste, Détaillé),
-  // dans la clé de l'ancienne recherche ; la Liste reste le défaut.
+  // dans la clé de l'ancienne recherche ; le Tri est le défaut sans préférence enregistrée.
   const [v3View, setV3ViewState] = useState<SourcingView>(() => {
     try {
       const stored = localStorage.getItem('konekt_search_view_mode');
-      return stored === 'triage' || stored === 'detailed' ? stored : 'compact';
+      return stored === 'compact' || stored === 'detailed' ? stored : 'triage';
     } catch {
-      return 'compact';
+      return 'triage';
     }
   });
   const setV3View = useCallback((next: SourcingView) => {
@@ -344,10 +357,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
             _source: (profile as any)._source,
           } as LinkedInProfile;
           setDetailProfile(merged);
-          console.log('[SearchResults] Enriched Base Konekt profile via Unipile');
+          console.log('[SearchResults] Enriched Base Konekt profile via LinkedIn');
         }
       } catch (e) {
-        console.warn('[SearchResults] Unipile enrichment failed (non-blocking):', e);
+        console.warn('[SearchResults] LinkedIn enrichment failed (non-blocking):', e);
       } finally {
         setEnriching(false);
       }
@@ -550,6 +563,7 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
 
   return (
     <div className={isV3 ? 'flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full' : 'bg-background border border-border rounded-xl flex w-full max-w-full min-w-0 flex-col min-h-[420px] lg:min-h-0 lg:h-full overflow-hidden'}>
+      {hasSearched && !loading && <FiltersNoticeLines notice={filtersNotice} bordered={!isV3} />}
       {isV3 && onSetSelection && onRetainProfiles && onDismissProfiles ? (
         <SourcingResultsV3
           profiles={v3Profiles}
@@ -586,6 +600,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           onSequenceEnrollSuccess={onSequenceEnrollSuccess}
           view={v3View}
           onViewChange={setV3View}
+          group={group}
+          onGroupChange={onGroupChange}
+          searchScopeKey={searchScopeKey}
+          searchSuccessKey={searchSuccessKey}
           renderCompact={({ profiles, allSelected, onToggleSelectAll }) => (
             <CompactResultsTable
               profiles={profiles}

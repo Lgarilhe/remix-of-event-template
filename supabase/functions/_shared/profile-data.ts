@@ -19,7 +19,11 @@ import { assessProfileExperience, getWorkExperienceDurationMonths } from "./prof
 // deno-lint-ignore no-explicit-any
 type Any = any;
 
-/** Parse un champ date Unipile ("2019-01", "2019", { year, month }). */
+/**
+ * Parse un champ date d'un LinkedInProfile Konekt ("2019-01", "2019", { year, month }).
+ * Les dates brutes du prestataire (« MM/DD/YYYY ») sont converties en { year, month }
+ * par le normaliseur (_shared/unipile/normalize/profile.ts) avant d'arriver ici.
+ */
 export function parseDate(
   value: string | { year?: number; month?: number } | null | undefined,
 ): { year: number; month?: number } | null {
@@ -38,7 +42,7 @@ export function parseDate(
   return null;
 }
 
-/** Raccourci : année seule d'un champ date Unipile. */
+/** Raccourci : année seule d'un champ date (voir parseDate). */
 export function getYear(
   value: string | { year?: number; month?: number } | null | undefined,
 ): number | undefined {

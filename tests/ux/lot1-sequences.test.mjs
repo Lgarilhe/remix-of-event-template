@@ -62,12 +62,11 @@ test('UX05 — depuis la messagerie, les modèles de message sont chargés', () 
 test('UX05 — les lignes d’inscription posent email_used (étapes e-mail non sautées)', () => {
   const rowFields = read('src/components/outreach/enrollment-preview/enrollmentRowFields.ts');
   assert.match(rowFields, /email_used:/);
+  // Lot 5f-1 : les lignes sont construites à un seul endroit, que les deux fenêtres appellent.
+  const lib = read('src/lib/enrollCandidates.ts');
+  assert.match(lib, /\.\.\.enrollmentRowFields\(/, 'src/lib/enrollCandidates.ts : les lignes d’inscription doivent poser email_used');
   for (const rel of ['src/components/outreach/EnrollmentPreviewModal.tsx', 'src/components/outreach/SequenceEnrollModal.tsx']) {
-    const src = read(rel);
-    assert.ok(
-      /email_used/.test(src) || /\.\.\.enrollmentRowFields\(/.test(src),
-      `${rel} : les lignes d’inscription doivent poser email_used`,
-    );
+    assert.match(read(rel), /enrollCandidates\(\{/, `${rel} : l’inscription passe par enrollCandidates`);
   }
 });
 

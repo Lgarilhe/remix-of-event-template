@@ -1,7 +1,9 @@
 name: Candidate actions (API)
 
 # Real local Auth, RLS, RPC and edge handlers; all vendor requests are redirected
-# to the scripted fake provider. No production credentials or browser are used.
+# to the scripted fake provider, which speaks the v2 API only (a call of the previous
+# API, a wrong key or host, an account id that is not an acc_ id, or an unknown route
+# fails the job). No production credentials or browser are used.
 on:
   pull_request:
     branches: [main]
@@ -13,6 +15,11 @@ on:
       - 'tests/c1/whatsapp-accounts.test.mjs'
       - 'tests/c1/multichannel-inbox.test.mjs'
       - 'tests/c1/resolve-org-credentials.test.mjs'
+      - 'tests/c1/unipile-client.test.mjs'
+      - 'tests/c1/assistant-provider-v2.test.mjs'
+      - 'tests/ux/unipile-v2-webhooks.test.mjs'
+      - 'tests/ux/vendor-mock-v2.test.mjs'
+      - 'tests/fixtures/unipile-v2/**'
       - 'package.json'
       - 'package-lock.json'
       - 'playwright.config.ts'
@@ -27,6 +34,11 @@ on:
       - 'tests/c1/whatsapp-accounts.test.mjs'
       - 'tests/c1/multichannel-inbox.test.mjs'
       - 'tests/c1/resolve-org-credentials.test.mjs'
+      - 'tests/c1/unipile-client.test.mjs'
+      - 'tests/c1/assistant-provider-v2.test.mjs'
+      - 'tests/ux/unipile-v2-webhooks.test.mjs'
+      - 'tests/ux/vendor-mock-v2.test.mjs'
+      - 'tests/fixtures/unipile-v2/**'
       - 'package.json'
       - 'package-lock.json'
       - 'playwright.config.ts'
@@ -62,8 +74,14 @@ jobs:
         run: npm ci
       - name: Candidate context, generation, history and personal account tests
         run: node --test tests/c1/candidate-actions-*.test.mjs tests/c1/whatsapp-accounts.test.mjs tests/c1/multichannel-inbox.test.mjs tests/c1/resolve-org-credentials.test.mjs
-      - name: Real channel transport, receipt and incoming history tests
-        run: deno test --no-check --allow-env --import-map=e2e/local-stack/import_map.json supabase/functions/_shared/candidate-actions/transport.test.ts
+      - name: Shared provider client, fake provider and webhook guards
+        run: node --test tests/c1/unipile-client.test.mjs tests/c1/assistant-provider-v2.test.mjs tests/agent/email-tools-policy.test.mjs tests/ux/unipile-v2-webhooks.test.mjs tests/ux/vendor-mock-v2.test.mjs e2e/local-stack/vendor-mock-contract.test.mjs
+      - name: Real channel transport, receipt, incoming history and assistant provider tests
+        run: |
+          deno test --no-check --allow-env --import-map=e2e/local-stack/import_map.json \
+            supabase/functions/_shared/candidate-actions/transport.test.ts \
+            supabase/functions/_shared/agent-tools-email.test.ts \
+            supabase/functions/_shared/agent-tools-mutations.provider.test.ts
       - name: Check standalone edge contracts
         run: |
           deno check --import-map=e2e/local-stack/import_map.json \
@@ -82,8 +100,15 @@ jobs:
           test "$E2E_SUPABASE_URL" = 'http://127.0.0.1:54321'
           test "$E2E_EDGE_FUNCTIONS" = '1'
           test "$E2E_VENDOR_MOCK_URL" = 'http://127.0.0.1:54340'
+          # The functions read the provider key and the webhook token from their environment (no per-organization
+          # credentials any more): a stack file without them would skip the whole suite.
+          test -n "$E2E_UNIPILE_V2_API_KEY"
+          test -n "$E2E_UNIPILE_V2_WEBHOOK_TOKEN"
           npx playwright test e2e/api/candidate-actions.spec.ts \
             --project=api --no-deps --workers=1 --retries=0 --reporter=list,json,html
+          # A function that swallows a refusal of the fake provider (an old-API call, a wrong host or key,
+          # an account id that is not an acc_ id, an unknown route) fails no scenario: check the log.
+          node e2e/local-stack/check-violations.mjs
           # A green job must contain executed scenarios, never a skipped suite
           # caused by an absent edge server or missing fake-vendor variables.
           node --input-type=module <<'JS'

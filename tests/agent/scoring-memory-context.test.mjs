@@ -26,7 +26,7 @@ function compile(path, { prelude = '', suffix = '', globals = {}, transform = so
     compiledSources.set(cacheKey, outputText);
   }
   const context = { exports: {}, crypto: webcrypto, TextEncoder, Request, Response, AbortController,
-    setTimeout, clearTimeout, console: { log() {}, warn() {}, error() {} },
+    setTimeout, clearTimeout, console: { log() {}, info() {}, warn() {}, error() {} },
     fetch() { throw new Error('Unexpected HTTP call'); },
     Deno: { env: { get: () => undefined }, serve() {} }, ...globals };
   vm.runInNewContext(outputText, context, { filename: path });
@@ -36,6 +36,9 @@ function compile(path, { prelude = '', suffix = '', globals = {}, transform = so
 const client = compile('src/lib/sourcingScoringContext.ts');
 const experience = compile('supabase/functions/_shared/profile-experience.ts');
 const sourcing = compile('supabase/functions/_shared/sourcing-memory.ts');
+// Identifiants de comptes du client partagé du prestataire : le vrai module, compilé tel quel.
+const unipileIds = compile('supabase/functions/_shared/unipile/ids.ts', {
+  globals: compile('supabase/functions/_shared/unipile/errors.ts') });
 const context = compile('supabase/functions/_shared/scoring-context.ts', {
   prelude: 'const { parseSourcingMemoryConflicts } = __sourcing;\n', globals: { __sourcing: sourcing },
 });
@@ -410,12 +413,12 @@ function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null,
   cache = null, modelResult = { overallScore: 84, summary: 'Expérience à vérifier', memory_conflicts: [] },
   creditAllowed = true, allowedOrganization = true, missingProject = false, projectOrganizationId = organizationId,
   modelId = 'claude-sonnet-4-6', autoRouted = false, creditRemaining = 100, leaseFailsAt = Infinity,
-  leaseFailsAfterModel = false, pauseDuringContextAt = Infinity, liveContextFailsAt = Infinity } = {}) {
+  leaseFailsAfterModel = false, pauseDuringContextAt = Infinity, liveContextFailsAt = Infinity, accountOwned = true } = {}) {
   let handler;
   let leaseCalls = 0;
   let liveContextCalls = 0;
   let pausedDuringContext = false;
-  const events = [], requests = [], memoryRequests = [], creditCalls = [], modelCalls = [], writes = [], settlements = [];
+  const events = [], requests = [], memoryRequests = [], creditCalls = [], modelCalls = [], writes = [], settlements = [], accountChecks = [];
   const authenticatedUser = authMethod === 'service_role' ? null : 'recruiter-a';
   const jwtHeader = authMethod === 'service_role' ? 'Bearer service-key' : 'Bearer recruiter-jwt';
   const dependencies = {
@@ -447,8 +450,14 @@ function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null,
       return { ok: creditAllowed, organizationId, remaining: creditRemaining, estimated: 1, body: { message: 'Crédits insuffisants' } };
     },
     creditGateResponse: (_gate, headers) => new Response(JSON.stringify({ error: 'Crédits insuffisants' }), { status: 402, headers }),
-    recordUsageSignal: async () => { throw new Error('No LinkedIn usage in scoring tests'); },
-    parseUsagePct: () => 0,
+    // Le compte LinkedIn du navigateur n'est utilisé (cache, file d'enrichissement) que s'il est courant et relié.
+    isV2AccountId: unipileIds.isV2AccountId,
+    describeForLog: error => String(error?.message ?? error),
+    assertAccountOwnedByOrg: async (_client, orgId, accountId, options) => {
+      events.push('account-owner'); accountChecks.push({ orgId, accountId, options });
+      if (!accountOwned) throw Object.assign(new Error('account is not linked in this organization'), { kind: 'forbidden' });
+      return { kind: 'linkedin', rowId: 'row-a', userId: authenticatedUser };
+    },
     createClient(_url, key, options) {
       const client = { key, options,
         rpc(name, params) {
@@ -477,6 +486,7 @@ function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null,
             upsert(value) { events.push('write:' + table); writes.push({ table, value }); return query; },
             maybeSingle() {
               if (table === 'sourcing_projects') return Promise.resolve({ data: missingProject ? null : { organization_id: projectOrganizationId }, error: null });
+              if (table === 'internal_config' || table === 'candidate_enrichment_cache') return Promise.resolve({ data: null, error: null });
               assert.equal(table, 'match_scores');
               const cached = typeof cache === 'function' ? cache(request.filters.candidate_id) : cache;
               return Promise.resolve({ data: cached ? { scoring_result: cached, created_at: new Date().toISOString() } : null, error: null });
@@ -499,8 +509,7 @@ function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null,
           settleCredits: async (_client, usage) => { events.push('settle'); settlements.push(usage); return { success: true }; },
         },
         '../_shared/ai-config.ts': { getAnthropicModelId: model => model, MODEL_CATALOG: {} },
-        '../_shared/resolve-org-credentials.ts': { resolveOrgIdFromUser: async () => organizationId,
-          resolveUnipileCredentials: async () => null },
+        '../_shared/resolve-org-credentials.ts': { resolveOrgIdFromUser: async () => organizationId },
       },
       Deno: { env: { get: name => ({ SUPABASE_URL: 'http://local.test', SUPABASE_ANON_KEY: 'anon-key',
         SB_SECRET_KEY: 'service-key', ANTHROPIC_API_KEY: 'test-model-key' })[name] },
@@ -522,8 +531,32 @@ function handlerHarness({ loadedMemory = memoryContext, memoryAfterModel = null,
       job, organization_id: organizationId, project_id: projectId,
       ...(authMethod === 'service_role' ? { user_id: 'worker-owner' } : { user_id: 'forged-other-user' }), ...overrides }),
   }));
-  return { invoke, helpers, events, requests, memoryRequests, creditCalls, modelCalls, writes, settlements };
+  return { invoke, helpers, events, requests, memoryRequests, creditCalls, modelCalls, writes, settlements, accountChecks };
 }
+
+test('the enrichment queue only receives an account of the caller, with a current identifier, and needs no provider secret', async () => {
+  const queued = h => h.writes.filter(write => write.table === 'profile_enrichment_queue');
+  const profile = { id: 'candidate-a', name: 'Camille', headline: 'Account Manager', providerId: 'ACoAACamille1' };
+  const owned = handlerHarness();
+  assert.equal((await owned.invoke({ profile, accountId: 'acc_mine' })).status, 200);
+  assert.equal(queued(owned).length, 1, 'the profile is queued for the background worker');
+  assert.equal(queued(owned)[0].value.account_id, 'acc_mine');
+  assert.equal(queued(owned)[0].value.organization_id, organizationId);
+  assert.deepEqual(plain(owned.accountChecks), [{ orgId: organizationId, accountId: 'acc_mine',
+    options: { kinds: ['linkedin'], userId: 'recruiter-a' } }]);
+
+  for (const [label, harnessOptions, overrides, checks] of [
+    ['an outdated identifier', {}, { profile, accountId: 'v1AccountIdentifier123' }, 0],
+    ['an account of another member or organization', { accountOwned: false }, { profile, accountId: 'acc_theirs' }, 1],
+    ['no account at all', {}, { profile }, 0],
+  ]) {
+    const refused = handlerHarness(harnessOptions);
+    const response = await refused.invoke(overrides);
+    assert.equal(response.status, 200, label + ': the scoring itself still works');
+    assert.equal(queued(refused).length, 0, label + ': nothing is queued');
+    assert.equal(refused.accountChecks.length, checks, label);
+  }
+});
 
 test('JWT identity and project load confirmed memories before a cache or paid operation', async () => {
   const h = handlerHarness({ creditAllowed: false });

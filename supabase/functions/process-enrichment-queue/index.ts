@@ -13,7 +13,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { enrichProfileToCache } from "../_shared/profile-enrichment.ts";
 import { getUserQuotas, isWithinBusinessHours, nextBusinessHoursStart } from "../_shared/linkedin-quotas.ts";
-import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
+import { nextQueueStep } from "./outcome.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +22,6 @@ const corsHeaders = {
 
 const MAX_PER_RUN = 3;          // peu d'items par run (cadence cron = 2 min → ~1 profil/40s)
 const INTER_ITEM_DELAY_MS = 12000;  // espacement anti micro-burst entre 2 items du même run
-const MAX_ATTEMPTS = 4;
 
 // Sérialisation par compte : ne JAMAIS enrichir un compte utilisé
 // interactivement dans les N dernières minutes (recherche / vue de profil /
@@ -136,21 +135,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // 3. Résoudre les credentials Unipile de l'org.
-      const creds = await resolveUnipileCredentials(item.organization_id ?? undefined, supabase);
-      if (!creds) {
-        await supabase.from("profile_enrichment_queue")
-          .update({ status: "failed", last_error: "no Unipile credentials", updated_at: new Date().toISOString() })
-          .eq("id", item.id);
-        results.push({ id: item.id, ok: false, reason: "no credentials" });
-        continue;
-      }
-
-      // 4. Enrichissement gated (1 vue de profil, throttlée).
+      // 3. Enrichissement gated (1 lecture de profil, throttlée). Le compte est
+      //    vérifié (identifiant courant, relié à l'organisation) dans la fonction.
       const res = await enrichProfileToCache({
         supabase,
-        apiKey: creds.apiKey,
-        dsn: creds.dsn,
         accountId: item.account_id,
         organizationId: item.organization_id,
         userId: item.user_id,
@@ -186,15 +174,23 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Échec réel → incrémenter les tentatives ; failed au-delà du max.
-      const attempts = (item.attempts || 0) + 1;
-      if (attempts >= MAX_ATTEMPTS) {
+      // Échec : la règle (outcome.ts) dit si la ligne est reportée sans tentative
+      // (trop de requêtes, compte dégradé, ancien identifiant en attente de reprise),
+      // close tout de suite (compte non relié ou déconnecté), réessayée ou close au max.
+      const step = nextQueueStep(res.reason, item.attempts);
+      const stamp = new Date().toISOString();
+      const lastError = res.reason ?? "enrichment failed";
+      if (step.action === "defer") {
         await supabase.from("profile_enrichment_queue")
-          .update({ status: "failed", attempts, last_error: res.reason ?? "enrichment failed", updated_at: new Date().toISOString() })
+          .update({ scheduled_at: new Date(Date.now() + step.delayMs).toISOString(), last_error: lastError, updated_at: stamp })
+          .eq("id", item.id);
+      } else if (step.action === "fail") {
+        await supabase.from("profile_enrichment_queue")
+          .update({ status: "failed", attempts: step.attempts, last_error: lastError, updated_at: stamp })
           .eq("id", item.id);
       } else {
         await supabase.from("profile_enrichment_queue")
-          .update({ attempts, scheduled_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(), last_error: res.reason ?? "enrichment failed", updated_at: new Date().toISOString() })
+          .update({ attempts: step.attempts, scheduled_at: new Date(Date.now() + step.delayMs).toISOString(), last_error: lastError, updated_at: stamp })
           .eq("id", item.id);
       }
       results.push({ id: item.id, ok: false, reason: res.reason });

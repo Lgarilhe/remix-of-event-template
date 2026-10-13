@@ -24,6 +24,11 @@ export interface SidebarRowProps {
   leading?: React.ReactNode;
   title: string;
   sub?: string | null;
+  /**
+   * Phrase entière au survol et au toucher long (attribut title), quand le sous-titre est une version courte de ce qu'il
+   * faut dire (une ligne de 195 px coupe au-delà de 30 caractères). Absente : « titre · sous-titre ».
+   */
+  hint?: string | null;
   /** Heure ou mention courte, en gris à droite. */
   right?: string | null;
   /** Gras : l'élément compte dans le chiffre d'À traiter, et rien d'autre. */
@@ -48,10 +53,14 @@ const TARGET_CLASS =
 
 const INTERACTIVE_CLASS = 'hover:bg-sidebar-accent/60 active:bg-sidebar-accent';
 
+/** Ligne compacte : une seule ligne de texte, mais la cible garde 44 px au toucher, même à partir de md. */
+const COMPACT_TARGET_CLASS = '[@media(pointer:coarse)]:min-h-11';
+
 export function SidebarRow({
   leading,
   title,
   sub,
+  hint,
   right,
   strong = false,
   dotLabel,
@@ -62,9 +71,8 @@ export function SidebarRow({
   compact = false,
 }: SidebarRowProps) {
   const closeMobile = useCloseMobileSidebar();
-  // Texte complet au survol : titres et sous-titres peuvent être coupés.
-  const fullText = sub ? `${title} · ${sub}` : title;
-  const targetClassName = cn(TARGET_CLASS, compact && '[@media(pointer:coarse)]:min-h-11');
+  // Texte complet au survol : titres et sous-titres peuvent être coupés. Une phrase donnée (hint) remplace « titre · sous-titre ».
+  const fullText = hint || (sub ? `${title} · ${sub}` : title);
 
   const content = (
     <>
@@ -79,7 +87,7 @@ export function SidebarRow({
       <span className="flex min-w-0 flex-1 flex-col">
         <span
           className={cn(
-            // Deux lignes au plus : une panne ou une action à valider reste lisible.
+            // Deux lignes au plus (une seule en compact) : une panne ou une action à valider reste lisible.
             compact ? 'block truncate text-xs' : 'line-clamp-2 break-words text-sm',
             strong ? 'font-semibold text-sidebar-foreground' : 'font-normal',
             !strong && (muted ? 'text-muted-foreground' : 'text-foreground-secondary'),
@@ -106,18 +114,18 @@ export function SidebarRow({
   let target: React.ReactNode;
   if (to) {
     target = (
-      <Link to={to} onClick={closeMobile} title={fullText} className={cn(targetClassName, INTERACTIVE_CLASS)}>
+      <Link to={to} onClick={closeMobile} title={fullText} className={cn(TARGET_CLASS, compact && COMPACT_TARGET_CLASS, INTERACTIVE_CLASS)}>
         {content}
       </Link>
     );
   } else if (onSelect) {
     target = (
-      <button type="button" onClick={onSelect} title={fullText} className={cn(targetClassName, INTERACTIVE_CLASS)}>
+      <button type="button" onClick={onSelect} title={fullText} className={cn(TARGET_CLASS, compact && COMPACT_TARGET_CLASS, INTERACTIVE_CLASS)}>
         {content}
       </button>
     );
   } else {
-    target = <div title={fullText} className={targetClassName}>{content}</div>;
+    target = <div title={fullText} className={cn(TARGET_CLASS, compact && COMPACT_TARGET_CLASS)}>{content}</div>;
   }
 
   return (

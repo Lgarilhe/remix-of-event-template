@@ -818,6 +818,8 @@ test('5c-2 — drapeau éteint : aucun lien vers /sequences hors des accès gard
     'src/components/layout/NavigationPalette.tsx': /\{showSequences && \(\s*<CommandItem onSelect=\{\(\) => go\('\/sequences'\)\}>/,
     'src/components/layout/GoShortcuts.tsx': /!isSequencesPath\(path\) \|\| getSequencesBeta\(\)/,
     'src/components/outreach/SequencesList.tsx': /\{sequencesBeta \? \(\s*<Link\s+to=\{sequencePath/,
+    // Lot 5f-2b : « Ouvrir la séquence » de l'onglet Contactés (monté interrupteur allumé seulement, et gardé aussi ici).
+    'src/components/missions/v3/panels/ContactedList.tsx': /sequencesBeta \? \(\s*<Button asChild[^>]*>\s*<Link to=\{`\$\{sequencePath\(/,
   };
   const pageFiles = new Set(SCREEN_FILES);
   const found = filesUnder('src')

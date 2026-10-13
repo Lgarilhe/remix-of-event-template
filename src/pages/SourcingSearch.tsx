@@ -38,8 +38,8 @@ export default function SourcingSearch() {
   // à l'arrivée, puis retiré de l'historique du navigateur pour qu'un
   // rechargement ne relance pas (et ne facture) rien.
   const [start] = useState(() => {
-    const s = (location.state as { phrase?: string; filters?: boolean } | null) ?? {};
-    return { phrase: s.phrase, filters: !!s.filters };
+    const s = (location.state as { phrase?: string; filters?: boolean; source?: 'linkedin' | 'database' } | null) ?? {};
+    return { phrase: s.phrase, filters: !!s.filters, source: s.source };
   });
   useEffect(() => {
     if (start.phrase || start.filters) navigate(location.pathname, { replace: true, state: null });
@@ -172,7 +172,7 @@ export default function SourcingSearch() {
 
           {/* Le même Sourcing que dans une mission : prompt, reprise d'une recherche, filtres, résultats. */}
           <SectionErrorBoundary fallbackTitle="Erreur dans la recherche">
-            <MissionSourcing project={project} layout="mission-v3" initialPhrase={start.phrase} startWithFilters={start.filters} />
+            <MissionSourcing project={project} layout="mission-v3" initialPhrase={start.phrase} initialSource={start.source} startWithFilters={start.filters} />
           </SectionErrorBoundary>
         </div>
       </div>

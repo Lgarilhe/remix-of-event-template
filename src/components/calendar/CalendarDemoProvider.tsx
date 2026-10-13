@@ -2,6 +2,7 @@ import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useM
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSidebar } from '@/components/ui/sidebar';
 import { createCalendarDemo, type CalendarDemoInterview } from '@/lib/calendarDemo';
+import type { ScorecardRecommendation } from '@/components/ats/ScorecardEditor';
 
 const InterviewDemoDialog = lazy(() => import('@/components/calendar/InterviewDemoDialog'));
 
@@ -10,6 +11,8 @@ export interface DemoDraft {
   ratings: Record<string, number>;
   comments: Record<string, string>;
   notes: string;
+  recommendation?: ScorecardRecommendation;
+  followUpNotes?: string;
   simulation: 'idle' | 'transcript' | 'report';
 }
 const emptyDraft = (): DemoDraft => ({ ratings: {}, comments: {}, notes: '', simulation: 'idle' });
@@ -92,7 +95,7 @@ export function CalendarDemoProvider({ children }: { children: ReactNode }) {
   return <CalendarDemoContext.Provider value={value}>
     {children}
     {selected && <Suspense fallback={null}>
-      <InterviewDemoDialog selected={selected} tab={tab} draft={draft}
+      <InterviewDemoDialog key={selected.event.id} selected={selected} tab={tab} draft={draft}
         onClose={() => setSelectedId(null)} onTabChange={setTab} onDraftChange={updateDraft} onRestoreFocus={restoreFocus} />
     </Suspense>}
   </CalendarDemoContext.Provider>;

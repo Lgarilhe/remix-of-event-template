@@ -33,6 +33,8 @@ import {
   type CaptureMode, type DisplayAudioCapture, type SpeakerSource,
 } from '@/lib/liveAudioCapture';
 import { AudioSetupGuide } from './AudioSetupGuide';
+import { InterviewAudioRecommendation } from './InterviewAudioRecommendation';
+import { interviewAudioRecommendation } from '@/lib/interviewAudioRecommendation';
 import { InterviewFollowUp } from './InterviewFollowUp';
 
 interface Criterion {
@@ -103,6 +105,8 @@ interface LiveCoachingPanelProps {
   projectId?: string | null;
   processStepId?: string | null;
   qualificationSessionId?: string | null;
+  /** Lieu du rendez-vous validé : conseil audio, jamais démarrage automatique. */
+  meetingLocation?: string | null;
   jobId: string;
   jobTitle: string;
   jobContext: string;
@@ -238,6 +242,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   projectId,
   processStepId,
   qualificationSessionId,
+  meetingLocation,
   jobId,
   jobTitle,
   jobContext,
@@ -251,7 +256,12 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   onOpenProfile,
 }) => {
   const baseId = useId();
+  const [meetingSupported] = useState(() => displayAudioSupported());
+  const audioRecommendation = interviewAudioRecommendation(
+    meetingLocation, meetingSupported, typeof navigator === 'undefined' ? '' : navigator.userAgent,
+  );
   const [showAudioGuide, setShowAudioGuide] = useState(() => {
+    if (audioRecommendation) return false;
     try {
       return !sessionStorage.getItem('audio-guide-dismissed');
     } catch {
@@ -281,8 +291,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
   const [expandedCriterion, setExpandedCriterion] = useState<string | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   // Source de l'audio : choix de la personne (gardé d'une séance à l'autre) et séance en cours.
-  const [meetingSupported] = useState(() => displayAudioSupported());
-  const [captureMode, setCaptureMode] = useState<CaptureMode>(() => readCaptureMode());
+  const [captureMode, setCaptureMode] = useState<CaptureMode>(() => readCaptureMode(audioRecommendation?.mode ?? 'meeting'));
   const [meetingActive, setMeetingActive] = useState(false);
   const [meetingAudioLost, setMeetingAudioLost] = useState(false);
   const [restartingMeeting, setRestartingMeeting] = useState(false);
@@ -838,6 +847,15 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
       {idle && (
         <>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {audioRecommendation && (
+              <div className="space-y-3">
+                <InterviewAudioRecommendation recommendation={audioRecommendation} captureMode={effectiveMode} onApply={changeCaptureMode} />
+                <p className="text-xs text-foreground-secondary">Prévenez le candidat que l’entretien est transcrit. Le micro démarre uniquement avec le bouton ci-dessous.</p>
+                <Button variant="ghost" size="sm" className="h-auto px-0 text-xs max-md:min-h-11" aria-expanded={showAudioGuide} onClick={() => setShowAudioGuide(!showAudioGuide)}>
+                  {showAudioGuide ? 'Masquer le guide audio' : 'Réglages audio détaillés'}
+                </Button>
+              </div>
+            )}
             {showAudioGuide ? (
               <AudioSetupGuide
                 onReady={() => {
@@ -853,7 +871,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                   } catch { /* stockage indisponible */ }
                 }}
               />
-            ) : (
+            ) : !audioRecommendation && (
               <p className="text-sm text-foreground-secondary">
                 L'assistant d'entretien transcrit l'échange, coche les critères abordés et signale les points à creuser.
                 Prévenez le candidat que l'entretien est transcrit.
@@ -896,7 +914,7 @@ export const LiveCoachingPanel: React.FC<LiveCoachingPanelProps> = ({
                   </span>
                 </ToggleGroupItem>
               </ToggleGroup>
-              <p className="text-xs text-foreground-secondary">{captureHint}</p>
+              {(!audioRecommendation || effectiveMode !== audioRecommendation.mode) && <p className="text-xs text-foreground-secondary">{captureHint}</p>}
             </div>
             <Button variant="primary" onClick={() => void startRecording()} loading={starting} className="w-full max-md:min-h-11">
               {!starting && <Mic aria-hidden="true" />}

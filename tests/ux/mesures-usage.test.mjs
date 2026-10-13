@@ -285,8 +285,10 @@ test('geste — candidats inscrits : nombre réellement inscrits, par écran', (
     const file = 'src/components/outreach/SequenceEnrollModal.tsx';
     const { source, call } = callOf(file, 'Candidates Enrolled', 'inscription');
     assert.match(call.text, /count: enrollmentResults\.success/);
-    // Après la planification de la première étape (sinon les inscriptions sont retirées) et le retour sans inscription.
-    after(source, call, 'if (insertedRows.length === 0) {', 'if (execError) {', "toast.error(rolledBack ? 'Inscription impossible' : 'Inscription incomplète'");
+    // Après le refus, l'échec et l'échec de planification de la première étape
+    // (enrollCandidates : sinon les inscriptions sont retirées ou incomplètes).
+    after(source, call, "if (outcome.status === 'refused') {", "if (outcome.status === 'failed') {", 'if (outcome.schedulingFailure) {');
+    assert.match(code(source), /if \(enrollmentResults\.success > 0\) \{[^}]*trackUsage\('Candidates Enrolled', \{ surface: 'inscription'/);
   }
   {
     const file = 'src/components/outreach/BulkInMailModal.tsx';

@@ -2116,7 +2116,8 @@ Ne jamais inventer un profil, un chiffre ou une info. Si tu ne sais pas, dis-le 
   } catch (error) {
     console.error("[search-agent-chat] Error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      // The cause stays in the log: a provider or model error text must never reach the screen.
+      JSON.stringify({ error: "Le service est momentanément indisponible. Veuillez réessayer dans quelques instants." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

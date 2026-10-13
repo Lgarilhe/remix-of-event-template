@@ -2,9 +2,22 @@
 // Charge supabase/functions/<nom>/index.ts à la première requête et capte le
 // handler passé à Deno.serve. Tout fetch vers un hôte autre que 127.0.0.1 ou
 // localhost part vers le faux prestataire (vendor-mock.mjs) : aucun appel réel.
+// Les appels LinkedIn de l'API v2 (https://api.unipile.com/v2/...) en font partie :
+// seuls le chemin et la requête sont conservés, l'hôte d'origine passe dans
+// l'en-tête x-original-host, que le faux prestataire contrôle.
 const ROOT = new URL('../../supabase/functions/', import.meta.url);
 const MOCK = Deno.env.get('VENDOR_MOCK_URL') ?? 'http://127.0.0.1:54340';
 const PORT = Number(Deno.env.get('FUNCTIONS_PORT') ?? 54331);
+
+// L'ancienne API (hôte propre à l'organisation, clé propre) n'existe plus : si le
+// shell du développeur exporte encore ces variables, une lecture oubliée dans une
+// fonction doit échouer franchement, pas atteindre une configuration fantôme.
+for (const legacy of ['UNIPILE_API_KEY', 'UNIPILE_DSN']) {
+  if (Deno.env.get(legacy) !== undefined) {
+    console.warn(`[functions] ${legacy} ignorée : l'ancienne API n'est plus servie`);
+    Deno.env.delete(legacy);
+  }
+}
 
 type Handler = (req: Request, info?: unknown) => Response | Promise<Response>;
 const handlers = new Map<string, Handler>();

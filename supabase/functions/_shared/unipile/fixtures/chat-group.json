@@ -1,0 +1,130 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "GET /v2/{account_id}/chats (group chat with participants and a MessagePreview, spec messaging.md)"
+  },
+  "context": {
+    "accountId": "acc_test_linkedin"
+  },
+  "input": {
+    "object": "Chat",
+    "id": "chat_grp",
+    "name": "Groupe projet",
+    "muted_until": true,
+    "is_group": true,
+    "is_1to1": false,
+    "is_channel": false,
+    "type": "group",
+    "is_pinned": true,
+    "is_readonly": true,
+    "is_archived": false,
+    "folders": [],
+    "unread_count": -1,
+    "provider": "linkedin",
+    "created_at": "2026-08-01T00:00:00.000Z",
+    "last_message": {
+      "object": "MessagePreview",
+      "id": "msg_g1",
+      "text": "À demain",
+      "sender_display_name": "Moi",
+      "is_sender": true
+    },
+    "participants": [
+      {
+        "object": "GroupParticipant",
+        "is_self": true,
+        "is_admin": true,
+        "user": {
+          "object": "User",
+          "id": "ACoAAself",
+          "type": "individual",
+          "display_name": "Moi"
+        }
+      },
+      {
+        "object": "GroupParticipant",
+        "is_self": false,
+        "is_admin": false,
+        "user": {
+          "object": "User",
+          "id": "ACoAAother",
+          "type": "individual",
+          "display_name": "Autre Personne"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "id": "chat_grp",
+    "account_id": "acc_test_linkedin",
+    "account_type": "LINKEDIN",
+    "name": "Groupe projet",
+    "subject": null,
+    "timestamp": "2026-08-01T00:00:00.000Z",
+    "unread_count": 1,
+    "unread": 1,
+    "attendees": [
+      {
+        "id": "ACoAAself",
+        "provider_id": "ACoAAself",
+        "attendee_provider_id": "ACoAAself",
+        "name": "Moi",
+        "display_name": "Moi",
+        "first_name": null,
+        "last_name": null,
+        "public_identifier": null,
+        "profile_url": null,
+        "profile_picture_url": null,
+        "picture_url": null,
+        "headline": null,
+        "occupation": null,
+        "network_distance": null,
+        "specifics": {
+          "occupation": null,
+          "network_distance": null
+        },
+        "is_self": true
+      },
+      {
+        "id": "ACoAAother",
+        "provider_id": "ACoAAother",
+        "attendee_provider_id": "ACoAAother",
+        "name": "Autre Personne",
+        "display_name": "Autre Personne",
+        "first_name": null,
+        "last_name": null,
+        "public_identifier": null,
+        "profile_url": null,
+        "profile_picture_url": null,
+        "picture_url": null,
+        "headline": null,
+        "occupation": null,
+        "network_distance": null,
+        "specifics": {
+          "occupation": null,
+          "network_distance": null
+        },
+        "is_self": false
+      }
+    ],
+    "attendee_provider_id": "ACoAAother",
+    "folder": [],
+    "content_type": null,
+    "is_inmail": false,
+    "type": 1,
+    "is_group": true,
+    "is_readonly": true,
+    "is_archived": false,
+    "last_message": {
+      "text": "À demain",
+      "sender_id": null,
+      "timestamp": null,
+      "is_sender": true,
+      "message_type": null,
+      "sender_name": "Moi",
+      "is_preview": true
+    },
+    "inmail_unknown": true
+  }
+}

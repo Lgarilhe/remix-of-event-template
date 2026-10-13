@@ -121,7 +121,8 @@ test('Proxys LinkedIn : des mots, sans drapeau ni message technique', () => {
   assert.match(proxy, /loading=\{saving\}[^>]*>\s*Enregistrer\s*<\/Button>/);
   assert.match(proxy, /aria-label=\{`Type de proxy du compte \$\{accountName\}`\}/);
   assert.match(proxy, /aria-label="Pays du proxy"/);
-  assert.match(proxy, /aria-label="Adresse IP du proxy"/);
+  // Le choix d'une adresse IP n'existe plus (service LinkedIn v2 seul) : ni option, ni champ, ni envoi.
+  assert.doesNotMatch(proxy, /aria-label="Adresse IP du proxy"|value: 'ip'|proxy_ip|ipAddress/);
   for (const label of ['Protocole', 'Hôte', 'Port', 'Identifiant (facultatif)', 'Mot de passe (facultatif)']) {
     assert.match(proxy, new RegExp(`<Label htmlFor=\\{\`\\$\\{fieldId\\}-\\w+\`\\} className="text-xs">${label.replace(/[()]/g, '\\$&')}</Label>`), label);
   }
@@ -133,6 +134,7 @@ test('Assistant : boutons du kit, noms gardés, 44 px au doigt', () => {
   const panel = code('src/components/agent/AgentChatPanel.tsx');
   const menu = code('src/components/assistant-ui/connector-menu.tsx');
   const thread = code('src/components/assistant-ui/thread.tsx');
+  const composer = code('src/components/assistant-ui/composer-styles.ts');
   for (const [rel, src] of [['AgentChatPanel', panel], ['connector-menu', menu], ['thread', thread]]) {
     assert.doesNotMatch(src, /<button\b/, `${rel} : bouton écrit à la main`);
   }
@@ -151,7 +153,8 @@ test('Assistant : boutons du kit, noms gardés, 44 px au doigt', () => {
   assert.match(thread, /<FileUploadTrigger asChild>\s*<TooltipTrigger asChild>/);
   assert.match(thread, /aria-label=\{`Retirer le fichier \$\{f\.name\}`\}/);
   assert.match(thread, /max-md:after:absolute max-md:after:-inset-3/);
-  assert.match(thread, /rounded-full transition-colors max-md:h-11 max-md:w-11/, 'envoi à 44 px sur téléphone');
+  assert.match(thread, /className=\{ASSISTANT_SEND_CLASS\}/, 'envoi avec les classes communes du composer');
+  assert.match(composer, /rounded-full transition-colors max-md:h-11 max-md:w-11/, 'envoi à 44 px sur téléphone');
 });
 
 test('Résidus : tiret long, tutoiement, sélecteur natif, tailles hors échelle', () => {

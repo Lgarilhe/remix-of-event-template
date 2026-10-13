@@ -1,6 +1,6 @@
 // deno test --no-check supabase/functions/_shared/sequence-sender.test.ts
 import { deepStrictEqual as assertEquals } from "node:assert";
-import { clearSenderCache, isMailboxDisconnected, resolveEmailStepSender, resolveSequenceSenderUserId, sendingAccountId } from "./sequence-sender.ts";
+import { clearSenderCache, isMailboxDisconnected, isMailboxLimited, resolveEmailStepSender, resolveSequenceSenderUserId, sendingAccountId } from "./sequence-sender.ts";
 import { loadAndBuildAiContext, loadAiContextForEnrollment } from "./ai-context.ts";
 
 function fakeClient(owner: Record<string, string>, aiContexts: Record<string, unknown> = {}) {
@@ -96,6 +96,12 @@ Deno.test("SEQ-067/100 : étape e-mail, même boîte et même titulaire que sequ
   // Même règle que sequence-send-email : utilisable = vide, OK ou CONNECTED (casse ignorée).
   for (const s of ["STOPPED", "CONNECTING", "PAUSED", "ERROR", "DELETED"]) assertEquals(isMailboxDisconnected(s), true, s);
   for (const s of ["", "  ", "ok", "Connected", undefined]) assertEquals(isMailboxDisconnected(s), false, String(s));
+  // DEGRADED, PARTIAL, LOCKED : boîte limitée, à reporter. Ni utilisable, ni à reconnecter : pas de pause d'inscription.
+  for (const s of ["DEGRADED", "PARTIAL", "LOCKED", "partial"]) {
+    assertEquals(isMailboxLimited(s), true, s);
+    assertEquals(isMailboxDisconnected(s), false, s);
+  }
+  for (const s of ["OK", "CREDENTIALS", "ERROR", "", null, undefined]) assertEquals(isMailboxLimited(s), false, String(s));
   // Signature d'une étape e-mail : titulaire de la boîte, pas l'auteur de l'inscription.
   assertEquals(await resolveSequenceSenderUserId(client, enrollment, { sender_id: "MAIL_THEO", action_type: "email" }), "u-theo");
   // Compte absent de l'organisation : rien n'est résolu.

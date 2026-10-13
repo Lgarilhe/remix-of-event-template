@@ -1,0 +1,490 @@
+/**
+ * Action `send_message` de unipile-search : un message dans une conversation
+ * existante (`chat_id`) ou une nouvelle conversation (`recipient_id`), par message
+ * direct ou par InMail.
+ *
+ * Règles d'envoi (refonte mission, lot 0b) :
+ *  - le candidat et le contrôle d'effacement RGPD passent AVANT le plafond LinkedIn,
+ *    le marqueur et l'appel au prestataire (correctif 4 : un candidat effacé ou un
+ *    registre illisible refusent l'envoi, `checkSendRecipient`) ;
+ *  - le marqueur (record_candidate_outbound, `pending`) passe AVANT l'appel au
+ *    prestataire, pour que l'écho de ce message au webhook ne soit pas pris pour un
+ *    message écrit hors Konekt ;
+ *  - « Contacté » et le lien conversation-mission ne sont posés qu'APRÈS un envoi
+ *    confirmé ; un envoi incertain (délai, 5xx, réponse illisible) n'est jamais
+ *    enregistré comme envoyé et n'est jamais repris ;
+ *  - l'enregistrement est au mieux : son échec est journalisé, jamais rendu.
+ *
+ * InMail : il n'existe qu'à la création de la conversation et dépend de la licence
+ * du compte (contrat sélectionné) : Classic `inmail`, Recruiter objet + signature,
+ * Sales Navigator objet. La signature vient de l'appelant, sinon du nom du profil
+ * de la personne qui a relié le compte.
+ */
+
+import {
+  chatRef,
+  getChat,
+  sendMessage,
+  startChat,
+  userRef,
+  UnipileError,
+  type InmailSpec,
+  type SendOutcome,
+  type UserRefInput,
+} from '../_shared/unipile/index.ts';
+import { candidateRef, missionIdFrom, recordOutbound, type CandidateRef } from '../_shared/candidate-stage-events.ts';
+import { isCandidateErasedForOrg } from '../_shared/get-or-fetch-contact.ts';
+import { accountInboxes, pickInbox, resolveLicences, type Licence } from './licence.ts';
+import { failureResponse, json, UnipileInputError } from './responses.ts';
+
+/** Appelant d'un envoi : organisation vérifiée, utilisateur (vide en appel interne). */
+export interface SendContext {
+  organizationId: string;
+  userId: string;
+  isInternal: boolean;
+  /** Membre qui a relié le compte d'envoi (signature d'un InMail Recruiter). */
+  accountOwnerId: string | null;
+  // deno-lint-ignore no-explicit-any
+  admin: () => any;
+}
+
+const SEND_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function sendText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+/** Candidat d'une conversation déjà liée à une mission sur ce compte (lien conversation–mission). */
+async function linkedChatCandidate(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  organizationId: string,
+  accountId: string,
+  chatId: string,
+): Promise<CandidateRef | null> {
+  const { data, error } = await admin
+    .from('mission_conversations')
+    .select('candidate_id, candidate_ids, candidate_slug')
+    .eq('organization_id', organizationId)
+    .eq('account_id', accountId)
+    .eq('chat_id', chatId)
+    .order('last_mission_send_at', { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (error) {
+    console.warn('[unipile-search] send_message: lien de conversation illisible:', error.message);
+    return null;
+  }
+  const row = (data ?? [])[0] as { candidate_id: string | null; candidate_ids: string[] | null; candidate_slug: string | null } | undefined;
+  if (!row) return null;
+  const ref = candidateRef({ ids: [row.candidate_id, ...(row.candidate_ids ?? [])], slug: row.candidate_slug });
+  return ref.ids.length > 0 || ref.slug ? ref : null;
+}
+
+/**
+ * Candidat d'une conversation lu auprès du prestataire : l'interlocuteur d'une
+ * conversation à deux. Un groupe ou une conversation sans identité : null (le message part
+ * sans enregistrement). Lecture en panne passagère : refus 503 GDPR_UNVERIFIED. Le chat est
+ * lu sous le compte de la requête (il n'a pas de compte propre).
+ */
+/** Genres d'échec d'une lecture de conversation qui laissent l'interlocuteur inconnu sans raison de croire qu'il n'y en a pas. */
+const UNVERIFIABLE_READ_KINDS: readonly string[] = ['network', 'server', 'rate_limited'];
+
+export async function fetchChatCandidate(accountId: string, chatId: string): Promise<CandidateRef | null> {
+  try {
+    const chat = await getChat(accountId, chatId);
+    if (chat.is_group === true || chat.type === 'group' || chat.type === 'channel') return null;
+    const user = chat.user;
+    const ref = candidateRef({
+      ids: [sendText(chat.user_id) ?? sendText(user?.id)],
+      slug: sendText(user?.public_identifier),
+      profileUrl: sendText(user?.profile_url),
+      name: sendText(user?.display_name),
+    });
+    // Un interlocuteur connu par son seul nom public ou son adresse est jugé par cette identité (le chat v2 n'a pas toujours user_id).
+    return ref.ids.length > 0 || ref.slug || ref.profile_url ? ref : null;
+  } catch (e) {
+    console.warn('[unipile-search] send_message: lecture de la conversation impossible:', e instanceof UnipileError ? e.kind : e instanceof Error ? e.message : e);
+    // Sans lecture, l'interlocuteur est inconnu et son effacement ne peut pas être vérifié. Une panne passagère (réseau,
+    // 5xx, limite) refuse l'envoi, échec fermé comme un registre illisible : le candidat peut être effacé. Une conversation
+    // ou un compte refusés par le prestataire laissent l'envoi rendre sa propre erreur (compte à reconnecter, par exemple).
+    if (e instanceof UnipileError && UNVERIFIABLE_READ_KINDS.includes(e.kind)) {
+      throw new UnipileInputError(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED');
+    }
+    return null;
+  }
+}
+
+/** Destinataire d'un envoi, résolu et contrôlé avant le plafond LinkedIn, le marqueur et le POST. */
+export interface SendRecipient {
+  // deno-lint-ignore no-explicit-any
+  admin: any;
+  candidate: CandidateRef;
+}
+
+export const SEND_ERASED_MESSAGE = "Ce candidat a demandé l'effacement de ses données : aucun message ne peut lui être envoyé.";
+export const SEND_GDPR_UNVERIFIED_MESSAGE =
+  "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié : le message n'est pas parti. Réessayez dans un instant.";
+
+/**
+ * Correctif 4 (plan du lot 5) : destinataire d'un envoi et contrôle d'effacement,
+ * pour tout appelant (fiche, messagerie, fenêtre de message, assistant). Candidat :
+ * pour une conversation existante, celui du lien, sinon l'interlocuteur de la
+ * conversation, même si recipient_id est fourni ; sinon recipient_id et
+ * recipient_profile_url. Candidat effacé (RGPD) dans l'organisation : refus 403
+ * CANDIDATE_ERASED. Registre illisible : refus 503 GDPR_UNVERIFIED (échec fermé,
+ * comme isGdprBlocked). Candidat inconnu (groupe, interlocuteur illisible) : null,
+ * le message part sans enregistrement, comme avant. Ne lit que (base et, au plus,
+ * la conversation chez le prestataire) : ni marqueur, ni envoi.
+ */
+export async function checkSendRecipient(
+  accountId: string,
+  params: Record<string, unknown>,
+  ctx: Pick<SendContext, 'organizationId' | 'admin'>,
+): Promise<SendRecipient | null> {
+  // Même conversation que celle de l'envoi : chat_id lu par chatRef, comme sendMessage le lit.
+  const chatId = params.chat_id ? chatRef(accountId, String(params.chat_id)).chatId : null;
+  const admin = ctx.admin();
+
+  // Avec chat_id, le message part dans la conversation et recipient_id ne sert pas au
+  // routage (handleSendMessage) : le destinataire est l'interlocuteur de la conversation,
+  // quel que soit recipient_id, sinon un recipient_id choisi par l'appelant ferait passer
+  // l'envoi à un candidat effacé. recipient_id et recipient_profile_url seulement sans
+  // conversation, ou si son interlocuteur est inconnu. Un recipient_id peut être un nom
+  // court ou une adresse de profil (userRef) : leur identité compte autant que l'identifiant.
+  const given = params.recipient_id ? userRef(String(params.recipient_id)) : null;
+  let candidate = candidateRef({
+    ids: [sendText(params.recipient_id), given?.providerId],
+    slug: given?.slug,
+    profileUrl: sendText(params.recipient_profile_url),
+  });
+  if (chatId) {
+    candidate = (await linkedChatCandidate(admin, ctx.organizationId, accountId, chatId))
+      ?? (await fetchChatCandidate(accountId, chatId))
+      ?? candidate;
+  }
+  if (candidate.ids.length === 0 && !candidate.slug && !candidate.profile_url) {
+    console.warn('[unipile-search] send_message: candidat inconnu, aucun lien ni étape');
+    return null;
+  }
+
+  // Le registre juge une adresse à la fois : le nom public de recipient_id et l'adresse de recipient_profile_url
+  // peuvent désigner deux personnes, et l'envoi suit le nom public (userRef) ; chaque forme est donc jugée.
+  const urls = [...new Set([
+    candidate.profile_url,
+    candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null,
+  ].filter((url): url is string => !!url))];
+  let erased = false;
+  try {
+    for (const linkedinUrl of urls.length > 0 ? urls : [null]) {
+      // Client esm.sh, type attendu npm : même API.
+      // deno-lint-ignore no-explicit-any
+      erased = await isCandidateErasedForOrg(admin as any, { organizationId: ctx.organizationId, linkedinIds: candidate.ids, linkedinUrl });
+      if (erased) break;
+    }
+  } catch (e) {
+    console.warn('[unipile-search] send_message: registre d\'effacement illisible, envoi refusé:', e instanceof Error ? e.message : e);
+    throw new UnipileInputError(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED');
+  }
+  if (erased) {
+    console.log('[unipile-search] send_message: candidat effacé, envoi refusé');
+    throw new UnipileInputError(SEND_ERASED_MESSAGE, 403, 'CANDIDATE_ERASED');
+  }
+  return { admin, candidate };
+}
+
+/** Envoi manuel à enregistrer : candidat, mission et auteur, résolus avant le POST. */
+export interface ManualSendTarget extends SendRecipient {
+  projectId: string | null;
+  createdBy: string | null;
+  source: 'manual' | 'assistant';
+  sendKind: 'message' | 'inmail';
+}
+
+/**
+ * Avant le POST : mission et auteur de l'envoi, puis marqueur (record_candidate_outbound,
+ * p_pending). Mission : project_id s'il a la forme d'un uuid (préfixe project: accepté),
+ * sinon résolue par le serveur. Candidat : celui de checkSendRecipient, déjà contrôlé (un
+ * candidat effacé ou un registre illisible refusent l'envoi avant le plafond LinkedIn,
+ * correctif 4) ; inconnu, rien n'est enregistré. source et created_by ne sont lus que sur
+ * un appel interne (assistant). Au mieux : jamais d'erreur rendue.
+ */
+export async function prepareManualSend(
+  accountId: string,
+  params: Record<string, unknown>,
+  ctx: SendContext,
+  recipient: SendRecipient | null,
+): Promise<ManualSendTarget | null> {
+  if (!recipient) return null;
+  // Candidat jugé par son nom public ou son adresse seulement (conversation sans identifiant) : rien à enregistrer.
+  if (recipient.candidate.ids.length === 0) return null;
+  try {
+    const rawProjectId = params.project_id;
+    const projectId = missionIdFrom(rawProjectId);
+    if (!projectId && rawProjectId != null && rawProjectId !== '') {
+      console.warn('[unipile-search] send_message: project_id ignoré (forme invalide)');
+    }
+    const chatId = sendText(params.chat_id);
+    const { admin, candidate } = recipient;
+
+    const internalCreatedBy = sendText(params.created_by);
+    const target: ManualSendTarget = {
+      admin,
+      candidate,
+      projectId,
+      createdBy: ctx.isInternal
+        ? (internalCreatedBy && SEND_UUID_RE.test(internalCreatedBy) ? internalCreatedBy : null)
+        : (ctx.userId || null),
+      source: ctx.isInternal && params.source === 'assistant' ? 'assistant' : 'manual',
+      // is_inmail ne vaut que pour une nouvelle conversation (voir l'envoi).
+      sendKind: !params.chat_id && params.is_inmail ? 'inmail' : 'message',
+    };
+    const marker = await recordOutbound(admin, {
+      organizationId: ctx.organizationId,
+      accountId,
+      candidate,
+      source: target.source,
+      projectId,
+      chatId,
+      createdBy: target.createdBy,
+      pending: true,
+      sendKind: target.sendKind,
+    });
+    if (!marker.ok) console.error('[unipile-search] send_message: marqueur non posé:', marker.fn, marker.kind, marker.error);
+    return target;
+  } catch (e) {
+    console.error('[unipile-search] send_message: préparation de l\'enregistrement impossible:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/**
+ * Après un envoi réussi : lien conversation–mission et « Contacté »
+ * (record_candidate_outbound), au mieux. Un échec est journalisé et n'est
+ * jamais renvoyé : le message est parti.
+ */
+export async function recordManualSend(
+  target: ManualSendTarget,
+  accountId: string,
+  params: Record<string, unknown>,
+  sent: { messageId: string | null; chatId: string | null },
+  ctx: SendContext,
+): Promise<void> {
+  try {
+    const res = await recordOutbound(target.admin, {
+      organizationId: ctx.organizationId,
+      accountId,
+      candidate: target.candidate,
+      source: target.source,
+      projectId: target.projectId,
+      chatId: sendText(params.chat_id) ?? sent.chatId,
+      messageId: sent.messageId,
+      createdBy: target.createdBy,
+      sendKind: target.sendKind,
+    });
+    if (!res.ok) {
+      console.error('[unipile-search] send_message:', res.fn, res.kind, res.error);
+    } else if ('reason' in res.data) {
+      console.log(`[unipile-search] send_message: aucun lien (${res.data.reason})`);
+    } else {
+      console.log(`[unipile-search] send_message: mission ${res.data.project_id} (${res.data.via}), ${res.data.rows.length} ligne(s)`);
+    }
+  } catch (e) {
+    console.error('[unipile-search] send_message: enregistrement de l\'envoi impossible:', e instanceof Error ? e.message : e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// InMail et route de création d'une conversation
+// ---------------------------------------------------------------------------
+
+/** Nom affiché du profil Konekt d'un membre (signature d'un InMail Recruiter). */
+async function signatureOf(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  userId: string | null,
+): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    const { data } = await admin.from('profiles').select('display_name').eq('user_id', userId).maybeSingle();
+    return sendText((data as { display_name?: string | null } | null)?.display_name);
+  } catch (e) {
+    console.warn('[unipile-search] send_message: nom de signature illisible:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+export type InmailPlan = { ok: true; spec: InmailSpec } | { ok: false; error: string };
+
+/**
+ * Forme de l'InMail d'après le contrat sélectionné du compte. Un objet est exigé
+ * en Recruiter et en Sales Navigator (le prestataire le demande) ; Classic n'en a pas.
+ */
+export async function planInmail(
+  accountId: string,
+  params: Record<string, unknown>,
+  ctx: Pick<SendContext, 'userId' | 'accountOwnerId' | 'admin'>,
+): Promise<InmailPlan> {
+  const licences = await resolveLicences(accountId);
+  const subject = sendText(params.subject);
+  if (licences.active === 'classic') return { ok: true, spec: { licence: 'classic' } };
+  if (!subject) return { ok: false, error: 'Renseignez l’objet de l’InMail.' };
+  if (licences.active === 'sales_navigator') return { ok: true, spec: { licence: 'sales_navigator', subject } };
+  const signature = sendText(params.signature)
+    ?? await signatureOf(ctx.admin(), ctx.accountOwnerId ?? (ctx.userId || null));
+  if (!signature) {
+    return { ok: false, error: 'Votre nom n’est pas renseigné dans votre profil : il signe l’InMail Recruiter. Complétez votre profil, puis réessayez.' };
+  }
+  return { ok: true, spec: { licence: 'recruiter', subject, signature } };
+}
+
+/**
+ * Démarre une conversation. La boîte par laquelle elle part est choisie d'après la
+ * licence quand elle est identifiable ; si le prestataire refuse cette route (rien
+ * n'a été fait), la route sans boîte est essayée une fois. Un envoi incertain n'est
+ * jamais repris.
+ */
+export async function startConversation(
+  accountId: string,
+  user: UserRefInput,
+  text: string,
+  kind: Licence,
+  inmail: InmailSpec | undefined,
+): Promise<SendOutcome> {
+  let inboxId: string | undefined;
+  try {
+    inboxId = pickInbox(await accountInboxes(accountId), kind)?.id;
+  } catch (e) {
+    console.warn('[unipile-search] send_message: boîtes illisibles, envoi sans boîte:', e instanceof UnipileError ? e.kind : e);
+  }
+  const first = await startChat({ accountId, user, text, inboxId, inmail });
+  if (inboxId !== undefined && first.outcome === 'refused' && (first.kind === 'validation' || first.kind === 'not_found')) {
+    console.warn('[unipile-search] send_message: route par boîte refusée, essai sans boîte');
+    return await startChat({ accountId, user, text, inmail });
+  }
+  return first;
+}
+
+// ---------------------------------------------------------------------------
+// Action
+// ---------------------------------------------------------------------------
+
+/** Envoi contrôlé, prêt à partir : texte, destinataire d'une nouvelle conversation et forme de l'InMail. */
+export interface SendPlan {
+  body: string;
+  /** Destinataire d'une nouvelle conversation ; null dans une conversation existante. */
+  user: UserRefInput | null;
+  /** Candidat destinataire, contrôlé (effacement RGPD) ; null s'il est inconnu : le message part sans enregistrement. */
+  recipient: SendRecipient | null;
+  inmail: InmailSpec | undefined;
+  kind: Licence;
+}
+
+export type SendPlanResult = { ok: true; plan: SendPlan } | { ok: false; response: Response };
+
+const SEND_FAILURE_OPTIONS = {
+  validationMessage: 'Le message n’a pas pu être envoyé. Vérifiez le destinataire et le texte, puis réessayez.',
+};
+
+/**
+ * Contrôles d'un envoi, sans rien écrire ni envoyer : entrées, conversation, destinataire (effacement RGPD) et
+ * forme de l'InMail (objet, signature). Appelé AVANT le plafond LinkedIn pour qu'un envoi refusé ne compte pas
+ * dans le journal d'usage, et avant le marqueur pour qu'une demande qui n'atteint jamais le prestataire n'en
+ * laisse pas. Un candidat effacé (403 CANDIDATE_ERASED) ou un registre illisible (503 GDPR_UNVERIFIED) lèvent
+ * UnipileInputError, rendue avec son statut et son code par le point d'entrée.
+ */
+export async function planSend(
+  accountId: string,
+  params: Record<string, unknown>,
+  ctx: Pick<SendContext, 'organizationId' | 'userId' | 'accountOwnerId' | 'admin'>,
+): Promise<SendPlanResult> {
+  const { chat_id, recipient_id, text, message, is_inmail } = params;
+  const messageText = (text || message) as string;
+  const refuse = (error: string, status = 400): SendPlanResult => ({ ok: false, response: json({ success: false, error }, status) });
+
+  // Il faut une conversation existante (chat_id) ou un destinataire (recipient_id).
+  if (!chat_id && !recipient_id) return refuse('Chat ID ou Recipient ID requis');
+  if (!messageText || typeof messageText !== 'string' || messageText.trim().length === 0) return refuse('Message vide');
+  const body = messageText.trim();
+
+  // Une conversation se désigne avec le compte : un identifiant mal formé est refusé ici, avant tout marqueur.
+  if (chat_id) {
+    try {
+      chatRef(accountId, String(chat_id));
+    } catch {
+      return refuse('Identifiant de conversation invalide');
+    }
+  }
+
+  // Destinataire d'une nouvelle conversation : identifiant du candidat, puis son adresse de profil.
+  let user: UserRefInput | null = null;
+  if (!chat_id) {
+    const given = userRef(String(recipient_id));
+    user = {
+      providerId: given?.providerId ?? null,
+      slug: given?.slug ?? null,
+      profileUrl: sendText(params.recipient_profile_url),
+    };
+    if (!userRef(user)) return refuse('Recipient ID invalide');
+  }
+
+  // Destinataire et effacement RGPD : avant la lecture de la licence, donc sans appel au prestataire pour un
+  // candidat effacé sans conversation à lire.
+  const recipient = await checkSendRecipient(accountId, params, ctx);
+
+  // La forme de l'InMail se lit chez le prestataire sans rien écrire.
+  let inmail: InmailSpec | undefined;
+  let kind: Licence = 'classic';
+  if (!chat_id && is_inmail) {
+    try {
+      const plan = await planInmail(accountId, params, ctx);
+      if (!plan.ok) return { ok: false, response: json({ success: false, error: plan.error, errorType: 'INVALID_REQUEST' }, 400) };
+      inmail = plan.spec;
+      kind = plan.spec.licence;
+    } catch (error) {
+      return { ok: false, response: failureResponse(error, 'send_message', SEND_FAILURE_OPTIONS) };
+    }
+  }
+  return { ok: true, plan: { body, user, recipient, inmail, kind } };
+}
+
+export async function handleSendMessage(
+  accountId: string,
+  params: Record<string, unknown>,
+  ctx: SendContext,
+  planned?: SendPlan,
+): Promise<Response> {
+  const { chat_id } = params;
+  let plan = planned;
+  if (!plan) {
+    const checked = await planSend(accountId, params, ctx);
+    if (!checked.ok) return checked.response;
+    plan = checked.plan;
+  }
+
+  try {
+    const manualSend = await prepareManualSend(accountId, params, ctx, plan.recipient);
+
+    const outcome = chat_id
+      ? await sendMessage({ accountId, chatId: String(chat_id), text: plan.body })
+      : await startConversation(accountId, plan.user as UserRefInput, plan.body, plan.kind, plan.inmail);
+
+    if (outcome.outcome !== 'sent') {
+      // `uncertain` : le message est peut-être parti, rien n'est enregistré comme envoyé (le marqueur seul reste).
+      return failureResponse(outcome.error, 'send_message', SEND_FAILURE_OPTIONS);
+    }
+
+    if (manualSend) await recordManualSend(manualSend, accountId, params, outcome, ctx);
+
+    return json({
+      success: true,
+      message: {
+        object: chat_id ? 'MessageSent' : 'ChatStarted',
+        message_id: outcome.messageId,
+        message_ids: outcome.messageIds,
+        chat_id: sendText(chat_id) ?? outcome.chatId,
+      },
+    });
+  } catch (error) {
+    return failureResponse(error, 'send_message', SEND_FAILURE_OPTIONS);
+  }
+}

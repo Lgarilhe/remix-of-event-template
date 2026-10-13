@@ -2,6 +2,16 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+/**
+ * Conversation visée par une action sur un message. Le service LinkedIn ne retrouve plus
+ * un message sans sa conversation ni son compte : les deux voyagent avec la demande.
+ * Sans compte, le serveur prend celui de l'appelant.
+ */
+export interface MessageChatRef {
+  chatId: string;
+  accountId?: string | null;
+}
+
 export function useMessageActions(organizationId: string | null) {
   const [isReacting, setIsReacting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -29,10 +39,15 @@ export function useMessageActions(organizationId: string | null) {
     return data;
   }, [organizationId]);
 
-  const addReaction = useCallback(async (messageId: string, reaction: string): Promise<boolean> => {
+  const addReaction = useCallback(async (messageId: string, reaction: string, ref: MessageChatRef): Promise<boolean> => {
     setIsReacting(true);
     try {
-      const res = await invoke('add_reaction', { message_id: messageId, reaction });
+      const res = await invoke('add_reaction', {
+        message_id: messageId,
+        reaction,
+        chat_id: ref.chatId,
+        ...(ref.accountId ? { account_id: ref.accountId } : {}),
+      });
       if (res?.success) {
         toast.success('Réaction envoyée');
         return true;
@@ -44,10 +59,14 @@ export function useMessageActions(organizationId: string | null) {
     }
   }, [invoke]);
 
-  const deleteMessage = useCallback(async (messageId: string): Promise<boolean> => {
+  const deleteMessage = useCallback(async (messageId: string, ref: MessageChatRef): Promise<boolean> => {
     setIsDeleting(true);
     try {
-      const res = await invoke('delete_message', { message_id: messageId });
+      const res = await invoke('delete_message', {
+        message_id: messageId,
+        chat_id: ref.chatId,
+        ...(ref.accountId ? { account_id: ref.accountId } : {}),
+      });
       if (res?.success) {
         toast.success('Message supprimé');
         return true;
@@ -59,10 +78,10 @@ export function useMessageActions(organizationId: string | null) {
     }
   }, [invoke]);
 
-  const deleteChat = useCallback(async (chatId: string): Promise<boolean> => {
+  const deleteChat = useCallback(async (chatId: string, accountId?: string | null): Promise<boolean> => {
     setIsDeleting(true);
     try {
-      const res = await invoke('delete_chat', { chat_id: chatId });
+      const res = await invoke('delete_chat', { chat_id: chatId, ...(accountId ? { account_id: accountId } : {}) });
       if (res?.success) {
         toast.success('Conversation supprimée');
         return true;

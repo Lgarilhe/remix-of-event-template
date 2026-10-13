@@ -29,7 +29,10 @@ const ROOT = process.env.C1_ROOT || fileURLToPath(new URL('../../', import.meta.
 const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 const ENGINE = 'supabase/functions/process-sequences/index.ts';
-const SEARCH = 'supabase/functions/unipile-search/index.ts';
+// unipile-search est découpée en modules : le point d'entrée (ordre des contrôles, rendu des refus) et l'envoi.
+const SEARCH_INDEX = 'supabase/functions/unipile-search/index.ts';
+const SEARCH_SEND = 'supabase/functions/unipile-search/send.ts';
+const SEARCH_MESSAGING = 'supabase/functions/_shared/unipile/messaging.ts';
 
 // Le code sans ses commentaires : un commentaire peut nommer ce que le code s'interdit.
 const code = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -59,51 +62,74 @@ test('agenda : la condition « rendez-vous pris » du moteur ignore les séances
 });
 
 test('correctif 4 : send_message refuse un candidat effacé avant le plafond, le marqueur et le POST', () => {
-  const search = code(read(SEARCH));
-  const handler = search.slice(search.indexOf('Deno.serve(async (req) => {'));
-  const check = handler.indexOf("const sendRecipient = action === 'send_message'\n      ? await checkSendRecipient(");
+  const index = code(read(SEARCH_INDEX));
+  const handler = index.slice(index.indexOf('Deno.serve(async (req) => {'));
+  // Le contrôle du destinataire est dans planSend, appelé pour send_message seulement, avant le plafond LinkedIn.
+  const check = handler.indexOf("} else if (action === 'send_message') {\n      const checked = await planSend(");
   const gate = handler.indexOf('const gate = await enforceLinkedInAction(');
-  const dispatch = handler.indexOf("case 'send_message': {");
-  assert.ok(check > 0, 'contrôle du destinataire appelé pour send_message seulement');
+  const dispatch = handler.indexOf("case 'send_message':");
+  assert.ok(check > 0, 'contrôle du destinataire (planSend) appelé pour send_message seulement');
   assert.ok(gate > check, 'contrôle avant le plafond LinkedIn : aucune place prise par un envoi refusé');
   assert.ok(dispatch > gate, 'contrôle avant l\'envoi');
-  assert.match(handler.slice(dispatch), /return await handleSendMessage\([\s\S]*?\}, sendRecipient\);/);
+  // Un refus de planSend sans réponse (ok: false) est rendu tel quel ; le destinataire arrive à l'envoi par le plan.
+  assert.match(handler.slice(check, gate), /if \(!checked\.ok\) return checked\.response;\s*sendPlan = checked\.plan;/);
+  assert.match(handler.slice(dispatch), /return await handleSendMessage\(accountIdRaw, params, sendContext, sendPlan\);/);
   // Un refus (UnipileInputError) est rendu avec son statut et son code.
-  assert.match(handler, /if \(error instanceof UnipileInputError\) \{\s*return new Response\(\s*JSON\.stringify\(\{ success: false, error: error\.message, \.\.\.\(error\.code \? \{ error_code: error\.code \} : \{\}\) \}\),\s*\{ status: error\.status,/);
+  assert.match(handler, /if \(error instanceof UnipileInputError\) \{\s*return json\(\{ success: false, error: error\.message, \.\.\.\(error\.code \? \{ error_code: error\.code \} : \{\}\) \}, error\.status\);/);
 
-  const body = topLevelBody(search, 'async function checkSendRecipient(');
-  // Avec chat_id, le message part dans la conversation (recipient_id ignoré au
-  // routage) : le destinataire contrôlé est son participant, même si
-  // recipient_id est fourni, sinon un recipient_id choisi contourne le refus.
-  // chat_id lu comme l'envoi le lit (unipileId), sinon un chat_id encodé que
-  // l'envoi décode échappe au contrôle.
-  assert.ok(body.includes("const chatId = params.chat_id ? decodeURIComponent(unipileId(params.chat_id, 'chat_id')) : null;"), 'chat_id lu par unipileId, comme à l\'envoi');
-  assert.match(topLevelBody(search, 'async function handleSendMessage('), /if \(chat_id\) \{\s*url = `\$\{baseUrl\}\/chats\/\$\{unipileId\(chat_id, 'chat_id'\)\}\/messages`;/);
-  assert.match(body, /if \(chatId\) \{\s*candidate = \(await linkedChatCandidate\(admin, organizationId, accountId, chatId\)\)\s*\?\? \(await fetchChatCandidate\(baseUrl, apiKey, chatId\)\)\s*\?\? candidate;\s*\}/);
+  const send = code(read(SEARCH_SEND));
+  const body = topLevelBody(send, 'export async function checkSendRecipient(');
+  // Avec chat_id, le message part dans la conversation (recipient_id ignoré au routage) : le destinataire contrôlé est
+  // son interlocuteur, même si recipient_id est fourni, sinon un recipient_id choisi contourne le refus. chat_id est lu
+  // comme l'envoi le lit : le client partagé passe le chat_id de sendMessage par chatRef, comme planSend et ici.
+  assert.ok(body.includes('const chatId = params.chat_id ? chatRef(accountId, String(params.chat_id)).chatId : null;'), 'chat_id lu par chatRef, comme à l\'envoi');
+  assert.match(topLevelBody(send, 'export async function handleSendMessage('), /sendMessage\(\{ accountId, chatId: String\(chat_id\), text: plan\.body \}\)/);
+  assert.match(topLevelBody(send, 'export async function planSend('), /chatRef\(accountId, String\(chat_id\)\)/);
+  assert.match(code(read(SEARCH_MESSAGING)), /path: chatPath\(chatRef\(input\.accountId, input\.chatId\), 'messages', 'send'\)/, 'le client partagé range le chat_id de l\'envoi par chatRef');
+  assert.match(body, /if \(chatId\) \{\s*candidate = \(await linkedChatCandidate\(admin, ctx\.organizationId, accountId, chatId\)\)\s*\?\? \(await fetchChatCandidate\(accountId, chatId\)\)\s*\?\? candidate;\s*\}/);
   assert.doesNotMatch(body, /candidate\.ids\.length === 0 && chatId/, 'la conversation n\'est plus lue seulement sans recipient_id');
   const erasedAt = body.indexOf('erased = await isCandidateErasedForOrg(');
   assert.ok(erasedAt > 0, 'effacement lu par l\'aide partagée (marqueur de l\'organisation et registre)');
+  // Chaque forme d'identité est jugée : l'adresse de recipient_profile_url et le nom public de recipient_id (que suit l'envoi)
+  // peuvent désigner deux personnes ; un interlocuteur sans identifiant mais connu par son nom public ou son adresse est jugé aussi.
+  assert.match(body, /const urls = \[\.\.\.new Set\(\[\s*candidate\.profile_url,\s*candidate\.slug \? `https:\/\/www\.linkedin\.com\/in\/\$\{candidate\.slug\}` : null,/, 'adresse et nom public jugés tous deux');
+  assert.match(body, /for \(const linkedinUrl of urls\.length > 0 \? urls : \[null\]\) \{\s*(?:\/\/[^\n]*\s*)*erased = await isCandidateErasedForOrg\([^;]*\);\s*if \(erased\) break;/, 'chaque adresse passe par le registre');
+  assert.match(body, /if \(candidate\.ids\.length === 0 && !candidate\.slug && !candidate\.profile_url\) \{/, 'inconnu seulement sans identifiant, nom public ni adresse');
   // Registre ou lecture illisible : refus (échec fermé), jamais « non effacé ».
   assert.match(body, /\} catch \(e\) \{[^}]*throw new UnipileInputError\(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED'\);\s*\}/);
   assert.match(body, /if \(erased\) \{[^}]*throw new UnipileInputError\(SEND_ERASED_MESSAGE, 403, 'CANDIDATE_ERASED'\);\s*\}/);
   assert.doesNotMatch(body.slice(erasedAt), /return null;/, 'aucun passage silencieux après la lecture de l\'effacement');
-  assert.doesNotMatch(body, /method: 'POST'|recordOutbound\(/, 'ni envoi ni marqueur dans le contrôle');
+  assert.doesNotMatch(body, /method: 'POST'|recordOutbound\(|\bsendMessage\(|startChat\(|startConversation\(/, 'ni envoi ni marqueur dans le contrôle');
 
-  // L'envoi : marqueur puis POST, à partir du destinataire déjà contrôlé.
-  const send = topLevelBody(search, 'async function handleSendMessage(');
-  assert.match(send, /recipient: SendRecipient \| null,\s*\): Promise<Response> \{/);
-  const marker = send.indexOf('const manualSend = await prepareManualSend(accountId, params, ctx, recipient);');
-  const post = send.indexOf("const response = await fetchWithTimeout(url, {\n    method: 'POST',");
+  // planSend : le contrôle est au premier niveau de la fonction (aucun try qui avalerait son refus), avant la lecture de la
+  // licence d'un InMail, et son résultat voyage dans le plan jusqu'au marqueur.
+  const plan = topLevelBody(send, 'export async function planSend(');
+  assert.match(plan, /\n  const recipient = await checkSendRecipient\(accountId, params, ctx\);\n/);
+  assert.ok(plan.indexOf('await checkSendRecipient(') < plan.indexOf('await planInmail('), 'destinataire jugé avant la licence');
+  assert.match(plan, /plan: \{ body, user, recipient, inmail, kind \}/);
+  assert.match(topLevelBody(send, 'export interface SendPlan '), /recipient: SendRecipient \| null;/);
+
+  // L'envoi : sans plan fourni, handleSendMessage passe par planSend (aucun chemin sans contrôle), puis marqueur avant le POST,
+  // à partir du destinataire déjà contrôlé.
+  const handle = topLevelBody(send, 'export async function handleSendMessage(');
+  assert.match(handle, /if \(!plan\) \{\s*const checked = await planSend\(accountId, params, ctx\);/);
+  const marker = handle.indexOf('const manualSend = await prepareManualSend(accountId, params, ctx, plan.recipient);');
+  const post = handle.indexOf('const outcome = chat_id');
   assert.ok(marker > 0 && post > marker, 'marqueur avant le POST');
-  const prepare = topLevelBody(search, 'async function prepareManualSend(');
-  assert.match(prepare, /if \(!recipient\) return null;/);
+  const prepare = topLevelBody(send, 'export async function prepareManualSend(');
+  assert.match(prepare, /recipient: SendRecipient \| null,\s*\): Promise<ManualSendTarget \| null> \{\s*if \(!recipient\) return null;/);
   assert.doesNotMatch(prepare, /isCandidateErasedForOrg/, 'plus de saut silencieux de l\'écriture pour un candidat effacé');
+  assert.match(prepare, /if \(recipient\.candidate\.ids\.length === 0\) return null;/, 'sans identifiant, rien à enregistrer (jugé par nom public ou adresse)');
+  // Lecture de la conversation en panne passagère : l'interlocuteur est inconnu, l'envoi est refusé (échec fermé, décision du
+  // 13/10/2026). Un refus du prestataire (conversation introuvable, compte) laisse l'envoi rendre sa propre erreur.
+  assert.match(send, /const UNVERIFIABLE_READ_KINDS: readonly string\[\] = \['network', 'server', 'rate_limited'\];/, 'pannes passagères seulement');
+  assert.match(topLevelBody(send, 'export async function fetchChatCandidate('), /if \(e instanceof UnipileError && UNVERIFIABLE_READ_KINDS\.includes\(e\.kind\)\) \{\s*throw new UnipileInputError\(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED'\);\s*\}/, 'lecture en panne : 503 GDPR_UNVERIFIED');
 });
 
 test('correctif 4 : messages de refus lisibles après humanizeError (français, sans nombre ni mot anglais)', () => {
-  const search = read(SEARCH);
+  const send = read(SEARCH_SEND);
   for (const name of ['SEND_ERASED_MESSAGE', 'SEND_GDPR_UNVERIFIED_MESSAGE']) {
-    const m = search.match(new RegExp(`const ${name} =\\s*"([^"]+)";`));
+    const m = send.match(new RegExp(`const ${name} =\\s*"([^"]+)";`));
     assert.ok(m, `${name} introuvable`);
     const text = m[1];
     assert.ok(text.length <= 200, `${name} : 200 caractères au plus`);

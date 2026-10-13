@@ -12,9 +12,10 @@ export interface ReceivedInvitation {
   invitation_text: string | null;
   date: string;
   parsed_datetime: string | null;
-  shared_secret: string;
-  provider: string;
 }
+
+/** Même plafond que BULK_INVITATIONS_MAX de supabase/functions/unipile-accounts/handler.ts. */
+const BULK_INVITATIONS_CHUNK = 30;
 
 export function useInvitationsReceived(organizationId: string | null) {
   const [invitations, setInvitations] = useState<ReceivedInvitation[]>([]);
@@ -74,8 +75,6 @@ export function useInvitationsReceived(organizationId: string | null) {
         account_id: accountId,
         invitation_id: invitation.id,
         invitation_action: 'accept',
-        shared_secret: invitation.shared_secret,
-        provider: invitation.provider,
       });
       if (res?.success) {
         setInvitations(prev => prev.filter(i => i.id !== invitation.id));
@@ -96,8 +95,6 @@ export function useInvitationsReceived(organizationId: string | null) {
         account_id: accountId,
         invitation_id: invitation.id,
         invitation_action: 'decline',
-        shared_secret: invitation.shared_secret,
-        provider: invitation.provider,
       });
       if (res?.success) {
         setInvitations(prev => prev.filter(i => i.id !== invitation.id));
@@ -119,27 +116,41 @@ export function useInvitationsReceived(organizationId: string | null) {
   ): Promise<{ succeeded: number; failed: number }> => {
     setIsProcessing(true);
     try {
-      const res = await invoke('bulk_handle_invitations', {
-        account_id: accountId,
-        invitations: selectedInvitations.map(inv => ({
-          invitation_id: inv.id,
-          shared_secret: inv.shared_secret,
-          action,
-        })),
-      });
-      if (res?.success && Array.isArray(res.results)) {
-        const succeeded = res.results.filter((r: any) => !r.error).length;
-        const failed = res.results.filter((r: any) => r.error).length;
-        const processedIds = new Set(
-          res.results.filter((r: any) => !r.error).map((r: any) => r.invitation_id)
-        );
+      const total = selectedInvitations.length;
+      let succeeded = 0;
+      let failed = 0;
+      let answered = false;
+      let lastError: string | undefined;
+      // Le serveur refuse plus de BULK_INVITATIONS_CHUNK invitations par appel : la sélection part par lots.
+      for (let start = 0; start < total; start += BULK_INVITATIONS_CHUNK) {
+        const chunk = selectedInvitations.slice(start, start + BULK_INVITATIONS_CHUNK);
+        const res = await invoke('bulk_handle_invitations', {
+          account_id: accountId,
+          invitations: chunk.map(inv => ({
+            invitation_id: inv.id,
+            action,
+          })),
+        });
+        if (!(res?.success && Array.isArray(res.results))) {
+          // Un lot refusé arrête la suite : les invitations restantes ne sont pas traitées.
+          lastError = res?.error;
+          failed += total - start;
+          break;
+        }
+        answered = true;
+        const okResults = res.results.filter((r: any) => !r.error);
+        succeeded += okResults.length;
+        failed += res.results.length - okResults.length;
+        const processedIds = new Set(okResults.map((r: any) => r.invitation_id));
         setInvitations(prev => prev.filter(i => !processedIds.has(i.id)));
-        onProgress?.(succeeded, selectedInvitations.length);
+        onProgress?.(succeeded, total);
+      }
+      if (answered) {
         toast.success(`${succeeded} invitation(s) ${action === 'accept' ? 'acceptée(s)' : 'déclinée(s)'}${failed > 0 ? `, ${failed} erreur(s)` : ''}`);
         return { succeeded, failed };
       }
-      toast.error(res?.error || 'Erreur batch');
-      return { succeeded: 0, failed: selectedInvitations.length };
+      toast.error(lastError || 'Erreur batch');
+      return { succeeded: 0, failed: total };
     } finally {
       setIsProcessing(false);
     }

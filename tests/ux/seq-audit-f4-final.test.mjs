@@ -296,12 +296,16 @@ test('SEQ-043 (low) — refus ENROLL_ACCOUNT_OF_OTHER_MEMBER : message du compte
   assert.equal(helpers.isOtherMemberAccountError({ code: '42501', hint: 'NOT_ORG_MEMBER' }), false);
   assert.equal(helpers.isOtherMemberAccountError(null), false);
   assert.equal(helpers.isOtherMemberAccountError(new Error('x')), false);
-  const simpleCatch = slice(enrollModal, "console.error('Enrollment error:', err);", '} finally {');
-  assert.match(simpleCatch, /const otherMemberAccount = isOtherMemberAccountError\(err\);/);
+  // Lot 5f-1 : la bibliothèque rend l'exception (status 'failed') ; chaque fenêtre garde son message.
+  const simpleCatch = slice(enrollModal, "if (outcome.status === 'failed') {", 'const enrollmentResults = outcome.results;');
+  assert.match(simpleCatch, /const otherMemberAccount = isOtherMemberAccountError\(outcome\.error\);/);
   assert.match(simpleCatch, /otherMemberAccount \? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support\.'/);
   const enroll = slice(previewModal, 'const handleEnroll = async () => {', 'const handleShortlist = async () => {');
-  assert.match(enroll, /if \(isOtherMemberAccountError\(err\)\) throw err;/);
-  assert.match(enroll, /isOtherMemberAccountError\(err\) \? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support\.'/);
+  assert.match(enroll, /isOtherMemberAccountError\(outcome\.error\) \? OTHER_MEMBER_ACCOUNT_MESSAGE : 'Réessayez ou contactez le support\.'/);
+  // Le compte d'un collègue est le même pour toute la sélection : l'écriture s'arrête au premier refus.
+  const enrollLib = readFileSync(new URL('../../src/lib/enrollCandidates.ts', import.meta.url), 'utf8');
+  assert.match(enrollLib, /if \(isOtherMemberAccountError\(err\)\) throw err;/);
+  assert.match(enrollLib, /if \(isOtherMemberAccountError\(oneError\)\) throw oneError;/);
 });
 
 test('front-enroll-follow-8 (low) — Ctrl+Entrée après l’arrêt de la génération groupée génère le candidat', () => {

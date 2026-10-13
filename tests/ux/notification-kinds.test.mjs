@@ -41,8 +41,14 @@ const inventaire = [
     { type: 'new_message', link: '/inbox?chatId=c1', metadata: { chat_id: 'c1' } }, 'message'],
   ['unipile-webhook : message reçu sans conversation',
     { type: 'new_message', link: '/inbox', metadata: {} }, 'message'],
-  ['unipile-webhook : compte déconnecté',
+  ['unipile-webhook : compte déconnecté (CREDENTIALS)',
     { type: 'linkedin_disconnected', link: '/settings?tab=account', metadata: { linkedin_account_id: 'x' } }, 'action'],
+  ['unipile-webhook : problème de connexion (ERROR)',
+    { type: 'linkedin_disconnected', link: '/settings?tab=account', metadata: { linkedin_account_id: 'x', account_status: 'ERROR' } }, 'action'],
+  ['unipile-webhook : connexion partielle (PARTIAL)',
+    { type: 'linkedin_disconnected', link: '/settings?tab=account', metadata: { linkedin_account_id: 'x', account_status: 'PARTIAL' } }, 'action'],
+  ['unipile-webhook : compte restreint (LOCKED)',
+    { type: 'linkedin_disconnected', link: '/settings?tab=account', metadata: { linkedin_account_id: 'x', account_status: 'LOCKED' } }, 'action'],
   ['unipile-webhook : compte non rattaché',
     { type: 'error', link: '/settings?tab=account', metadata: { linkedin_account_id: 'x' } }, 'action'],
   ['unipile-webhook : réponse par e-mail, sans conversation',
@@ -118,6 +124,16 @@ for (const [nom, notif, attendu] of inventaire) {
     assert.equal(isActionable(notif), attendu === 'action');
   });
 }
+
+test('inventaire — les quatre titres de notification de compte LinkedIn écrits par le récepteur sont dans le tableau', () => {
+  const inventory = read('src/lib/notificationKinds.ts');
+  const webhook = read('supabase/functions/unipile-webhook/index.ts');
+  const titles = ['Compte LinkedIn déconnecté', 'Problème de connexion LinkedIn', 'Connexion LinkedIn partielle', 'Compte LinkedIn restreint'];
+  for (const title of titles) {
+    assert.ok(webhook.includes(`'${title}'`), `${title} : écrit par le récepteur`);
+    assert.match(inventory, new RegExp(`\\| ${title} +\\| /settings\\?tab=account +\\| — +\\| action +\\|`), `${title} : une ligne du tableau (lien, classe action)`);
+  }
+});
 
 test('classement — le type seul ne décide pas', () => {
   const candidature = { type: 'info', link: '/missions/p1?tab=config', metadata: market() };

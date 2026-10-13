@@ -49,7 +49,8 @@ const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 const code = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 // Phrases du serveur, relues dans la fonction : le test suit leur texte.
-const SEARCH = read('supabase/functions/unipile-search/index.ts');
+// Les deux constantes vivent dans send.ts depuis la bascule v2 (index.ts n'est plus que le routeur).
+const SEARCH = read('supabase/functions/unipile-search/send.ts');
 function serverPhrase(name) {
   const match = SEARCH.match(new RegExp(`const ${name} =\\s*"([^"]+)"`));
   assert.ok(match, `${name} introuvable dans unipile-search`);

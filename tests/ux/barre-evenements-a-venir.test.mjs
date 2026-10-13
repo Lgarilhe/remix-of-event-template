@@ -15,9 +15,11 @@ process.env.TZ = 'Europe/Paris';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { transformSync } from 'esbuild';
+import { build, transformSync } from 'esbuild';
+import { fileURLToPath } from 'node:url';
 
 const read = (rel) => readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8');
+const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
 const load = async (rel) => {
   const { code } = transformSync(read(rel), { loader: 'ts', format: 'esm' });
@@ -105,18 +107,18 @@ test('EV-5 — heure d\'une ligne', () => {
   assert.equal(formatUpcomingTime('pas une date', NOW), '');
 });
 
-test('EV-6 — adresses : la fiche ouvre sa grille préparée, avec la mission et l’entretien', () => {
+test('EV-6 — le rendez-vous ouvre l’espace en grand, la fiche reste distincte', () => {
   const links = interviewLinks({ id: 'q1', candidate_profile_id: 'cand 1', project_id: 'p-1' });
   assert.equal(links.qualification, '/qualification/q1');
-  assert.equal(links.candidate, '/pipeline?candidate=cand%201&tab=evaluation&prepareInterview=1&mission=p-1&session=q1');
-  assert.equal(links.scorecard, links.candidate);
-  assert.equal(links.coaching, `${links.scorecard}&coaching=1`);
+  assert.equal(links.candidate, '/pipeline?candidate=cand%201&tab=evaluation&mission=p-1&session=q1');
+  assert.equal(links.scorecard, '/pipeline/scorecard/cand%201?mission=p-1&session=q1&coaching=1');
+  assert.equal(links.coaching, links.scorecard);
 });
 
 test('EV-7 — adresses sans mission, puis sans candidat', () => {
   const noMission = interviewLinks({ id: 'q1', candidate_profile_id: 'c1', project_id: null });
-  assert.equal(noMission.scorecard, '/pipeline?candidate=c1&tab=evaluation&prepareInterview=1&session=q1');
-  assert.equal(noMission.coaching, `${noMission.scorecard}&coaching=1`);
+  assert.equal(noMission.scorecard, '/pipeline/scorecard/c1?session=q1&coaching=1');
+  assert.equal(noMission.coaching, noMission.scorecard);
   const noCandidate = interviewLinks({ id: 'q2', candidate_profile_id: null, project_id: 'p-1' });
   assert.deepEqual(noCandidate, { qualification: '/qualification/q2', candidate: null, scorecard: null, coaching: null });
 });
@@ -231,4 +233,65 @@ test('EV-18 — aucun nom de prestataire dans les textes affichés', () => {
   for (const src of [zone, buttons, toastView]) {
     assert.doesNotMatch(src, /Unipile|Apollo|PDL|People Data Labs|Calendly|Anthropic/);
   }
+});
+
+// ─── SidebarRow réel : compact (rendez-vous) et hint (pannes) se combinent ───
+
+const { outputFiles: rowFiles } = await build({
+  stdin: {
+    contents: [
+      "export { SidebarRow } from './src/components/sidebar/SidebarRow';",
+      "export { MemoryRouter } from 'react-router-dom';",
+      "export { createElement } from 'react';",
+      "export { renderToStaticMarkup } from 'react-dom/server.browser';",
+    ].join('\n'),
+    resolveDir: ROOT,
+    loader: 'ts',
+  },
+  bundle: true,
+  write: false,
+  format: 'esm',
+  platform: 'node',
+  logLevel: 'silent',
+  tsconfig: new URL('../../tsconfig.app.json', import.meta.url).pathname,
+  define: { 'process.env.NODE_ENV': '"production"' },
+  plugins: [{
+    name: 'close-mobile-stub',
+    setup(b) {
+      b.onResolve({ filter: /hooks\/sidebar\/useCloseMobileSidebar$/ }, (args) => ({ path: args.path, namespace: 'close-stub' }));
+      b.onLoad({ filter: /.*/, namespace: 'close-stub' }, () => ({ contents: 'export const useCloseMobileSidebar = () => () => {};', loader: 'js', resolveDir: ROOT }));
+    },
+  }],
+});
+const rowKit = await import(`data:text/javascript;base64,${Buffer.from(rowFiles[0].text).toString('base64')}`);
+const rowHtml = (props) => rowKit.renderToStaticMarkup(rowKit.createElement(rowKit.MemoryRouter, null, rowKit.createElement('ul', null, rowKit.createElement(rowKit.SidebarRow, props))));
+const titleOf = (html) => {
+  const match = html.match(/ title="([^"]*)"/);
+  return match ? match[1].replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&') : null;
+};
+
+test('EV-19 — SidebarRow : « compact » (une ligne, sous-titre dans l\'infobulle) et « hint » (phrase entière) se combinent', () => {
+  const HINT = 'Une phrase entière, plus longue que le sous-titre que la ligne peut écrire.';
+  // compact : une seule ligne de texte, le sous-titre n'est plus écrit mais reste dans l'infobulle.
+  const compact = rowHtml({ title: 'Titre', sub: 'Sous-titre', to: '/x', compact: true });
+  assert.ok(!compact.includes('>Sous-titre<'), 'compact : le sous-titre n\'est pas écrit dans la ligne');
+  assert.equal(titleOf(compact), 'Titre · Sous-titre', 'compact : le sous-titre reste dans l\'infobulle');
+  assert.match(compact, /block truncate text-xs/);
+  assert.doesNotMatch(compact, /line-clamp-2/);
+  assert.match(compact, /\[@media\(pointer:coarse\)\]:min-h-11/, 'compact : cible de 11 unités au toucher');
+  assert.match(compact, /<li class="group\/sidebar-row /, 'compact : la ligne porte group/sidebar-row');
+  // compact et hint ensemble : l'infobulle est la phrase entière.
+  const both = rowHtml({ title: 'Titre', sub: 'Sous-titre', hint: HINT, to: '/x', compact: true });
+  assert.equal(titleOf(both), HINT);
+  assert.ok(!both.includes('>Sous-titre<'));
+  // Sans compact : le rendu d'avant (deux lignes, sous-titre écrit), le hint ne change que l'infobulle.
+  const full = rowHtml({ title: 'Titre', sub: 'Sous-titre', hint: HINT, to: '/x' });
+  assert.match(full, /<span class="truncate[^"]*">Sous-titre<\/span>/);
+  assert.match(full, /line-clamp-2/);
+  assert.doesNotMatch(full, /pointer:coarse/);
+  assert.equal(titleOf(full), HINT);
+});
+
+test('EV-20 — la zone « Événements à venir » demande des lignes compactes', () => {
+  assert.match(zone, /\bcompact\b/);
 });

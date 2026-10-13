@@ -5,15 +5,15 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const helpers = {
-  'resolve-org-credentials.ts': 'export const resolveUnipileCredentials = async () => ({ apiKey: "test-key", dsn: "https://provider.example.test" });',
   'get-or-fetch-contact.ts': 'export const isCandidateErasedForOrg = async () => false;',
-  'linkedin-quotas.ts': 'export const enforceLinkedInAction = async () => {}; export const recordUsageSignal = async () => {}; export const parseUsagePct = () => null;',
+  'linkedin-quotas.ts': 'export const enforceLinkedInAction = async () => {};',
   'candidate-stage-events.ts': 'export const candidateRef = value => value; export const recordOutbound = async () => ({ ok: true });',
-  'sequence-send-rules.ts': 'export const classifySendStatus = () => "ok";',
   'email-tool-policy.mjs': 'export const sanitizeEmailBody = value => value;',
   'interview-followup.ts': 'export const textToHtml = value => value;',
   'message-scope.ts': 'export const resolveCandidateActionMessageScope = async () => ({ candidate_id: "ACo-candidate", project_id: null });',
 };
+// The shared provider client reads its key from the Deno environment (absent under Node): give it one.
+globalThis.Deno = { env: { get: name => name === 'UNIPILE_V2_API_KEY' ? 'test-key' : undefined } };
 const compiled = await build({
   entryPoints: [`${root}supabase/functions/_shared/candidate-actions/transport.ts`],
   bundle: true, platform: 'node', format: 'esm', write: false,
@@ -32,8 +32,8 @@ test.afterEach(() => { globalThis.fetch = originalFetch; });
 
 function accountClient() {
   const tables = {
-    member_email_accounts: [{ user_id: 'user', organization_id: scope.organization_id, account_status: 'CONNECTED', email_account_id: 'outlook-account', email_address: 'recruiter@example.test', provider: 'OUTLOOK' }],
-    member_linkedin_accounts: [{ user_id: 'user', organization_id: scope.organization_id, account_status: 'CONNECTED', linkedin_account_id: 'linkedin-account' }],
+    member_email_accounts: [{ user_id: 'user', organization_id: scope.organization_id, account_status: 'CONNECTED', email_account_id: 'acc_outlook', email_address: 'recruiter@example.test', provider: 'OUTLOOK' }],
+    member_linkedin_accounts: [{ user_id: 'user', organization_id: scope.organization_id, account_status: 'CONNECTED', linkedin_account_id: 'acc_linkedin' }],
     member_whatsapp_accounts: [],
   };
   return { from(table) {
@@ -55,15 +55,16 @@ function discoveryResponse(status, body) {
   const requests = [];
   globalThis.fetch = async (url, options) => {
     requests.push({ url, method: options.method || 'GET' });
-    assert.equal(new URL(url).pathname, '/api/v1/chat_attendees/ACo-candidate/chats');
-    assert.equal(new URL(url).searchParams.get('account_id'), 'linkedin-account');
+    assert.equal(new URL(url).pathname, '/v2/acc_linkedin/users/ACo-candidate/chat');
+    assert.equal(new URL(url).searchParams.has('account_id'), false);
+    assert.equal(options.headers['X-API-KEY'], 'test-key');
     return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   };
   return requests;
 }
 
 for (const status of [500, 404]) test(`la découverte LinkedIn HTTP ${status} ne devient pas une absence normale de conversation`, async () => {
-  const requests = discoveryResponse(status, { items: [] });
+  const requests = discoveryResponse(status, { error: 'unavailable' });
   const admin = accountClient();
   await assert.rejects(
     loadCandidateActionTargets(admin, admin, 'user', scope, [{ email: 'candidate@example.test' }], []),
@@ -74,13 +75,13 @@ for (const status of [500, 404]) test(`la découverte LinkedIn HTTP ${status} ne
 });
 
 test('une découverte LinkedIn 200 vide conserve la cible Outlook sans inventer de panne ou de conversation', async () => {
-  const requests = discoveryResponse(200, { items: [] });
+  const requests = discoveryResponse(200, { object: 'ChatLookup', data: [] });
   const admin = accountClient();
   const targets = await loadCandidateActionTargets(admin, admin, 'user', scope, [{ email: 'candidate@example.test' }], []);
   assert.equal(targets.length, 1);
   assert.equal(targets[0].channel, 'email');
   assert.equal(targets[0].service, 'outlook');
-  assert.equal(targets[0].senderAccountId, 'outlook-account');
+  assert.equal(targets[0].senderAccountId, 'acc_outlook');
   assert.equal(targets[0].recipient, 'candidate@example.test');
   assert.equal(requests.length, 1);
 });

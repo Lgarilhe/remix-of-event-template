@@ -5,7 +5,7 @@
  * Stratégie en 6 niveaux (du plus gratuit au plus cher) :
  *
  *   1. Check RGPD : si dans gdpr_erasures → STOP (refuse, pas le droit)
- *   2. LinkedInProfile.contact_info passé en input (Unipile direct, $0)
+ *   2. LinkedInProfile.contact_info passé en input (profil LinkedIn lu, $0)
  *   3. candidate_enrichments cache (org-wide, TTL 30j, $0 si hit)
  *   4. job_candidate_status.linkedin_profile_data.contact_info ($0)
  *   5. airtable_candidates.email/phone si match linkedin_url ($0)
@@ -27,7 +27,7 @@
  *
  *   if (result.email || result.phone) {
  *     // Source gratuite — utiliser direct
- *     // result.source === 'cache' | 'unipile' | 'job_status' | 'airtable'
+ *     // result.source === 'cache' | 'linkedin' | 'job_status' | 'airtable'
  *   } else if (result.gdprBlocked) {
  *     // Refuser : candidat a demandé son effacement
  *   } else {
@@ -56,7 +56,7 @@ export interface ContactInput {
 }
 
 export type ContactSource =
-  | 'unipile'         // contact_info passé en input
+  | 'linkedin'        // contact_info du profil LinkedIn passé en input
   | 'cache'           // candidate_enrichments
   | 'job_status'      // job_candidate_status.linkedin_profile_data
   | 'airtable'        // airtable_candidates
@@ -138,14 +138,14 @@ export async function getOrFetchContact(
     }
   }
 
-  // ── 2. LinkedInProfile.contact_info passé en input (Unipile direct) ──
-  const unipileEmail = normalizeEmail(input.contactInfoFromProfile?.emails?.[0]);
-  const unipilePhone = input.contactInfoFromProfile?.phones?.[0] || null;
-  if (unipileEmail || unipilePhone) {
+  // ── 2. LinkedInProfile.contact_info passé en input (profil LinkedIn lu) ──
+  const profileEmail = normalizeEmail(input.contactInfoFromProfile?.emails?.[0]);
+  const profilePhone = input.contactInfoFromProfile?.phones?.[0] || null;
+  if (profileEmail || profilePhone) {
     return {
-      email: unipileEmail,
-      phone: unipilePhone,
-      source: 'unipile',
+      email: profileEmail,
+      phone: profilePhone,
+      source: 'linkedin',
       gdprBlocked: false,
     };
   }
@@ -578,10 +578,10 @@ export async function recordGdprErasure(
   //    tracking_data (GDPR_SCRUBBED_TRACKING_KEYS), retirés des inscriptions
   //    trouvées à l'étape 2. Fusion ligne par ligne comme à l'étape 3 bis : les
   //    marqueurs relus par les contrôles (gdpr_erased_at, completion_reason,
-  //    manual_stop) restent. Pas de rattrapage : une inscription effacée avant
-  //    cette étape n'est retrouvée que par son URL de profil (l'étape 7 a vidé
-  //    email_used), et celles d'un effacement par adresse seule gardent leurs
-  //    retouches jusqu'à une reprise de données à part.
+  //    manual_stop) restent. Une nouvelle demande ne retrouverait une
+  //    inscription effacée avant cette étape que par son URL de profil
+  //    (l'étape 7 a vidé email_used) : ces effacements passés sont rattrapés
+  //    par la migration 20261012112803 (marqueur gdpr_erased_at).
   for (let i = 0; i < allIds.length; i += 100) {
     const { data: rows, error: readError } = await supabase
       .from('sequence_enrollments')

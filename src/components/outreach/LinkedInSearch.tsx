@@ -6,6 +6,7 @@ import { SearchResultsPanel } from './search/SearchResultsPanel';
 import { LinkedInReconnectBanner } from './search/LinkedInReconnectBanner';
 import { SmartOverlays } from './search/SmartOverlays';
 import { quickChipV3 } from '@/components/missions/v3/sourcing/quickChip';
+import type { SourcingResultGroup } from '@/components/missions/v3/sourcing/SourcingResultsV3';
 import { RefineSearchModal, RefineAdjustment, AdjustmentDecision } from './search/RefineSearchModal';
 import { useLinkedInSearch } from '@/hooks/useLinkedInSearch';
 import { refreshProjectEnrollments } from '@/hooks/useProjectEnrollments';
@@ -30,6 +31,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import { useState as useLocalState } from 'react';
 import { AppliedFiltersBar } from './search/AppliedFiltersBar';
 import { SearchHero, SearchPlan, FilterChipBar, chipsFromUpdate, countFilterChips, type PlanChip, type PlanStage } from './search/SourcingFlow';
+import { SourcingSourcePicker } from './search/SourcingSourcePicker';
 import { SourcingTopBar } from '@/components/missions/v3/sourcing/SourcingTopBar';
 import { buildAugmentedJob, generateFiltersFromJob, readGeneratedSearchMemoryContext } from './search/generateFiltersFromJob';
 import { nlFilterEdit } from './search/nlFilterEdit';
@@ -57,6 +59,7 @@ interface LinkedInSearchProps {
   searchSource?: 'linkedin' | 'database';
   /** Opens the contextual sourcing agent with brief pre-filled. */
   onOpenSearchAgent?: () => void;
+  onPrepareSearch?: (phrase: string, source: 'linkedin' | 'database') => void;
   /**
    * Nouvelle page mission (SourcingScreen seulement) : rangée « Affiner,
    * Filtres, Nouvelle recherche » et résultats en trois groupes. Défaut : le
@@ -98,6 +101,11 @@ interface MissionSearchCacheEntry {
   searchSource: 'linkedin' | 'database';
   scrollTop: number;
   scoringInstructions: string;
+  flowMode: 'hero' | 'results';
+  flowQuery: string;
+  chipsDirty: boolean;
+  filtersOpen: boolean;
+  resultGroup: SourcingResultGroup;
 }
 
 const missionSearchCache = new Map<string, MissionSearchCacheEntry>();
@@ -197,11 +205,22 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   onProjectChange,
   searchSource: initialSearchSource = 'linkedin',
   onOpenSearchAgent,
+  onPrepareSearch,
   layout = 'default',
   initialPhrase,
   startWithFilters,
 }) => {
   const isV3 = layout === 'mission-v3' && !!activeProject;
+  const [resultGroup, setResultGroup] = useState<SourcingResultGroup>('to_sort');
+  const [searchCompletion, setSearchCompletion] = useState<{ scopeKey: string; revision: number } | null>(null);
+  const onNewSearchResults = useCallback((scopeKey: string) => {
+    if (!isV3) return;
+    setResultGroup('to_sort');
+    setSearchCompletion(previous => ({
+      scopeKey,
+      revision: previous?.scopeKey === scopeKey ? previous.revision + 1 : 1,
+    }));
+  }, [isV3]);
   const { organizationId, orgType } = useOrganization();
   const { user } = useAuthReady();
   const memory = useAgentMemoryContext(activeProject?.id ?? null);
@@ -265,13 +284,28 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     } catch { /* noop */ }
   }, [scoringModelStorageKey]);
 
-  // Internal search source toggle (Apollo vs LinkedIn)
-  const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(initialSearchSource);
+  // Keep the user's source on return, scoped to their account and organisation.
+  // An explicit validated launch always wins over this preference.
+  const sourcePreferenceKey = activeProject?.id && user?.id && organizationId
+    ? `konekt:sourcing-source:${user.id}:${organizationId}:${activeProject.id}` : null;
+  const [searchSource, setSearchSource] = useLocalState<'linkedin' | 'database'>(() => {
+    if (initialPhrase?.trim()) return initialSearchSource;
+    try {
+      const saved = sourcePreferenceKey ? sessionStorage.getItem(sourcePreferenceKey) : null;
+      if (saved === 'database') return 'database';
+      if (saved === 'linkedin' && selectedAccount) return 'linkedin';
+    } catch { /* A storage restriction does not block sourcing. */ }
+    return initialSearchSource;
+  });
+  useEffect(() => {
+    if (sourcePreferenceKey) try { sessionStorage.setItem(sourcePreferenceKey, searchSource); } catch { /* noop */ }
+  }, [sourcePreferenceKey, searchSource]);
 
   // Handler to toggle search source — preserves common filters, swaps api type
   const handleSearchSourceChange = useCallback((source: 'linkedin' | 'database') => {
+    if (source === 'linkedin' && !selectedAccount) return;
     setSearchSource(source);
-  }, []);
+  }, [selectedAccount]);
 
   // Track previous search source to auto-relaunch search on toggle
   const prevSearchSourceRef = useRef(searchSource);
@@ -301,6 +335,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Main search state hook
   const search = useLinkedInSearch({
     organizationId,
+    searchSource,
     userId: user?.id ?? null,
     selectedAccount,
     activeProject,
@@ -381,7 +416,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   }, [pedigreeAug, restrictMode]);
 
   // Search actions hook
-  const { handleSearch, handleLoadMore, searchNeedsRerun } = useLinkedInSearchActions(
+  const { handleSearch, handleLoadMore, searchNeedsRerun, searchScopeKey: searchFeedbackScopeKey } = useLinkedInSearchActions(
     {
       organizationId,
       userId: user?.id ?? null,
@@ -418,8 +453,12 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setTotal: search.setTotal,
       setHasSearched: search.setHasSearched,
       setExecutedSearch: search.setExecutedSearch,
+      onNewSearchResults,
     }
   );
+  useLayoutEffect(() => {
+    setSearchCompletion(previous => previous?.scopeKey === searchFeedbackScopeKey ? previous : null);
+  }, [searchFeedbackScopeKey]);
   const { setResults: setSearchResults, setCursor: setSearchCursor, setTotal: setSearchTotal,
     setHasSearched: setSearchHasSearched, setExecutedSearch: setSearchExecution } = search;
 
@@ -500,10 +539,24 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // Scored sort
   const [scoredSortBy, setScoredSortBy] = useLocalState<ScoredSortBy>('score_desc');
 
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersReturnFocusRef = useRef<HTMLElement | null>(null);
+  // Only stable screens are restored; an interrupted request never restores a spinner.
+  const [flowMode, setFlowMode] = useState<'hero' | 'plan' | 'results'>('results');
+  const [flowQuery, setFlowQuery] = useState('');
+  const [planStage, setPlanStage] = useState<PlanStage>('analyze');
+  const [planChips, setPlanChips] = useState<PlanChip[]>([]);
+  const [chipsDirty, setChipsDirty] = useState(false);
+  const [flowError, setFlowError] = useState<string | null>(null);
+  const flowBusyRef = useRef(false);
+  const flowInitProjectRef = useRef<string | null>(null);
+  const initialPhraseDoneRef = useRef(false);
+  const startFiltersDoneRef = useRef(false);
+
   // Nouvelle page mission : clé à part, pour que l'ancienne page ne relise
   // jamais un état écrit par la nouvelle (sélection, vue, filtres d'affichage).
-  const missionCacheKey = activeProject?.id && organizationId && user?.id
-    ? `${isV3 ? 'mission-sourcing-v3' : 'mission-sourcing'}:${user.id}:${organizationId}:${activeProject.id}:${selectedAccount ?? 'database'}`
+  const missionCacheKey = activeProject?.id && organizationId && user?.id && (searchSource === 'database' || selectedAccount)
+    ? `${isV3 ? 'mission-sourcing-v3' : 'mission-sourcing'}:${user.id}:${organizationId}:${activeProject.id}:${searchSource}:${selectedAccount ?? 'database'}`
     : null;
   const cacheBriefKey = stableScoringContextKey({ details: activeProject?.job_details, description: activeProject?.description,
     title: activeProject?.job_title, name: activeProject?.name, clientName: activeProject?.client_name });
@@ -540,8 +593,15 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       searchSource,
       scrollTop: scrollTop ?? scrollAreaRef.current?.scrollTop ?? missionSearchCache.get(missionCacheKey)?.scrollTop ?? 0,
       scoringInstructions,
+      flowMode: flowMode === 'plan'
+        ? (planStage === 'search' || search.hasSearched || search.results.length > 0 ? 'results' : 'hero')
+        : flowMode,
+      flowQuery,
+      chipsDirty,
+      filtersOpen: flowMode !== 'plan' && filtersOpen,
+      resultGroup,
     });
-  }, [missionCacheKey, projectScope, search.searchScopeKey, cacheSnapshotKey, cacheBriefKey, cacheMemoryKey, search.executedSearch, search.filters, search.results, search.hasSearched, search.total, search.cursor, search.hasMoreResults, search.selectedJob, search.jobScores, search.sortByScore, search.statusFilter, search.showDismissed, search.selectedProfiles, showPoolView, scoredSortBy, searchSource, scoringInstructions]);
+  }, [missionCacheKey, projectScope, search.searchScopeKey, cacheSnapshotKey, cacheBriefKey, cacheMemoryKey, search.executedSearch, search.filters, search.results, search.hasSearched, search.total, search.cursor, search.hasMoreResults, search.selectedJob, search.jobScores, search.sortByScore, search.statusFilter, search.showDismissed, search.selectedProfiles, showPoolView, scoredSortBy, searchSource, scoringInstructions, flowMode, planStage, flowQuery, chipsDirty, filtersOpen, resultGroup]);
 
   useLayoutEffect(() => {
     if (!missionCacheKey || !memoryContextReady || hydratedCacheKeyRef.current === missionCacheKey) return;
@@ -559,6 +619,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         search.setTotal(null);
         search.setHasSearched(false);
         search.setExecutedSearch(null);
+        setResultGroup('to_sort');
       }
       return;
     }
@@ -571,6 +632,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
         search.setTotal(null);
         search.setHasSearched(false);
         search.setExecutedSearch(null);
+        setResultGroup('to_sort');
       }
       return;
     }
@@ -600,6 +662,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setShowPoolView(cached.hasSearched ? cached.showPoolView : false);
     setScoredSortBy(cached.scoredSortBy);
     setScoringInstructions(cached.scoringInstructions);
+    flowInitProjectRef.current = activeProject?.id ?? null;
+    // A validated dialogue is a new explicit request, even if this mission
+    // already has a cached view. A plain return still restores without billing.
+    if (!initialPhrase?.trim()) initialPhraseDoneRef.current = true;
+    startFiltersDoneRef.current = true;
+    setFlowMode(cached.flowMode ?? (cached.hasSearched || cached.results.length > 0 ? 'results' : 'hero'));
+    setFlowQuery(cached.flowQuery ?? '');
+    setChipsDirty(cached.chipsDirty ?? false);
+    setFiltersOpen(cached.filtersOpen ?? false);
+    setResultGroup(cached.resultGroup ?? 'to_sort');
   }, [missionCacheKey, activeProject?.id, initialSearchSource, memoryContextReady, cacheBriefKey, cacheMemoryKey, cacheSnapshotKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
@@ -615,14 +687,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (!missionCacheKey || !scrollAreaRef.current) return;
 
     const element = scrollAreaRef.current;
-    const handleScroll = () => cacheMissionState(element.scrollTop);
+    // A passive-effect cleanup can run after a newer layout-effect cache write.
+    // Update only the scroll position, never replay the previous render's search.
+    const handleScroll = () => {
+      const cached = missionSearchCache.get(missionCacheKey);
+      if (cached) missionSearchCache.set(missionCacheKey, { ...cached, scrollTop: element.scrollTop });
+    };
 
     element.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       handleScroll();
       element.removeEventListener('scroll', handleScroll);
     };
-  }, [missionCacheKey, cacheMissionState, search.results.length]);
+  }, [missionCacheKey, flowMode, search.results.length]);
 
   useEffect(() => {
     if (!missionCacheKey || restoredScrollKeyRef.current === missionCacheKey || search.results.length === 0) return;
@@ -1158,40 +1235,18 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // No auto-infinite scroll — batch workflow uses manual "Lot suivant" button
   // The loadMoreTriggerRef is kept for the button placement in SearchResultsPanel
 
-  // Auto-switch to "Nouveaux" filter when new batch loads and there are untreated profiles
-  const prevResultsLengthRef = useRef(0);
-  const { setStatusFilter: setSearchStatusFilter } = search;
-  useEffect(() => {
-    if (search.results.length > prevResultsLengthRef.current && search.hasSearched) {
-      // New batch loaded — switch to untreated view
-      if (search.statusFilter !== 'untreated' && search.statusFilter !== 'all') {
-        setSearchStatusFilter('untreated');
-      }
-    }
-    prevResultsLengthRef.current = search.results.length;
-  }, [search.results.length, search.hasSearched, search.statusFilter, setSearchStatusFilter]);
-
-  const [filtersOpen, setFiltersOpen] = useState(false);
-
   // ── Machine à états V3 (contexte mission uniquement) ──
   // hero = décrire · plan = l'IA travaille (étapes visibles) · results = piloter
-  const [flowMode, setFlowMode] = useState<'hero' | 'plan' | 'results'>('results');
-  const [flowQuery, setFlowQuery] = useState('');
-  const [planStage, setPlanStage] = useState<PlanStage>('analyze');
-  const [planChips, setPlanChips] = useState<PlanChip[]>([]);
-  const [chipsDirty, setChipsDirty] = useState(false);
-  const [flowError, setFlowError] = useState<string | null>(null);
-  const flowBusyRef = useRef(false);
 
   // Initialisation par mission : hero si rien (recherche/résultats), sinon
   // pilotage. Ensuite on ne fait que MONTER (hero → results, hydratation
   // tardive du cache) — jamais redescendre : un échec de recherche doit
   // laisser l'utilisateur sur la barre de chips pour corriger et relancer.
-  const flowInitProjectRef = useRef<string | null>(null);
   const hasSearchedRef = useRef(search.hasSearched);
   useEffect(() => { hasSearchedRef.current = search.hasSearched; }, [search.hasSearched]);
   useEffect(() => {
     if (!activeProject) return;
+    if (!missionCacheKey || !memoryContextReady || hydratedCacheKeyRef.current !== missionCacheKey) return;
     if (flowMode === 'plan' || flowBusyRef.current) return;
     const empty = !search.hasSearched && search.results.length === 0 && !search.loading;
     if (flowInitProjectRef.current !== activeProject.id) {
@@ -1201,7 +1256,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setFlowMode('results');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProject?.id, search.hasSearched, search.results.length, search.loading, flowMode]);
+  }, [activeProject?.id, missionCacheKey, memoryContextReady, search.hasSearched, search.results.length, search.loading, flowMode]);
 
   // Exception à « jamais redescendre » : une recherche lancée depuis le hero
   // qui échoue avant tout résultat (compte indisponible, quota, erreur réseau)
@@ -1214,9 +1269,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (search.hasSearched || search.results.length > 0) { heroLaunchRef.current = false; return; }
     if (flowMode !== 'results') return;
     heroLaunchRef.current = false;
-    setFlowError('La recherche n\'a pas abouti. Vérifiez votre connexion LinkedIn et vos filtres, puis relancez.');
+    setFlowError(searchSource === 'database'
+      ? 'La recherche n’a pas abouti. Vérifiez l’accès à la Base Konekt et vos filtres, puis relancez.'
+      : 'La recherche n’a pas abouti. Vérifiez votre connexion LinkedIn et vos filtres, puis relancez.');
     setFlowMode('hero');
-  }, [activeProject?.id, flowMode, search.loading, search.hasSearched, search.results.length]);
+  }, [activeProject?.id, flowMode, search.loading, search.hasSearched, search.results.length, searchSource]);
 
   // Édition de filtres depuis la barre de chips : synchronise le ref (lu par
   // handleSearch) et marque la vue « modifiée » — la recherche ne repart que
@@ -1233,7 +1290,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // Phrase (hero ou affinage) → filtres via IA Konekt. runSearch=false pour
   // l'affinage : les chips se mettent à jour, l'user choisit quand relancer.
-  const applyPhrase = useCallback(async (phrase: string, runSearch: boolean) => {
+  const applyPhrase = useCallback(async (phrase: string, runSearch: boolean, freshGeneration = false) => {
     if (!memoryContextReady) throw new Error('Attendez la vérification des mémoires avant de générer les filtres.');
     if (!search.selectedJob) throw new Error('Brief mission manquant.');
     if (!selectedAccount && searchSource !== 'database') throw new Error('Connectez votre compte LinkedIn pour lancer une recherche.');
@@ -1241,14 +1298,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     const scopeAtStart = liveMemoryScope.current;
     const briefAtStart = liveBriefKey.current;
     const epochAtStart = generationEpoch.current.version;
+    // A validated brief replaces the previous search request. Old locations,
+    // exclusions and skills must not survive a removal in the dialogue.
+    const generationFilters = freshGeneration
+      ? { ...INITIAL_FILTERS, api: search.filtersRef.current.api }
+      : search.filtersRef.current;
     const { update, suggestions, memoryContext } = await generateFiltersFromJob({
       job,
       organizationId,
       projectId: activeProject?.id ?? null,
       accountId: selectedAccount,
       searchSource: searchSource === 'database' ? 'database' : 'linkedin',
-      api: search.filtersRef.current.api,
-      currentLocation: search.filtersRef.current.location,
+      api: generationFilters.api,
+      currentLocation: generationFilters.location,
     });
     const currentScope = liveMemoryScope.current;
     if (scopeAtStart.organizationId !== currentScope.organizationId || scopeAtStart.projectId !== currentScope.projectId
@@ -1262,7 +1324,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
     if (!memoryContext && searchMemoryCount > 0) throw new Error('La génération n’a pas confirmé les mémoires utilisées. Réessayez.');
     setPlanChips(chipsFromUpdate(update));
-    const merged = { ...search.filtersRef.current, ...update };
+    const merged = { ...(freshGeneration ? generationFilters : search.filtersRef.current), ...update };
     search.setFilters(merged);
     search.filtersRef.current = merged;
     handleSuggestionsGenerated(suggestions ?? null);
@@ -1327,7 +1389,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   );
   const rerunFromChips = useCallback(() => { setChipsDirty(false); handleSearch(false); }, [handleSearch]);
 
-  const launchFlow = useCallback(async (phrase: string) => {
+  const launchFlow = useCallback(async (phrase: string, freshGeneration = false) => {
     if (flowBusyRef.current) return;
     flowBusyRef.current = true;
     setFlowError(null);
@@ -1337,7 +1399,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setPlanStage('analyze');
     setFlowMode('plan');
     try {
-      await applyPhrase(phrase, true);
+      await applyPhrase(phrase, true, freshGeneration);
       // Updater fonctionnel : si l'effet de retour au hero est déjà passé
       // (recherche échouée), on ne l'écrase pas.
       setFlowMode(prev => (prev === 'plan' ? 'results' : prev));
@@ -1354,7 +1416,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // « Configurer les filtres » depuis /sourcing : on saute le prompt et la
   // fenêtre des filtres s'ouvre, prête à lancer la recherche.
-  const startFiltersDoneRef = useRef(false);
   useEffect(() => {
     if (!isV3 || !startWithFilters || startFiltersDoneRef.current) return;
     if (!activeProject || flowInitProjectRef.current !== activeProject.id || flowMode !== 'hero') return;
@@ -1365,14 +1426,17 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // Phrase venue de /sourcing : lancée une seule fois, comme un clic sur
   // « Générer les filtres et chercher » (l'écran de plan s'affiche).
-  const initialPhraseDoneRef = useRef(false);
   useEffect(() => {
     if (!isV3 || !initialPhrase?.trim() || initialPhraseDoneRef.current) return;
-    if (flowMode !== 'hero' || !search.selectedJob || search.loading || !memoryContextReady) return;
+    if (!search.selectedJob || search.loading || !memoryContextReady) return;
+    // Cache hydration can restore the previous API on the same render that
+    // exposes the new brief. Wait for source synchronisation before generating.
+    if (searchSource === 'database' && search.filters.api !== 'database') return;
+    if (searchSource === 'linkedin' && search.filters.api === 'database') return;
     if (!selectedAccount && searchSource !== 'database') return;
     initialPhraseDoneRef.current = true;
-    void launchFlow(initialPhrase.trim());
-  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, selectedAccount, searchSource, launchFlow, memoryContextReady]);
+    void launchFlow(initialPhrase.trim(), true);
+  }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, search.filters.api, selectedAccount, searchSource, launchFlow, memoryContextReady]);
 
   // Filtres du brief déjà chargés (filters_snapshot → useLinkedInSearch) et
   // aucune recherche : recherche directe, sans repasser par la génération IA
@@ -1538,6 +1602,8 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   return (
     <div className={cn('w-full max-w-full min-w-0 flex flex-col lg:h-[calc(100dvh-5rem)]', showBackdrop && 'relative konekt-on-backdrop')}>
       {showBackdrop && <PageBackdrop follow contained />}
+      {isV3 && <div className="relative mb-4 shrink-0"><SourcingSourcePicker source={searchSource}
+        onChange={handleSearchSourceChange} linkedinAvailable={!!selectedAccount} disabled={search.loading || flowMode === 'plan'} compact={flowMode === 'results'} /></div>}
       {activeProject && <SourcingMemoryNotice memories={memory.data?.memories ?? []} orgType={orgType}
         loading={memory.isPending || memory.isFetching} error={memory.isError} filtersOutdated={filtersOutdated}
         staleScoreCount={scoring.staleScoreCount} regenerating={regeneratingMemoryFilters}
@@ -1565,12 +1631,13 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           jobTitle={search.selectedJob?.title || activeProject.name}
           clientName={(search.selectedJob as any)?.client?.name || null}
           history={searchHistory.history}
-          onLaunch={launchFlow}
+          onLaunch={onPrepareSearch ? phrase => onPrepareSearch(phrase, searchSource) : launchFlow}
           onResumeHistory={resumeFromHistory}
-          onLaunchWithBriefFilters={briefFiltersReady ? launchWithBriefFilters : undefined}
+          onLaunchWithBriefFilters={onPrepareSearch ? () => onPrepareSearch('', searchSource) : briefFiltersReady ? launchWithBriefFilters : undefined}
           errorMessage={flowError}
           disabled={search.loading}
           variant={isV3 ? 'mission-v3' : 'default'}
+          guided={!!onPrepareSearch}
         />
       )}
       {activeProject && flowMode === 'plan' && (
@@ -1581,6 +1648,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           filterCount={countFilterChips(search.filters)}
           onRefine={refineByPhraseV3}
           onNewSearch={() => setFiltersOpen(true)}
+          onPrepare={onPrepareSearch ? () => onPrepareSearch('', searchSource) : undefined}
           disabled={search.loading}
         >
           <div className="flex flex-col gap-3">
@@ -1664,7 +1732,20 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           qui prenait toute la largeur de l'écran → form column unique
           étirée à 1400+ px sur desktop, textareas/inputs disproportionnés. */}
       <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <DialogContent className="w-full h-full max-w-full max-h-full sm:max-w-3xl sm:w-full sm:max-h-[85vh] sm:h-auto overflow-y-auto p-0 gap-0 rounded-none sm:rounded-lg max-sm:[&>button]:h-11 max-sm:[&>button]:w-11">
+        <DialogContent
+          className="w-full h-full max-w-full max-h-full sm:max-w-3xl sm:w-full sm:max-h-[85vh] sm:h-auto overflow-y-auto p-0 gap-0 rounded-none sm:rounded-lg max-sm:[&>button]:h-11 max-sm:[&>button]:w-11"
+          onOpenAutoFocus={() => {
+            const target = document.activeElement;
+            filtersReturnFocusRef.current = target instanceof HTMLElement && target !== document.body ? target : null;
+          }}
+          onCloseAutoFocus={event => {
+            const target = filtersReturnFocusRef.current;
+            if (target?.isConnected && !target.hasAttribute('disabled')) {
+              event.preventDefault();
+              target.focus();
+            }
+          }}
+        >
           <DialogTitle className="sr-only">Filtres de recherche</DialogTitle>
           <div className="p-3 sm:p-5">
             {filtersPanel}
@@ -1688,6 +1769,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           hasMoreResults={search.hasMoreResults}
           cursor={searchNeedsRerun ? null : search.cursor}
           total={search.total}
+          filtersNotice={search.executedSearch?.filtersNotice ?? null}
           selectedJob={search.selectedJob}
           selectedProfiles={search.selectedProfiles}
           jobScores={scoring.currentJobScores}
@@ -1752,6 +1834,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
           onScoringModelChange={handleScoringModelChange}
           {...(isV3 ? {
             layout: 'mission-v3' as const,
+            group: resultGroup,
+            onGroupChange: setResultGroup,
+            searchScopeKey: searchFeedbackScopeKey,
+            searchSuccessKey: searchCompletion?.scopeKey === searchFeedbackScopeKey ? searchCompletion.revision : 0,
             chipsDirty,
             onRerun: rerunFromChips,
             onSetSelection: (ids: string[]) => search.setSelectedProfiles(new Set(ids)),

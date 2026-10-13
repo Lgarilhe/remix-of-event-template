@@ -19,8 +19,8 @@ const SafeModeBadge = () => (
         <p className="text-xs leading-relaxed">
           Konekt protège votre compte LinkedIn : actions uniquement aux heures ouvrées, du lundi au vendredi,
           dans votre fuseau ; 80 actions visibles par jour ; 100 invitations par 7 jours ; 5 à 15 secondes
-          entre deux actions d'une séquence ; pause automatique de 16 h dès 90 % d'usage ou au premier signal
-          de limite ; montée en charge sur trois semaines pour un compte neuf ; anti-doublon dans votre organisation.
+          entre deux actions d'une séquence ; pause automatique de 16 h au premier signal de limite ;
+          montée en charge sur trois semaines pour un compte neuf ; anti-doublon dans votre organisation.
         </p>
       </TooltipContent>
     </Tooltip>

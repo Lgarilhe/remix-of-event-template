@@ -15,8 +15,7 @@ const dismissKey = (accountId: string) => `li-reconnect-dismissed:${accountId}`;
 
 // Bannière « compte à reconnecter » — s'appuie sur la boîte noire
 // search_failure_log : ≥ 2 conflits de session en 12 h sur un compte de
-// l'org. Remède documenté (LOGBOOK 2026-07-06) : ré-importer des cookies
-// frais après chaque re-login LinkedIn dans le navigateur.
+// l'org. Remède : reconnecter le compte dans Paramètres › Connexions.
 export const LinkedInReconnectBanner = () => {
   const navigate = useNavigate();
   const { data: alerts = [] } = useReconnectAlerts();
@@ -61,9 +60,8 @@ export const LinkedInReconnectBanner = () => {
           >
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
             <span className="min-w-0 flex-1 text-amber-900 dark:text-amber-200">
-              <span className="font-semibold">{accountLabel} — session LinkedIn instable.</span>{' '}
-              Plusieurs conflits de session détectés : reconnectez-vous à LinkedIn dans votre
-              navigateur puis ré-importez des cookies frais (li_at + li_a) dans Konekt.
+              <span className="font-semibold">{accountLabel} : session LinkedIn instable.</span>{' '}
+              Plusieurs conflits de session ont été détectés.
             </span>
             <Button
               size="sm"

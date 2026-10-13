@@ -39,6 +39,7 @@ import {
   callFunction,
   engineAvailable,
   enroll,
+  expectNoViolations,
   messageSequence,
   minutesFromNow,
   mockCalls,
@@ -263,54 +264,45 @@ test.describe('B. Envoi à un candidat effacé (correctif 4)', () => {
     expect((await actionLog(accountId)).map((r) => r.action_type), 'témoin : une place prise').toEqual(['message']);
   });
 
-  test('messagerie (conversation existante, liée ou non, avec recipient_id d’un autre profil ou chat_id encodé) : refus avant tout envoi dans la conversation', async () => {
+  test('messagerie (conversation existante, liée ou non, avec recipient_id d’un autre profil) : refus avant tout envoi dans la conversation', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E correctifs effacé messagerie');
     const token = await ownerToken(org);
     const { missionId, candidateId, rowId } = await erasedCandidate(org);
     const before = await candidateRowState(rowId);
-    // Conversation non liée : candidat lu dans les participants. Conversation liée à la mission : candidat du lien.
+    // Conversation non liée : l'interlocuteur est lu chez le prestataire (le faux LinkedIn répond avec ce profil).
+    // Conversation liée à la mission : le candidat est celui du lien, sans lecture chez le prestataire.
     const unlinked = `chat_e2e_gd_${rand()}${rand()}`;
     const linked = `chat_e2e_gd_${rand()}${rand()}`;
+    await setMockMode(accountId, { candidate_provider_id: candidateId });
+    cleanups.push(() => setMockMode(accountId, {}));
     const linkId = await seedMissionConversation({ orgId: org.orgId, projectId: missionId, accountId, candidateId, chatId: linked });
     const [link] = await linksOf(org.orgId, candidateId);
-    await setMockMode(accountId, { routes: [
-      { unscoped: true, method: 'GET', path: `^/api/v1/chats/${unlinked}$`, body: { id: unlinked, account_id: accountId, type: 0 } },
-      { unscoped: true, method: 'GET', path: `^/api/v1/chats/${linked}$`, body: { id: linked, account_id: accountId, type: 0 } },
-      { unscoped: true, method: 'GET', path: `^/api/v1/chats/${unlinked}/attendees$`, body: { items: [
-        { object: 'ChatAttendee', id: 'att_self', provider_id: 'ACoAAMOCKME', is_self: 1 },
-        { object: 'ChatAttendee', id: 'att_cand', provider_id: candidateId, is_self: 0 },
-      ] } },
-    ] });
-    cleanups.push(() => setMockMode(accountId, {}));
 
-    // Avec chat_id, le message part dans la conversation : ni un recipient_id
-    // d'un autre profil, non effacé, ni un chat_id encodé (que l'envoi décode)
-    // ne font passer l'envoi, et le profil de recipient_id ne reçoit rien.
+    // Avec chat_id, le message part dans la conversation : un recipient_id d'un autre
+    // profil, non effacé, ne fait pas passer l'envoi, et le profil de recipient_id ne
+    // reçoit rien. (L'identifiant de conversation n'est plus décodé à l'envoi : le
+    // chat_id encodé de l'ancienne API n'a pas d'équivalent.)
     const other = newProfileId();
     for (const chatId of [unlinked, linked]) {
-      const encoded = `%${chatId.charCodeAt(0).toString(16)}${chatId.slice(1)}`;
-      for (const body of [{ chat_id: chatId }, { chat_id: chatId, recipient_id: other }, { chat_id: encoded }]) {
+      for (const body of [{ chat_id: chatId }, { chat_id: chatId, recipient_id: other }]) {
         const res = await sendMessage(token, org, accountId, { ...body, text: `Bonjour ${rand()}` });
         expectErasedRefusal(res);
       }
-      const calls = (await mockCalls()).filter((c) => c.path.includes(chatId.slice(1)));
+      const calls = (await mockCalls(accountId)).filter((c) => decodeURIComponent(c.path).includes(chatId));
       expect(calls.filter((c) => c.method !== 'GET'), `${chatId} : aucun envoi dans la conversation`).toEqual([]);
     }
-    // Seules lectures : compte de chaque conversation, participants de la conversation non liée.
-    const reads = [...new Set((await mockCalls())
-      .filter((c) => c.path.includes(unlinked.slice(1)) || c.path.includes(linked.slice(1)))
-      .map((c) => `${c.method} ${c.path}`))].sort();
-    expect(reads).toEqual([
-      `GET /api/v1/chats/${linked}`,
-      `GET /api/v1/chats/${unlinked}`,
-      `GET /api/v1/chats/${unlinked}/attendees`,
-    ].sort());
+    // Aucun envoi pour ce compte, toutes conversations confondues.
+    const calls = await mockCalls(accountId);
+    expect(calls.filter((c) => c.method !== 'GET'), 'aucun envoi dans une conversation').toEqual([]);
+    // Seule lecture : la conversation non liée (le lien de l'autre répond sans prestataire).
+    expect([...new Set(calls.map((c) => `${c.method} ${decodeURIComponent(c.path)}`))]).toEqual([`GET /v2/${accountId}/chats/${unlinked}`]);
     expect(await linksOf(org.orgId, candidateId), 'lien intact, aucun marqueur').toEqual([link]);
     expect(link.id).toBe(linkId);
     expect(await candidateRowState(rowId), 'aucun « Contacté »').toEqual(before);
     expect(await linksOf(org.orgId, other), 'recipient_id : ni marqueur ni lien').toEqual([]);
     expect(await rowsOf(org.orgId, other), 'recipient_id : aucune ligne ni « Contacté »').toEqual([]);
     expect(await actionLog(accountId), 'aucune place prise dans le plafond LinkedIn').toEqual([]);
+    await expectNoViolations(accountId);
   });
 
   test('assistant (appel interne) : même refus, rien ne part', async () => {

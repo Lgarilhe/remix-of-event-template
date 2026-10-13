@@ -23,8 +23,8 @@ import { format, isToday } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Info, Loader2, Maximize2,
-  MessageSquare, Mic, Plus, RotateCcw, Trash2,
+  AlertTriangle, Check, ChevronLeft, ClipboardList, Loader2, Maximize2,
+  Mic, Plus, RotateCcw, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Json, Tables } from '@/integrations/supabase/types';
@@ -41,10 +41,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ATSCandidate } from '@/hooks/useATSData';
@@ -56,6 +53,10 @@ import {
   LiveCoachingPanel, type CallReport, type CriterionUpdate, type ReportRecommendation,
 } from './LiveCoachingPanel';
 import { plural } from '@/lib/plural';
+import {
+  ScorecardEditor, type ScorecardCriterion as Criterion, type ScorecardRecommendation as Recommendation,
+  type ScorecardInterviewStage as InterviewStage, type ScorecardEditorValue,
+} from './ScorecardEditor';
 
 /** Résumé de la grille ouverte : l'en-tête du plein écran le suit sans interroger la base. */
 export interface ScorecardSummary {
@@ -82,37 +83,17 @@ interface ScorecardTabProps {
   onRecordingChange?: (recording: boolean) => void;
   /** Événement vérifié de l'entretien, fourni par le calendrier. */
   qualificationSessionId?: string | null;
+  /** Lieu du rendez-vous vérifié : guide les réglages audio de l'assistant. */
+  meetingLocation?: string | null;
 }
 
-interface Criterion {
-  id: string;
-  label: string;
-  description: string;
-  category: 'technical' | 'soft_skill' | 'culture_fit' | 'motivation';
-  weight: number;
-  suggestedQuestions?: string[];
-  ratingRubric?: Record<string, string>;
-  redFlags?: string[];
-}
-
-type Recommendation = 'strong_yes' | 'yes' | 'maybe' | 'no' | 'strong_no';
-type InterviewStage = 'phone_screen' | 'technique' | 'culture_fit' | 'final';
 type SaveState = 'idle' | 'dirty' | 'saving' | 'error';
 
-interface EvaluationData {
+interface EvaluationData extends ScorecardEditorValue {
   /** Clé locale stable : l'identifiant en base, ou une clé provisoire avant la première écriture. */
   key: string;
   id?: string;
-  criteria: Criterion[];
-  ratings: Record<string, number>;
-  comments: Record<string, string>;
-  overallScore: number | null;
   savedAt?: string;
-  jobTitle?: string;
-  recommendation?: Recommendation;
-  summary?: string;
-  followUpNotes?: string;
-  interviewStage?: InterviewStage;
   projectId?: string | null;
   processStepId?: string | null;
   qualificationSessionId?: string | null;
@@ -138,20 +119,7 @@ interface BriefFields {
 
 const AUTOSAVE_DELAY_MS = 1500;
 
-const RECOMMENDATION_KEYS: Recommendation[] = ['strong_yes', 'yes', 'maybe', 'no', 'strong_no'];
 const INTERVIEW_STAGE_KEYS = Object.keys(INTERVIEW_TYPES) as InterviewStage[];
-
-/** Catégories d'un critère : un libellé, sans couleur (revue design E-32). */
-const CATEGORY_LABELS: Record<string, string> = {
-  technical: 'Technique',
-  soft_skill: 'Savoir-être',
-  culture_fit: 'Adéquation culturelle',
-  motivation: 'Motivation',
-};
-const CATEGORY_ORDER = ['technical', 'soft_skill', 'culture_fit', 'motivation'];
-
-/** Poids d'un critère, écrit en toutes lettres, sans rouge. */
-const WEIGHT_LABELS: Record<number, string> = { 3: 'Critique', 2: 'Important', 1: 'Bonus' };
 
 /** Choix sélectionné d'un groupe : aplat monochrome, comme le bouton principal (E-32). */
 const CHOICE_CLASS =
@@ -200,22 +168,6 @@ function rowToEvaluation(d: Tables<'candidate_evaluations'>): EvaluationData {
     processStepId: d.process_step_id,
     qualificationSessionId: d.qualification_session_id,
   };
-}
-
-/**
- * Raccourcis de la grille (1 à 5 pour noter, flèches pour changer de critère) :
- * jamais pendant une saisie, dans un menu, ou quand une autre fenêtre est
- * ouverte par-dessus la grille (la fiche candidat qui la contient est une fenêtre).
- */
-function isShortcutBlocked(e: KeyboardEvent, root: HTMLElement | null): boolean {
-  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return true;
-  const el = e.target as HTMLElement | null;
-  if (el?.isContentEditable) return true;
-  if (el?.closest?.('input, textarea, select, [role="menu"], [role="listbox"], [role="combobox"]')) return true;
-  const overlays = document.querySelectorAll(
-    '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]',
-  );
-  return Array.from(overlays).some((overlay) => !root || !overlay.contains(root));
 }
 
 function SaveIndicator({ state, savedAt, onRetry }: { state: SaveState; savedAt?: string; onRetry: () => void }) {
@@ -291,12 +243,11 @@ function IconAction({
 
 export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   candidate, enrichedProfile, onOpenProfile, autoStartCoaching, autoGenerate, autoOpenFirst,
-  onActiveEvaluationChange, onRecordingChange, qualificationSessionId,
+  onActiveEvaluationChange, onRecordingChange, qualificationSessionId, meetingLocation,
 }) => {
   const navigate = useNavigate();
   const { organizationId } = useOrganization();
   const baseId = useId();
-  const rootRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
   const scope = JSON.stringify([organizationId, candidate.candidateId, candidate.projectId, candidate.jobId, qualificationSessionId]);
   const scopeRef = useRef(scope);
@@ -324,9 +275,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   const [selectedStage, setSelectedStage] = useState<InterviewStage | ''>('');
   const [showCoaching, setShowCoaching] = useState(false);
   const [currentCriterionIdx, setCurrentCriterionIdx] = useState(0);
-  // « Voir l'échelle complète » : replié à chaque changement de critère.
-  const [showFullRubric, setShowFullRubric] = useState(false);
-  useEffect(() => { setShowFullRubric(false); }, [currentCriterionIdx]);
   const [coachingAutoNav, setCoachingAutoNav] = useState(true);
   const lastAutoNavCriterionRef = useRef<string | null>(null);
   const [recommendationFromReport, setRecommendationFromReport] = useState(false);
@@ -503,7 +451,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
   const openEvaluation = useCallback((key: string) => {
     setActiveKey(key);
     setCurrentCriterionIdx(0);
-    setShowFullRubric(false);
     setRecommendationFromReport(false);
     lastAutoNavCriterionRef.current = null;
   }, []);
@@ -931,27 +878,6 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     updateEvaluation(activeKey, (ev) => ({ ...ev, [field]: value }));
   }, [activeKey, updateEvaluation]);
 
-  // Raccourcis : 1 à 5 pour noter, flèches pour changer de critère.
-  useEffect(() => {
-    if (!activeEval || activeEval.criteria.length === 0) return;
-    const handler = (e: KeyboardEvent) => {
-      if (isShortcutBlocked(e, rootRef.current)) return;
-      if (e.key >= '1' && e.key <= '5') {
-        e.preventDefault();
-        const criterion = activeEval.criteria[currentCriterionIdx];
-        if (criterion) handleRate(criterion.id, +e.key);
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        setCurrentCriterionIdx((i) => Math.min(activeEval.criteria.length - 1, i + 1));
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        setCurrentCriterionIdx((i) => Math.max(0, i - 1));
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [activeEval, currentCriterionIdx, handleRate]);
-
   // ─── Navigation ───
   const closeEditor = useCallback(() => {
     const key = activeKey;
@@ -1141,7 +1067,7 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     const titleId = `${baseId}-generation`;
     const stageLabelId = `${baseId}-type`;
     return (
-      <div ref={rootRef} className="min-w-0 space-y-3">
+      <div className="min-w-0 space-y-3">
         <Button variant="ghost" size="sm" onClick={closeEditor} className={cn('-ml-2', touch)}>
           <ChevronLeft aria-hidden="true" />
           Retour
@@ -1198,435 +1124,76 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
     );
   }
 
-  // ─── Grille ouverte ───
+  // ─── Grille ouverte : vue partagée, données et effets conservés ici ───
   if (activeEval) {
     const criteria = activeEval.criteria;
     const total = criteria.length;
-    const criterionIdx = Math.min(currentCriterionIdx, total - 1);
-    const criterion = criteria[criterionIdx];
-    const rating = criterion ? activeEval.ratings[criterion.id] : undefined;
-    const comment = criterion ? activeEval.comments[criterion.id] || '' : '';
-    const questions = criterion?.suggestedQuestions || [];
-    const redFlags = criterion?.redFlags || [];
-    const rubric = criterion?.ratingRubric || {};
-    const rubricEntries = Object.entries(rubric).sort(([a], [b]) => Number(a) - Number(b));
     const hasInput =
       Object.keys(activeEval.ratings).length > 0 || Object.values(activeEval.comments).some((c) => c && c.trim());
-    const categoryAverages = CATEGORY_ORDER.map((cat) => {
-      const rated = criteria.filter((c) => c.category === cat && activeEval.ratings[c.id] != null);
-      if (rated.length === 0) return null;
-      const avg = rated.reduce((s, c) => s + activeEval.ratings[c.id], 0) / rated.length;
-      return { cat, avg };
-    }).filter((x): x is { cat: string; avg: number } => x !== null);
-
-    const ids = {
-      card: `${baseId}-critere`,
-      rating: `${baseId}-note`,
-      scale: `${baseId}-echelle`,
-      rubric: `${baseId}-bareme`,
-      notes: `${baseId}-notes`,
-      verdict: `${baseId}-verdict`,
-      reco: `${baseId}-reco`,
-      summary: `${baseId}-resume`,
-      followUp: `${baseId}-suivi`,
-      autoNav: `${baseId}-suivi-auto`,
-    };
 
     const coachingPanel = showCoaching ? (
-      <div className="order-first w-full min-w-0 [@container(min-width:64rem)]:sticky [@container(min-width:64rem)]:top-4 [@container(min-width:64rem)]:order-none [@container(min-width:64rem)]:w-80 [@container(min-width:64rem)]:shrink-0">
-        <LiveCoachingPanel
-          candidateId={candidate.candidateId}
-          candidateName={candidate.name}
-          candidateHeadline={candidate.headline || ''}
-          candidateProfileSummary={(() => {
-            const p = candidate.linkedinProfileData as unknown as { summary?: string; about?: string; headline?: string } | null;
-            return p?.summary || p?.about || p?.headline || '';
-          })()}
-          candidateEmail={candidate.email}
-          candidateLinkedinUrl={candidate.linkedin}
-          projectId={activeEval.projectId}
-          processStepId={activeEval.processStepId}
-          qualificationSessionId={activeEval.qualificationSessionId ?? qualificationSessionId}
-          jobId={candidate.jobId || ''}
-          jobTitle={candidate.jobTitle || ''}
-          jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}
-          criteria={criteria}
-          scorecardId={activeEval.id}
-          onCriteriaUpdate={handleCriteriaUpdate}
-          onAutoScores={handleAutoScores}
-          onReportGenerated={handleReport}
-          onRecordingChange={onRecordingChange}
-          onClose={() => setShowCoaching(false)}
-          onOpenProfile={onOpenProfile}
-        />
-      </div>
+      <LiveCoachingPanel
+        candidateId={candidate.candidateId}
+        candidateName={candidate.name}
+        candidateHeadline={candidate.headline || ''}
+        candidateProfileSummary={(() => {
+          const p = candidate.linkedinProfileData as unknown as { summary?: string; about?: string; headline?: string } | null;
+          return p?.summary || p?.about || p?.headline || '';
+        })()}
+        candidateEmail={candidate.email}
+        candidateLinkedinUrl={candidate.linkedin}
+        projectId={activeEval.projectId}
+        processStepId={activeEval.processStepId}
+        qualificationSessionId={activeEval.qualificationSessionId ?? qualificationSessionId}
+        meetingLocation={meetingLocation}
+        jobId={candidate.jobId || ''}
+        jobTitle={candidate.jobTitle || ''}
+        jobContext={`Poste: ${candidate.jobTitle || 'N/A'}`}
+        criteria={criteria}
+        scorecardId={activeEval.id}
+        onCriteriaUpdate={handleCriteriaUpdate}
+        onAutoScores={handleAutoScores}
+        onReportGenerated={handleReport}
+        onRecordingChange={onRecordingChange}
+        onClose={() => setShowCoaching(false)}
+        onOpenProfile={onOpenProfile}
+      />
     ) : null;
 
     return (
-      // Conteneur de taille en ligne : la grille se place selon la largeur de son cadre (tiroir candidat, page plein écran)
-      // et non selon celle de la fenêtre, sinon elle se chevauche dans un tiroir étroit sur grand écran.
-      <div ref={rootRef} className="min-w-0 max-w-full space-y-4 [container-type:inline-size]">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Button variant="ghost" size="sm" onClick={closeEditor} className={cn('-ml-2', touch)}>
-            <ChevronLeft aria-hidden="true" />
-            Retour aux grilles
-          </Button>
-          <SaveIndicator state={saveState} savedAt={activeEval.savedAt} onRetry={retrySave} />
-        </div>
-
-        {/* En-tête : moyenne, progression, actions */}
-        <section
-          aria-label="Synthèse de la grille"
-          className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 [@container(min-width:56rem)]:flex-row [@container(min-width:56rem)]:items-center [@container(min-width:56rem)]:justify-between"
-        >
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="shrink-0">
-              <p className="eyebrow">Moyenne</p>
-              {overallScore != null ? (
-                <p className="mt-0.5 text-2xl font-semibold tabular-nums text-foreground">
-                  {formatAverage(overallScore)}
-                  <span className="text-sm font-medium text-muted-foreground">/5</span>
-                </p>
-              ) : (
-                <p className="mt-0.5 text-2xl font-semibold tabular-nums text-muted-foreground">
-                  <span className="sr-only">Pas encore de note</span>
-                  <span aria-hidden="true">–</span>
-                  <span aria-hidden="true" className="text-sm font-medium">/5</span>
-                </p>
-              )}
-            </div>
-            <div className="min-w-0 space-y-1.5">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="text-sm font-semibold text-foreground">
-                  {ratedCount > 1 ? `${ratedCount} critères notés` : `${ratedCount} critère noté`} sur {total}
-                </p>
-                {activeEval.interviewStage && <Badge variant="muted">{interviewTypeLabel(activeEval.interviewStage)}</Badge>}
-              </div>
-              {categoryAverages.length > 0 && (
-                <dl className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                  {categoryAverages.map(({ cat, avg }) => (
-                    <div key={cat} className="flex gap-1">
-                      <dt className="text-muted-foreground">{CATEGORY_LABELS[cat]}</dt>
-                      <dd className="font-medium tabular-nums text-foreground">{formatAverage(avg)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-              <p className="truncate text-xs text-muted-foreground">
-                {activeEval.jobTitle || candidate.jobTitle || 'Poste non précisé'}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3 [@container(min-width:56rem)]:border-t-0 [@container(min-width:56rem)]:pt-0">
-            {!showCoaching && (
-              <Button variant="outline" size="sm" onClick={openCoaching} className={touch}>
-                <Mic aria-hidden="true" />
-                Ouvrir l'assistant d'entretien
-              </Button>
-            )}
-            {/* Actions secondaires en icônes : une seule rangée dans le tiroir, la confirmation protège la régénération. */}
-            {!autoOpenFirst && (
-              <IconAction label="Ouvrir en plein écran" onClick={() => void openFullPage(false)}>
-                <Maximize2 aria-hidden="true" />
-              </IconAction>
-            )}
-            <IconAction label="Régénérer la grille" onClick={() => setConfirmRegenerate(true)} disabled={generating}>
-              {generating ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+      <ScorecardEditor
+        key={activeEval.key}
+        value={{ ...activeEval, jobTitle: activeEval.jobTitle || candidate.jobTitle || undefined }}
+        currentCriterionIndex={currentCriterionIdx}
+        onCriterionChange={setCurrentCriterionIdx}
+        onRate={handleRate}
+        onComment={handleComment}
+        onRecommendationChange={setRecommendation}
+        onSummaryChange={(text) => setTextField('summary', text)}
+        onFollowUpNotesChange={(text) => setTextField('followUpNotes', text)}
+        recommendationFromReport={recommendationFromReport}
+        onBack={closeEditor}
+        status={<SaveIndicator state={saveState} savedAt={activeEval.savedAt} onRetry={retrySave} />}
+        assistant={coachingPanel}
+        assistantAutoNavigation={showCoaching ? { enabled: coachingAutoNav, onChange: setCoachingAutoNav } : undefined}
+        actions={<>
+          {!showCoaching && (
+            <Button variant="outline" size="sm" onClick={openCoaching} className={touch}>
+              <Mic aria-hidden="true" />
+              Ouvrir l'assistant d'entretien
+            </Button>
+          )}
+          {/* Actions secondaires en icônes : une seule rangée dans le tiroir, la confirmation protège la régénération. */}
+          {!autoOpenFirst && (
+            <IconAction label="Ouvrir en plein écran" onClick={() => void openFullPage(false)}>
+              <Maximize2 aria-hidden="true" />
             </IconAction>
-          </div>
-        </section>
-
-        <div className="flex min-w-0 flex-wrap items-start gap-4">
-          {/* Liste des critères (cadre large) */}
-          <nav aria-label="Critères" className="hidden w-44 shrink-0 [@container(min-width:48rem)]:sticky [@container(min-width:48rem)]:top-4 [@container(min-width:48rem)]:block">
-            <p className="eyebrow mb-2 px-2">Critères ({total})</p>
-            <ol className="space-y-0.5">
-              {criteria.map((c, idx) => {
-                const r = activeEval.ratings[c.id];
-                const current = idx === criterionIdx;
-                return (
-                  <li key={c.id}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-current={current ? 'step' : undefined}
-                      aria-label={`${c.label}, ${r != null ? `noté ${r} sur 5` : 'pas encore noté'}`}
-                      onClick={() => setCurrentCriterionIdx(idx)}
-                      className={cn(
-                        'h-auto w-full justify-between gap-2 whitespace-normal px-2 py-1.5 text-left text-xs font-normal text-foreground-secondary',
-                        current && 'bg-accent font-semibold text-foreground',
-                      )}
-                    >
-                      <span className="line-clamp-2 min-w-0 flex-1">{c.label}</span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">{r ?? '–'}</span>
-                    </Button>
-                  </li>
-                );
-              })}
-            </ol>
-            {showCoaching && (
-              <div className="mt-3 flex items-center gap-2 border-t border-border px-2 pt-3">
-                <Checkbox
-                  id={ids.autoNav}
-                  checked={coachingAutoNav}
-                  onCheckedChange={(checked) => setCoachingAutoNav(checked === true)}
-                />
-                <Label htmlFor={ids.autoNav} className="text-xs font-normal text-muted-foreground">
-                  Suivre les critères abordés
-                </Label>
-              </div>
-            )}
-          </nav>
-
-          <div className="min-w-0 flex-1 space-y-3">
-            {/* Liste des critères (cadre étroit : tiroir, téléphone, tablette) */}
-            <nav aria-label="Critères" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [@container(min-width:48rem)]:hidden">
-              {criteria.map((c, idx) => {
-                const r = activeEval.ratings[c.id];
-                const current = idx === criterionIdx;
-                return (
-                  // Une puce grise par critère, le critère en cours en contour d'encre : six à huit contours côte à côte alourdiraient la rangée.
-                  <Button
-                    key={c.id}
-                    variant="ghost"
-                    size="xs"
-                    aria-current={current ? 'step' : undefined}
-                    aria-label={`Critère ${idx + 1}\u00a0: ${c.label}, ${r != null ? `noté ${r} sur 5` : 'pas encore noté'}`}
-                    onClick={() => setCurrentCriterionIdx(idx)}
-                    className={cn('shrink-0 bg-muted tabular-nums hover:bg-accent', touch, current && 'border border-foreground bg-card font-semibold dark:border-foreground/70')}
-                  >
-                    {idx + 1}
-                    {r != null && <Check aria-hidden="true" />}
-                  </Button>
-                );
-              })}
-            </nav>
-
-            {criterion && (
-              <article aria-labelledby={ids.card} className="overflow-hidden rounded-xl border border-border bg-card">
-                <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                    <Badge variant="muted">{CATEGORY_LABELS[criterion.category] ?? 'Critère'}</Badge>
-                    <Badge variant={criterion.weight === 3 ? 'outline' : 'muted'}>
-                      {WEIGHT_LABELS[criterion.weight] ?? 'Bonus'}
-                    </Badge>
-                  </div>
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                    Critère {criterionIdx + 1} sur {total}
-                  </span>
-                </header>
-
-                <div className="space-y-5 px-4 py-4 sm:px-5">
-                  <div>
-                    <h3 id={ids.card} className="text-base font-semibold text-foreground">{criterion.label}</h3>
-                    {criterion.description && (
-                      <p className="mt-1.5 text-sm text-foreground-secondary">{criterion.description}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <p id={ids.rating} className="eyebrow">Votre note</p>
-                    <ToggleGroup
-                      type="single"
-                      role="radiogroup"
-                      aria-labelledby={ids.rating}
-                      aria-describedby={ids.scale}
-                      variant="outline"
-                      value={rating ? String(rating) : ''}
-                      onValueChange={(value) => {
-                        if (value) handleRate(criterion.id, Number(value));
-                      }}
-                      className="justify-start gap-2"
-                    >
-                      {[1, 2, 3, 4, 5].map((score) => (
-                        <ToggleGroupItem
-                          key={score}
-                          value={String(score)}
-                          aria-label={`Noter ${score} sur 5`}
-                          className={cn('h-10 w-10 p-0 text-md tabular-nums max-md:h-11 max-md:w-11', CHOICE_CLASS)}
-                        >
-                          {score}
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
-                    <p id={ids.scale} className="text-xs text-muted-foreground">
-                      De 1 (très faible) à 5 (exceptionnel). Touches 1 à 5 pour noter, flèches pour changer de critère.
-                    </p>
-                  </div>
-
-                  {rating && !showFullRubric && rubric[String(rating)] && (
-                    <p className="rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
-                      <span className="font-semibold tabular-nums">{`${rating}/5\u00a0: `}</span>
-                      {rubric[String(rating)]}
-                    </p>
-                  )}
-
-                  {rubricEntries.length > 0 && (
-                    <div>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        aria-expanded={showFullRubric}
-                        aria-controls={ids.rubric}
-                        onClick={() => setShowFullRubric((v) => !v)}
-                        className={cn('-ml-2', touch)}
-                      >
-                        <ChevronDown aria-hidden="true" className={cn('transition-transform duration-150', showFullRubric && 'rotate-180')} />
-                        {showFullRubric ? "Masquer l'échelle complète" : "Voir l'échelle complète"}
-                      </Button>
-                      {showFullRubric && (
-                        <ol id={ids.rubric} className="mt-2 space-y-1 rounded-lg border border-border p-2">
-                          {rubricEntries.map(([score, desc]) => {
-                            const isActive = String(rating) === score;
-                            return (
-                              <li
-                                key={score}
-                                className={cn(
-                                  'flex items-start gap-2.5 rounded-md px-2 py-1.5 text-xs',
-                                  isActive ? 'bg-accent font-medium text-foreground' : 'text-foreground-secondary',
-                                )}
-                              >
-                                <span
-                                  className={cn(
-                                    'grid h-5 w-5 shrink-0 place-items-center rounded-md font-semibold tabular-nums',
-                                    isActive ? 'bg-foreground text-background' : 'bg-muted text-foreground',
-                                  )}
-                                >
-                                  {score}
-                                </span>
-                                <span>{desc}</span>
-                              </li>
-                            );
-                          })}
-                        </ol>
-                      )}
-                    </div>
-                  )}
-
-                  {questions.length > 0 && (
-                    <section className="space-y-2 rounded-lg border border-border px-3 py-3">
-                      <h4 className="eyebrow flex items-center gap-1.5">
-                        <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
-                        À vérifier pendant l'entretien
-                      </h4>
-                      <ol className="space-y-1.5">
-                        {questions.slice(0, 3).map((q, qi) => (
-                          <li key={qi} className="flex items-start gap-2 text-sm text-foreground">
-                            <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-2xs font-semibold tabular-nums text-foreground-secondary">
-                              {qi + 1}
-                            </span>
-                            <span>{q.replace(/^["«]\s*|\s*["»]$/g, '')}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </section>
-                  )}
-
-                  {redFlags.length > 0 && (
-                    <div className="flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning-muted px-3 py-2.5">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-warning">Point d'alerte</p>
-                        <p className="text-sm text-foreground">{redFlags[0]}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor={ids.notes}>Vos notes sur ce critère</Label>
-                    <Textarea
-                      id={ids.notes}
-                      value={comment}
-                      onChange={(e) => handleComment(criterion.id, e.target.value)}
-                      placeholder="Observations, exemples concrets, citations du candidat…"
-                      className="min-h-20 resize-y"
-                    />
-                  </div>
-                </div>
-
-                <footer className="flex items-center justify-between gap-2 border-t border-border px-2 py-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setCurrentCriterionIdx(Math.max(0, criterionIdx - 1))}
-                    disabled={criterionIdx === 0}
-                    className={touch}
-                  >
-                    <ChevronLeft aria-hidden="true" />
-                    Précédent
-                  </Button>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {criterionIdx + 1} / {total}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setCurrentCriterionIdx(Math.min(total - 1, criterionIdx + 1))}
-                    disabled={criterionIdx === total - 1}
-                    className={touch}
-                  >
-                    Suivant
-                    <ChevronRight aria-hidden="true" />
-                  </Button>
-                </footer>
-              </article>
-            )}
-          </div>
-
-          {coachingPanel}
-        </div>
-
-        {/* Recommandation finale */}
-        <section aria-labelledby={ids.verdict} className="space-y-4 rounded-xl border border-border bg-card p-4">
-          <h3 id={ids.verdict} className="text-sm font-semibold text-foreground">Recommandation finale</h3>
-          <div className="space-y-2">
-            <p id={ids.reco} className="eyebrow">Votre recommandation</p>
-            <ToggleGroup
-              type="single"
-              role="radiogroup"
-              aria-labelledby={ids.reco}
-              variant="outline"
-              value={activeEval.recommendation ?? ''}
-              onValueChange={(value) => setRecommendation((value || undefined) as Recommendation | undefined)}
-              className="flex-wrap justify-start gap-2"
-            >
-              {RECOMMENDATION_KEYS.map((key) => (
-                <ToggleGroupItem key={key} value={key} className={cn('max-md:h-11', CHOICE_CLASS)}>
-                  {HIRING_VERDICTS[key].label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-            {recommendationFromReport && (
-              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground" aria-hidden="true" />
-                Proposée par le compte rendu de l'entretien&nbsp;: vérifiez-la avant de conclure.
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor={ids.summary}>Résumé et justification</Label>
-            <Textarea
-              id={ids.summary}
-              value={activeEval.summary || ''}
-              onChange={(e) => setTextField('summary', e.target.value)}
-              placeholder="Ce que vous retenez de l'entretien et ce qui justifie votre recommandation…"
-              className="min-h-20 resize-y"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor={ids.followUp}>Points de suivi pour le prochain entretien</Label>
-            <Textarea
-              id={ids.followUp}
-              value={activeEval.followUpNotes || ''}
-              onChange={(e) => setTextField('followUpNotes', e.target.value)}
-              placeholder="Questions à creuser, points à vérifier au prochain entretien…"
-              className="min-h-16 resize-y"
-            />
-          </div>
-        </section>
-
+          )}
+          <IconAction label="Régénérer la grille" onClick={() => setConfirmRegenerate(true)} disabled={generating}>
+            {generating ? <Loader2 className="animate-spin" aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+          </IconAction>
+        </>}
+      >
         <AlertDialog open={confirmRegenerate} onOpenChange={setConfirmRegenerate}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -1649,14 +1216,14 @@ export const ScorecardTab: React.FC<ScorecardTabProps> = ({
           </AlertDialogContent>
         </AlertDialog>
         {deleteDialog}
-      </div>
+      </ScorecardEditor>
     );
   }
 
   // ─── Liste des grilles ───
   const showStatus = saveState === 'saving' || saveState === 'error';
   return (
-    <div ref={rootRef} className="min-w-0 space-y-3">
+    <div className="min-w-0 space-y-3">
       {showStatus && <SaveIndicator state={saveState} onRetry={retrySave} />}
 
       {loadState === 'loading' && (

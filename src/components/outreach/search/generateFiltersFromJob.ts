@@ -222,7 +222,15 @@ export async function mapGeneratedFilters(
   const hasValidExistingLocation = (currentLocation || []).some(loc => /^\d+$/.test(String(loc.id)));
   const locationKeywords = (generated.location_keywords || []).map(k => k.trim()).filter(Boolean);
 
-  if (!hasValidExistingLocation && locationKeywords.length > 0 && accountId) {
+  // Base Konekt searches textual places. It must never depend on a LinkedIn
+  // parameter lookup, and the visible chips must match the location sent.
+  if (api === 'database' && !(currentLocation?.length) && locationKeywords.length) {
+    update.location = locationKeywords.slice(0, 3).map(name => ({
+      id: `database:${name}`, name, priority: 'MUST_HAVE', scope: 'CURRENT',
+    }));
+  }
+
+  if (api !== 'database' && !hasValidExistingLocation && locationKeywords.length > 0 && accountId) {
     const resolvedLocations: LocationFilterItem[] = [];
     for (const keyword of locationKeywords.slice(0, 3)) {
       try {

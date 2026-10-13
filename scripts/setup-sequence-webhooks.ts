@@ -1,128 +1,89 @@
 /**
- * One-shot script to configure Unipile webhooks for the sequences module.
+ * Script ponctuel : abonne le récepteur du suivi natif des e-mails de séquence
+ * (supabase/functions/sequence-webhooks-handler) aux événements `tracking.open` et
+ * `tracking.click` du service de connexion (API v2).
  *
- * Usage:
- *   UNIPILE_BASE_URL=... UNIPILE_API_KEY=... SUPABASE_URL=... SEQUENCE_WEBHOOK_SECRET=... npx ts-node scripts/setup-sequence-webhooks.ts
+ * Utilisation (Deno) :
+ *   UNIPILE_V2_API_KEY=... UNIPILE_V2_WEBHOOK_TOKEN=... SUPABASE_URL=... \
+ *     deno run --allow-net --allow-env scripts/setup-sequence-webhooks.ts
  *
- * Or with Deno:
- *   deno run --allow-net --allow-env scripts/setup-sequence-webhooks.ts
+ * Le point de terminaison v2 n'accepte aucun en-tête personnalisé : le récepteur
+ * s'authentifie par le jeton `?v2_token=` de son URL (le même que celui de
+ * unipile-webhook ; à défaut de UNIPILE_V2_WEBHOOK_TOKEN, dérivé de
+ * UNIPILE_WEBHOOK_SECRET). Sans jeton, le script s'arrête avant tout appel.
+ *
+ * Idempotent : un point de terminaison déjà présent à cette adresse est mis à jour
+ * sur place (événements, jeton, actif), les doublons sont supprimés, sinon il est
+ * créé. Les événements `message.new`, `relation.new` et `email.new` sont traités par
+ * unipile-webhook (abonné par unipile-manage-webhooks) : ils ne sont pas abonnés ici,
+ * pour ne rien traiter deux fois.
+ *
+ * Le suivi natif n'émet rien tant que l'envoi d'e-mail ne le demande pas
+ * (`tracking_options`) : le suivi par pixel de sequence-email-track reste la source
+ * des ouvertures et des clics.
  */
 
-const UNIPILE_BASE_URL = (process.env.UNIPILE_BASE_URL || process.env.UNIPILE_DSN || '').replace(/\/$/, '');
-const UNIPILE_API_KEY = process.env.UNIPILE_API_KEY || '';
-const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-const WEBHOOK_SECRET = process.env.SEQUENCE_WEBHOOK_SECRET || process.env.UNIPILE_WEBHOOK_SECRET || '';
+import {
+  createEndpoint,
+  deleteEndpoint,
+  describeForLog,
+  listAllEndpoints,
+  patchEndpoint,
+  planEndpointSync,
+  resolveWebhookToken,
+  WEBHOOK_TOKEN_PARAM,
+} from '../supabase/functions/_shared/unipile/index.ts';
 
-if (!UNIPILE_BASE_URL || !UNIPILE_API_KEY || !SUPABASE_URL) {
-  console.error('Missing required env vars: UNIPILE_BASE_URL, UNIPILE_API_KEY, SUPABASE_URL');
-  process.exit(1);
-}
-
-if (!WEBHOOK_SECRET) {
-  console.warn('WARNING: No SEQUENCE_WEBHOOK_SECRET set. Webhooks will not be authenticated.');
-}
-
-const WEBHOOK_HANDLER_URL = `${SUPABASE_URL}/functions/v1/sequence-webhooks-handler`;
-const PREFIX = 'konekt-seq-';
-
-interface WebhookConfig {
-  name: string;
-  source: string;
-  events: string[];
-}
-
-// Audit Opus 2026-05-07 : `message_received` et `new_relation` sont gérés
-// par `unipile-webhook` (côté Unipile config). Les enregistrer ici aussi
-// causerait du double-processing (double cancel + analytics doublonnées).
-// Ce script n'enregistre donc QUE les events email — les events LinkedIn
-// passent par l'autre webhook.
-const WEBHOOKS: WebhookConfig[] = [
-  {
-    name: `${PREFIX}email-tracking`,
-    source: 'email_tracking',
-    events: ['mail_opened', 'mail_link_clicked'],
-  },
-  {
-    name: `${PREFIX}email-received`,
-    source: 'email',
-    events: ['mail_received'],
-  },
-];
-
-async function apiCall(method: string, path: string, body?: unknown): Promise<unknown> {
-  const url = `${UNIPILE_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'X-API-KEY': UNIPILE_API_KEY,
-      'Content-Type': 'application/json',
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`${method} ${path} → ${res.status}: ${text}`);
-  }
-
-  return res.json();
-}
+const SUPABASE_URL = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
+const TRACKING_EVENTS = ['tracking.open', 'tracking.click'] as const;
+const DESCRIPTION = 'Konekt, suivi des e-mails de séquence (ouvertures et clics)';
 
 async function main() {
-  console.log('=== Sequence Webhooks Setup ===');
-  console.log(`Unipile: ${UNIPILE_BASE_URL}`);
-  console.log(`Handler: ${WEBHOOK_HANDLER_URL}`);
-  console.log('');
+  if (!Deno.env.get('UNIPILE_V2_API_KEY') || !SUPABASE_URL) {
+    console.error('Variables obligatoires manquantes : UNIPILE_V2_API_KEY, SUPABASE_URL');
+    Deno.exit(1);
+  }
+  const token = await resolveWebhookToken();
+  if (!token) {
+    console.error('Aucun jeton de livraison : définir UNIPILE_V2_WEBHOOK_TOKEN (ou UNIPILE_WEBHOOK_SECRET). Rien n\'a été modifié.');
+    Deno.exit(1);
+  }
 
-  // 1. List existing webhooks
-  console.log('Listing existing webhooks...');
-  const existing = (await apiCall('GET', '/api/v1/webhooks')) as { items?: { id: string; name: string }[] };
-  const existingItems = existing.items || [];
+  const handlerBase = `${SUPABASE_URL}/functions/v1/sequence-webhooks-handler`;
+  const targetUrl = `${handlerBase}?${WEBHOOK_TOKEN_PARAM}=${encodeURIComponent(token)}`;
 
-  // 2. Delete existing konekt-seq-* webhooks
-  const toDelete = existingItems.filter(w => w.name.startsWith(PREFIX));
-  if (toDelete.length > 0) {
-    console.log(`Deleting ${toDelete.length} existing konekt-seq-* webhook(s)...`);
-    for (const webhook of toDelete) {
-      try {
-        await apiCall('DELETE', `/api/v1/webhooks/${webhook.id}`);
-        console.log(`  ✓ Deleted: ${webhook.name} (${webhook.id})`);
-      } catch (err) {
-        console.error(`  ✗ Failed to delete ${webhook.name}:`, err);
-      }
-    }
+  console.log('=== Webhooks de suivi des e-mails de séquence ===');
+  console.log(`Récepteur : ${handlerBase}`);
+
+  const listed = await listAllEndpoints();
+  const plan = planEndpointSync(listed.items, handlerBase, TRACKING_EVENTS);
+  if (plan.keepId === null && listed.truncated) {
+    console.error('Liste des points de terminaison incomplète : rien n\'a été créé pour éviter un doublon.');
+    Deno.exit(1);
+  }
+
+  if (plan.keepId !== null) {
+    await patchEndpoint(plan.keepId, { url: targetUrl, triggerEvents: TRACKING_EVENTS, enabled: true, description: DESCRIPTION });
+    console.log(`  Mis à jour : ${plan.keepId} (${TRACKING_EVENTS.join(', ')})`);
   } else {
-    console.log('No existing konekt-seq-* webhooks to clean up.');
+    const created = await createEndpoint({ url: targetUrl, triggerEvents: TRACKING_EVENTS, description: DESCRIPTION });
+    console.log(`  Créé : ${created.id} (${TRACKING_EVENTS.join(', ')})`);
   }
 
-  // 3. Create new webhooks
-  console.log('');
-  console.log('Creating new webhooks...');
-  for (const config of WEBHOOKS) {
+  for (const duplicateId of plan.deleteIds) {
     try {
-      const payload = {
-        request_url: WEBHOOK_HANDLER_URL,
-        name: config.name,
-        format: 'json',
-        source: config.source,
-        events: config.events,
-        headers: WEBHOOK_SECRET
-          ? [{ key: 'x-webhook-secret', value: WEBHOOK_SECRET }]
-          : [],
-      };
-
-      const result = await apiCall('POST', '/api/v1/webhooks', payload);
-      console.log(`  ✓ Created: ${config.name} (${config.events.join(', ')})`);
+      await deleteEndpoint(duplicateId);
+      console.log(`  Doublon supprimé : ${duplicateId}`);
     } catch (err) {
-      console.error(`  ✗ Failed to create ${config.name}:`, err);
+      console.error(`  Doublon non supprimé : ${duplicateId}`, describeForLog(err));
     }
   }
 
   console.log('');
-  console.log('Done! Webhooks configured.');
+  console.log('Terminé.');
 }
 
-main().catch(err => {
-  console.error('Fatal error:', err);
-  process.exit(1);
+main().catch((err) => {
+  console.error('Erreur :', describeForLog(err));
+  Deno.exit(1);
 });

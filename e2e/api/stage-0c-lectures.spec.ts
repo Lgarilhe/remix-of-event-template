@@ -42,6 +42,7 @@ import {
   type TestUser,
 } from '../helpers/supabase-admin';
 import { ENGINE_SKIP_REASON, callFunction, engineAvailable, postJson, rand, setPaidPlan } from '../helpers/sequence-engine';
+import { withRgpdPurgeLock } from '../helpers/rgpd-purge-lock';
 
 test.setTimeout(120_000);
 
@@ -283,26 +284,30 @@ test.describe('lot 0c-2 : fonctions serveur', () => {
     const org = track(await createOrg('agency', 'E2E 0c E'));
     const missionId = await seedMission(org.orgId, org.owner.userId);
     const { id } = await seedCandidateRow({ orgId: org.orgId, createdBy: org.owner.userId, candidateId: newProfileId(), missionId });
-    // Ligne sans activité depuis 25 mois (dates posées sous le drapeau de reprise).
-    psql(`BEGIN;
-      ALTER TABLE public.job_candidate_status DISABLE TRIGGER update_job_candidate_status_updated_at;
-      SELECT set_config('konekt.stage_write', '*', true);
-      UPDATE public.job_candidate_status
-         SET updated_at = now() - interval '25 months', stage_entered_at = now() - interval '25 months'
-       WHERE id = '${id}';
-      ALTER TABLE public.job_candidate_status ENABLE TRIGGER update_job_candidate_status_updated_at;
-      COMMIT;`);
+    // Du vieillissement au dernier contrôle, sous le verrou : le passage réel de
+    // e2e/api/rgpd-purge-rappels.spec.ts (cas R) supprimerait cette ligne.
+    await withRgpdPurgeLock(async () => {
+      // Ligne sans activité depuis 25 mois (dates posées sous le drapeau de reprise).
+      psql(`BEGIN;
+        ALTER TABLE public.job_candidate_status DISABLE TRIGGER update_job_candidate_status_updated_at;
+        SELECT set_config('konekt.stage_write', '*', true);
+        UPDATE public.job_candidate_status
+           SET updated_at = now() - interval '25 months', stage_entered_at = now() - interval '25 months'
+         WHERE id = '${id}';
+        ALTER TABLE public.job_candidate_status ENABLE TRIGGER update_job_candidate_status_updated_at;
+        COMMIT;`);
 
-    const res = await postJson('/functions/v1/rgpd-purge', {}, { Authorization: `Bearer ${E2E.serviceRoleKey}` });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body.dry_run).toBe(true);
-    // La pile locale n'a pas de service de stockage (e2e/local-stack/README.md) :
-    // seule la liste des enregistrements audio échoue alors, hors du périmètre testé.
-    const errors = (res.body.errors as string[]).filter((e) => e !== 'audio list: no route');
-    expect(errors).toEqual([]);
-    expect(Number(res.body.candidates_purged)).toBeGreaterThanOrEqual(1);
-    const { data } = await admin().from('job_candidate_status').select('id').eq('id', id);
-    expect(data, 'compte seulement : la ligne reste').toHaveLength(1);
+      const res = await postJson('/functions/v1/rgpd-purge', {}, { Authorization: `Bearer ${E2E.serviceRoleKey}` });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body.dry_run).toBe(true);
+      // La pile locale n'a pas de service de stockage (e2e/local-stack/README.md) :
+      // seule la liste des enregistrements audio échoue alors, hors du périmètre testé.
+      const errors = (res.body.errors as string[]).filter((e) => e !== 'audio list: no route');
+      expect(errors).toEqual([]);
+      expect(Number(res.body.candidates_purged)).toBeGreaterThanOrEqual(1);
+      const { data } = await admin().from('job_candidate_status').select('id').eq('id', id);
+      expect(data, 'compte seulement : la ligne reste').toHaveLength(1);
+    });
   });
 
   test('F. assign_candidate_to_member : mission passée en project:<uuid>, accepté', async () => {

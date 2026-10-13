@@ -9,17 +9,16 @@
  * sur la stack locale ; LinkedIn et l'IA sont simulés par
  * e2e/local-stack/vendor-mock.mjs, qui journalise chaque appel.
  *
- * Deux contournements du faux prestataire, documentés ici :
- *  - La lecture des messages d'une conversation (GET /chats/<id>/messages)
- *    ne porte pas account_id : le faux prestataire ne peut pas la rattacher à
- *    un compte. Le fil renvoyé par GET /chat_attendees/<profil>/chats (qui,
- *    lui, porte account_id) a un identifiant qui embarque
- *    « ?account_id=<compte>&x= » : la lecture des messages arrive alors avec
- *    le bon compte et reçoit la réponse scriptée du test, sans toucher à la
- *    clé '*' partagée.
- *  - L'appel à l'IA ne porte aucun compte : sa réponse ne se règle que pour
- *    tous ('*'), interdit ici. Les appels IA d'un test sont reconnus par un
- *    marqueur unique placé dans le modèle de l'étape (le prompt le cite).
+ * Faux prestataire LinkedIn v2 : chaque route porte le compte dans son chemin
+ * (/v2/{acc_...}/...), les réponses se scriptent donc par compte
+ * (`setMockMode(compte, { routes })`, jamais la clé '*'). Une conversation et ses
+ * messages se scriptent par `routes.chatLookup` et `routes.messages`, les erreurs
+ * par `routes.fail` (voir e2e/helpers/sequence-engine.ts).
+ *
+ * Un contournement du faux prestataire, documenté ici : l'appel à l'IA ne porte
+ * aucun compte, sa réponse ne se règle que pour tous ('*'), interdit ici. Les
+ * appels IA d'un test sont reconnus par un marqueur unique placé dans le modèle
+ * de l'étape (le prompt le cite).
  *
  * Aujourd'hui est un dimanche : `force: true` lève la fenêtre d'envoi du
  * moteur. La file InMail n'a pas d'option équivalente : son titulaire est
@@ -32,19 +31,26 @@ import {
 } from '../helpers/supabase-admin';
 import {
   ENGINE_SKIP_REASON,
+  callBody,
   callFunction,
+  chatPosts,
   engineAvailable,
   enroll,
   enrollmentRow,
+  inmailOf,
+  isNewChat,
   minutesFromNow,
   mockCalls,
   rand,
+  recipientOf,
+  routes,
   runCycle,
   runEngine,
   schedule,
   sendingOrg,
   sentTexts,
   setMockMode,
+  type MockCall,
   type MockRoute,
 } from '../helpers/sequence-engine';
 
@@ -194,35 +200,29 @@ async function enrollmentFull(id: string) {
   };
 }
 
-/** Envois LinkedIn (nouvelle conversation ou suite) faits depuis ce compte, corps multipart compris. */
-async function sends(accountId: string): Promise<Array<Record<string, string>>> {
-  return (await mockCalls(accountId))
-    .filter((c) => c.method === 'POST' && (c.path === '/api/v1/chats' || /^\/api\/v1\/chats\/[^/]+\/messages$/.test(c.path)))
-    .map((c) => c.body as Record<string, string>);
+/** Envois LinkedIn (nouvelle conversation ou suite de conversation) faits depuis ce compte. */
+async function sends(accountId: string): Promise<MockCall[]> {
+  return chatPosts(accountId);
 }
+const textOf = (c: MockCall) => String(callBody(c).text ?? '');
 
 /** Appels à l'IA dont le prompt cite le marqueur du test. */
 async function aiCallsWith(marker: string) {
   return (await mockCalls()).filter((c) => c.method === 'POST' && c.path === '/v1/messages' && JSON.stringify(c.body).includes(marker));
 }
 
+/** Chemin de la recherche de conversation d'un candidat (GET /v2/{acc}/users/{id}/chat). */
+const chatLookupPath = (profileId: string) => `/users/${encodeURIComponent(profileId)}/chat$`;
+
 /**
- * Routes d'un fil LinkedIn avec une réponse du candidat datée `replyAt`
- * (is_sender 0 = le candidat). Voir le contournement en tête de fichier.
+ * Routes d'un fil LinkedIn avec une réponse du candidat `profileId` datée `replyAt` :
+ * la conversation de ce candidat seulement, et un message du candidat dedans.
  */
-function replyRoutes(accountId: string, profileId: string, replyAt: string): MockRoute[] {
+function replyRoutes(profileId: string, replyAt: string): MockRoute[] {
   const chatId = `cE2E${rand()}${rand()}`;
   return [
-    {
-      method: 'GET',
-      path: `^/api/v1/chat_attendees/${profileId}/chats$`,
-      body: { object: 'ChatList', items: [{ id: `${chatId}/messages?account_id=${encodeURIComponent(accountId)}&x=` }], cursor: null },
-    },
-    {
-      method: 'GET',
-      path: `^/api/v1/chats/${chatId}/messages$`,
-      body: { object: 'MessageList', items: [{ id: `m_${rand()}`, is_sender: 0, timestamp: replyAt, text: 'Oui, avec plaisir' }], cursor: null },
-    },
+    routes.chatLookup([chatId], { path: chatLookupPath(profileId) }),
+    routes.messages(chatId, [{ from: 'candidate', text: 'Oui, avec plaisir', at: replyAt, id: `m_${rand()}` }]),
   ];
 }
 
@@ -287,11 +287,12 @@ test.describe('Conditions évaluées à l’exécution', () => {
     const second = await execById(next!.id);
     expect(second.status, 'InMail parti, pas de clôture « no_previous_message »').toBe('sent');
     expect(second.skip_reason).not.toBe('no_previous_message');
-    const bodies = await sends(accountId);
-    expect(bodies).toHaveLength(1);
-    expect(bodies[0].text).toBe('B');
-    expect(bodies[0]['linkedin[inmail]'], 'envoi en InMail').toBe('true');
-    expect(bodies[0].subject).toBe('O');
+    const posts = await sends(accountId);
+    expect(posts).toHaveLength(1);
+    expect(textOf(posts[0])).toBe('B');
+    const inmail = inmailOf(posts[0]);
+    expect(inmail, 'envoi en InMail').not.toBeNull();
+    expect(inmail?.subject).toBe('O');
   });
 
   // engine-conditions-connected
@@ -318,7 +319,7 @@ test.describe('Conditions évaluées à l’exécution', () => {
       { action_type: 'message', condition_type: 'if_connected', message_template: 'A' },
     ]);
     const profileId = `ACoAAE2E${rand()}${rand()}`;
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: `^/api/v1/users/${profileId}$`, status: 503, body: { status: 503 } }] });
+    await setMockMode(accountId, { routes: [routes.fail('getUserProfile', 'unavailable', { path: `/users/${encodeURIComponent(profileId)}$` })] });
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId, { profile_id: profileId });
     const initialConnection = (await enrollmentFull(enrollmentId)).connection_status;
     const exec = await schedule(org, enrollmentId, steps[0]);
@@ -349,7 +350,7 @@ test.describe('Conditions évaluées à l’exécution', () => {
     ]);
     const replied = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
     const silent = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
-    await setMockMode(accountId, { routes: replyRoutes(accountId, replied.profileId, minutesFromNow(-60)) });
+    await setMockMode(accountId, { routes: replyRoutes(replied.profileId, minutesFromNow(-60)) });
     for (const e of [replied, silent]) {
       await schedule(org, e.enrollmentId, steps[0], { status: 'sent', scheduled_at: daysAgo(2), executed_at: daysAgo(2), final_message: 'Bonjour' });
     }
@@ -362,10 +363,10 @@ test.describe('Conditions évaluées à l’exécution', () => {
     expect(skipped.skip_reason).toBe('Condition: if_no_response');
     const sentRow = await execById(silentExec);
     expect(sentRow.status, 'sans réponse : la relance part').toBe('sent');
-    const bodies = await sends(accountId);
-    expect(bodies, 'un seul envoi, pour le candidat silencieux').toHaveLength(1);
-    expect(bodies[0].text).toBe('Relance');
-    expect(bodies[0].attendees_ids).toBe(silent.profileId);
+    const posts = await sends(accountId);
+    expect(posts, 'un seul envoi, pour le candidat silencieux').toHaveLength(1);
+    expect(textOf(posts[0])).toBe('Relance');
+    expect(recipientOf(posts[0])).toBe(silent.profileId);
   });
 
   // engine-condition-no-response
@@ -376,7 +377,7 @@ test.describe('Conditions évaluées à l’exécution', () => {
       { action_type: 'message', condition_type: 'if_no_response', message_template: 'Relance', delay_days: 2 },
     ]);
     const profileId = `ACoAAE2E${rand()}${rand()}`;
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: `^/api/v1/chat_attendees/${profileId}/chats$`, status: 503, body: {} }] });
+    await setMockMode(accountId, { routes: [routes.fail('getUserChat', 'unavailable', { path: chatLookupPath(profileId) })] });
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId, { profile_id: profileId, current_step_order: 1 });
     await schedule(org, enrollmentId, steps[0], { status: 'sent', scheduled_at: daysAgo(2), executed_at: daysAgo(2), final_message: 'Bonjour' });
     const exec = await schedule(org, enrollmentId, steps[1]);
@@ -442,7 +443,7 @@ test.describe('Attente de réponse', () => {
         { action_type: 'message', message_template: 'Relance' },
       ]);
       const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
-      await setMockMode(accountId, { routes: replyRoutes(accountId, profileId, minutesFromNow(-60)) });
+      await setMockMode(accountId, { routes: replyRoutes(profileId, minutesFromNow(-60)) });
       await schedule(org, enrollmentId, steps[0], { status: 'sent', scheduled_at: daysAgo(2), executed_at: daysAgo(2), final_message: 'Bonjour' });
       const wait = await schedule(org, enrollmentId, steps[1]);
 
@@ -722,9 +723,9 @@ test.describe('Garde « aucun message précédent »', () => {
       const row = await execById(id);
       expect(row.status, `relance ${id} partie`).toBe('sent');
     }
-    const bodies = await sends(accountId);
-    expect(bodies.map((b) => b.text)).toEqual(['Relance', 'Relance']);
-    expect(new Set(bodies.map((b) => b.attendees_ids))).toEqual(new Set([manual.profileId, condition.profileId]));
+    const posts = await sends(accountId);
+    expect(posts.map(textOf)).toEqual(['Relance', 'Relance']);
+    expect(new Set(posts.map(recipientOf))).toEqual(new Set([manual.profileId, condition.profileId]));
   });
 });
 
@@ -790,7 +791,7 @@ test.describe('Personnalisation IA', () => {
     const { sequenceId, steps } = await buildSequence(org, org.owner.userId, [
       { action_type: 'message', message_template: `Bonjour {{prenom}} ${marker}`, use_ai_personalization: true },
     ]);
-    await setMockMode(accountId, { routes: [{ method: 'POST', path: '^/api/v1/chats$', status: 429, body: { status: 429, type: 'errors/too_many_requests' }, times: 1 }] });
+    await setMockMode(accountId, { routes: [routes.failNewChat('rate_limited', { times: 1 })] });
     const { enrollmentId } = await enroll(org, sequenceId, org.owner.userId, accountId);
     // État laissé par un premier essai : texte rédigé par l'IA figé, marqué « résolu ».
     const exec = await schedule(org, enrollmentId, steps[0], { final_message: aiText, tracking_data: { content_origin: 'resolved' } });
@@ -803,8 +804,8 @@ test.describe('Personnalisation IA', () => {
     await makeDue(exec);
     await cycleFor(exec);
     expect((await execById(exec)).status).toBe('sent');
-    const bodies = await sends(accountId);
-    expect(bodies.map((b) => b.text), 'deux tentatives, le même texte').toEqual([aiText, aiText]);
+    const posts = await sends(accountId);
+    expect(posts.map(textOf), 'deux tentatives, le même texte').toEqual([aiText, aiText]);
     expect(await aiCallsWith(marker), 'aucune nouvelle rédaction').toEqual([]);
   });
 
@@ -860,11 +861,12 @@ test.describe('Variables des modèles', () => {
     const exec = await schedule(org, enrollmentId, steps[0]);
 
     await cycleFor(exec);
-    const bodies = await sends(accountId);
-    expect(bodies).toHaveLength(1);
-    expect(bodies[0].text).toBe(`Camille Lead Dev ${calendly} Claire Dupont Talent Partner Claire`);
-    expect(bodies[0].subject).toBe('Data Engineer chez Acme');
-    expect(bodies[0]['linkedin[inmail]']).toBe('true');
+    const posts = await sends(accountId);
+    expect(posts).toHaveLength(1);
+    expect(textOf(posts[0])).toBe(`Camille Lead Dev ${calendly} Claire Dupont Talent Partner Claire`);
+    const inmail = inmailOf(posts[0]);
+    expect(inmail, 'envoi en InMail').not.toBeNull();
+    expect(inmail?.subject).toBe('Data Engineer chez Acme');
   });
 
   // interp-known-vars (compte d'envoi d'un collègue par la rotation)
@@ -899,8 +901,8 @@ test.describe('Variables des modèles', () => {
 
     await cycleFor(exec);
     expect(await sentTexts(accountId)).toEqual(['Bonjour, ok Paris.']);
-    for (const b of await sends(accountId)) {
-      expect(`${b.text ?? ''} ${b.subject ?? ''}`, 'aucun « {{ » ne part').not.toContain('{{');
+    for (const c of await sends(accountId)) {
+      expect(`${textOf(c)} ${inmailOf(c)?.subject ?? ''}`, 'aucun « {{ » ne part').not.toContain('{{');
     }
   });
 });
@@ -943,7 +945,7 @@ test.describe('Réponse et désinscription arrêtent toujours la séquence', () 
       { action_type: 'message', message_template: 'Relance' },
     ], { stop_conditions: { on_reply: false, on_unsubscribe: false } });
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { current_step_order: 1 });
-    await setMockMode(accountId, { routes: replyRoutes(accountId, profileId, minutesFromNow(-60)) });
+    await setMockMode(accountId, { routes: replyRoutes(profileId, minutesFromNow(-60)) });
     await schedule(org, enrollmentId, steps[0], { status: 'sent', scheduled_at: daysAgo(2), executed_at: daysAgo(2), final_message: 'Bonjour' });
     const relance = await schedule(org, enrollmentId, steps[1]);
 
@@ -1143,18 +1145,18 @@ test.describe('File InMail', () => {
     expect((await rowOf(d1)).status).toBe('sent');
     expect((await rowOf(d2)).status).toBe('sent');
     const calls = await mockCalls(accountId);
-    const posts = calls.filter((c) => c.method === 'POST' && c.path === '/api/v1/chats');
-    const direct = posts.find((c) => (c.body as Record<string, string>).attendees_ids === d1)!.body as Record<string, string>;
-    const inmail = posts.find((c) => (c.body as Record<string, string>).attendees_ids === d2)!.body as Record<string, string>;
-    expect(direct['linkedin[inmail]'], 'premier degré : message direct').toBeUndefined();
-    expect(inmail['linkedin[inmail]']).toBe('true');
-    expect(inmail.subject).toBe('Objet InMail');
-    const balanceIdx = calls.map((c, i) => (c.path === '/api/v1/linkedin/inmail_balance' ? i : -1)).filter((i) => i >= 0);
+    const posts = calls.filter(isNewChat);
+    const direct = posts.find((c) => recipientOf(c) === d1)!;
+    const inmail = posts.find((c) => recipientOf(c) === d2)!;
+    expect(inmailOf(direct), 'premier degré : message direct').toBeNull();
+    expect(inmailOf(inmail), 'second degré : InMail').not.toBeNull();
+    expect(inmailOf(inmail)?.subject).toBe('Objet InMail');
+    const balanceIdx = calls.map((c, i) => (c.op === 'getInmailCredits' ? i : -1)).filter((i) => i >= 0);
     expect(balanceIdx, 'un seul contrôle de solde (pour l’InMail)').toHaveLength(1);
-    expect(balanceIdx[0], 'contrôle du solde avant l’envoi de l’InMail').toBeLessThan(calls.indexOf(posts.find((c) => (c.body as Record<string, string>).attendees_ids === d2)!));
+    expect(balanceIdx[0], 'contrôle du solde avant l’envoi de l’InMail').toBeLessThan(calls.indexOf(inmail));
 
     // Solde nul : +4 h.
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: '^/api/v1/linkedin/inmail_balance$', body: { object: 'InMailBalance', recruiter: 0, premium: 0, sales_navigator: 0 } }] });
+    await setMockMode(accountId, { routes: [routes.inmailCredits({ classic: 0, recruiter: 0, sales_navigator: 0 })] });
     await admin().from('inmail_queue').insert([due(d3, 2)]);
     const before3 = Date.now();
     await callFunction('process-inmail-queue', token, { action: 'process' });
@@ -1165,7 +1167,7 @@ test.describe('File InMail', () => {
 
     // Contrôle du solde en échec (503) : +30 min, rien ne part.
     const d5 = `ACoAAE2E${rand()}${rand()}`;
-    await setMockMode(accountId, { routes: [{ method: 'GET', path: '^/api/v1/linkedin/inmail_balance$', status: 503, body: { status: 503 } }] });
+    await setMockMode(accountId, { routes: [routes.fail('getInmailCredits', 'unavailable')] });
     await admin().from('inmail_queue').insert([due(d5, 2)]);
     const before5 = Date.now();
     await callFunction('process-inmail-queue', token, { action: 'process' });
@@ -1185,8 +1187,8 @@ test.describe('File InMail', () => {
     expect(r4.status).toBe('scheduled');
     expect(r4.error_message ?? '').toContain('déconnecté');
     expect(new Date(r4.scheduled_at).getTime()).toBeGreaterThan(before4 + 55 * 60_000);
-    const finalPosts = (await mockCalls(accountId)).filter((c) => c.method === 'POST' && c.path === '/api/v1/chats');
-    expect(finalPosts.map((c) => (c.body as Record<string, string>).attendees_ids).sort(), 'seuls les deux premiers sont partis').toEqual([d1, d2].sort());
+    const finalPosts = (await mockCalls(accountId)).filter(isNewChat);
+    expect(finalPosts.map(recipientOf).sort(), 'seuls les deux premiers sont partis').toEqual([d1, d2].sort());
   });
 
   // inmail-queue-process-send-mode

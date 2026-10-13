@@ -13,6 +13,12 @@ REST_IMAGE=${E2E_REST_IMAGE:-postgrest/postgrest:v14.8}
 AUTH_VERSION=${E2E_AUTH_VERSION:-v2.188.1}
 JWT_SECRET=super-secret-jwt-token-with-at-least-32-characters-long
 DB_PORT=54322
+# Fournisseur LinkedIn, API v2 seule : une clé d'application unique (pas d'hôte ni de clé par
+# organisation), un jeton de webhook pour ?v2_token=, un hôte de connexion à marque blanche.
+# Le faux fournisseur (vendor-mock.mjs) contrôle la clé et poste ses webhooks avec le jeton.
+V2_API_KEY=e2e-test-key
+V2_WEBHOOK_TOKEN=local-v2-webhook-token
+V2_HOSTED_DOMAIN=connect.e2e.konekt.test
 mkdir -p "$STATE"
 export PGPASSWORD=postgres
 psql_admin() { psql -h 127.0.0.1 -p $DB_PORT -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
@@ -109,16 +115,25 @@ console.log(sign({iss:"supabase-demo",role:"anon",exp})+" "+sign({iss:"supabase-
 ANON_KEY=${KEYS% *}; SERVICE_ROLE_KEY=${KEYS#* }
 stop_pid gateway; stop_pid vendor-mock; stop_pid functions
 nohup node "$HERE/gateway.mjs" > "$STATE/gateway.log" 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & echo $! > "$STATE/gateway.pid"
-nohup node "$HERE/vendor-mock.mjs" > "$STATE/vendor-mock.log" 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & echo $! > "$STATE/vendor-mock.pid"
+env VENDOR_MOCK_V2_API_KEY="$V2_API_KEY" VENDOR_MOCK_WEBHOOK_TOKEN="$V2_WEBHOOK_TOKEN" \
+  VENDOR_MOCK_WEBHOOK_URL=http://127.0.0.1:54321/functions/v1/unipile-webhook \
+  nohup node "$HERE/vendor-mock.mjs" > "$STATE/vendor-mock.log" 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & echo $! > "$STATE/vendor-mock.pid"
 # Chemin réel du binaire : lancé via npx, le pid enregistré serait celui de npx
 # et l'arrêt laisserait Deno tenir le port.
 DENO_BIN=${DENO_BIN:-$(command -v deno || npx -y deno eval 'console.log(Deno.execPath())' 2>/dev/null | tail -1)}
 CERT=${DENO_CERT:-${SSL_CERT_FILE:-${NODE_EXTRA_CA_CERTS:-}}}
 CERT_ENV=(); [ -n "$CERT" ] && CERT_ENV=(DENO_CERT="$CERT")
-env SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" \
+# E2E_OMIT_WEBHOOK_SECRET=1 : la stack démarre SANS UNIPILE_WEBHOOK_SECRET, avec le seul jeton
+# v2 dédié (cas D5 : le récepteur ne doit pas répondre 500 quand le secret historique manque).
+WEBHOOK_SECRET_ENV=(UNIPILE_WEBHOOK_SECRET=local-webhook-secret)
+[ "${E2E_OMIT_WEBHOOK_SECRET:-0}" = "1" ] && WEBHOOK_SECRET_ENV=()
+# -u : l'ancienne API (UNIPILE_API_KEY, UNIPILE_DSN) n'est plus configurée, même si le shell
+# de l'appelant l'exporte encore ; une fonction qui la lirait doit échouer, pas la trouver.
+env -u UNIPILE_API_KEY -u UNIPILE_DSN SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY" \
   SUPABASE_DB_URL="postgres://postgres:postgres@127.0.0.1:$DB_PORT/postgres" \
-  UNIPILE_API_KEY=mock-key UNIPILE_DSN=unipile.mock ANTHROPIC_API_KEY=mock-key \
-  PROCESS_SEQUENCES_SECRET=local-cron-secret UNIPILE_WEBHOOK_SECRET=local-webhook-secret \
+  UNIPILE_V2_API_KEY="$V2_API_KEY" UNIPILE_V2_WEBHOOK_TOKEN="$V2_WEBHOOK_TOKEN" UNIPILE_HOSTED_DOMAIN="$V2_HOSTED_DOMAIN" \
+  ANTHROPIC_API_KEY=mock-key \
+  PROCESS_SEQUENCES_SECRET=local-cron-secret "${WEBHOOK_SECRET_ENV[@]}" \
   SEQUENCE_WEBHOOK_SECRET=local-sequence-webhook-secret EMAIL_LINK_SIGNING_SECRET=local-link-secret \
   STRIPE_SECRET_KEY=sk_test_local STRIPE_WEBHOOK_SECRET=whsec_local_test CALENDLY_WEBHOOK_SIGNING_KEY=local-calendly-key \
   ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080 APP_URL=http://localhost:8080 \
@@ -136,6 +151,9 @@ E2E_EDGE_FUNCTIONS=1
 E2E_VENDOR_MOCK_URL=http://127.0.0.1:54340
 E2E_PROCESS_SEQUENCES_SECRET=local-cron-secret
 E2E_UNIPILE_WEBHOOK_SECRET=local-webhook-secret
+E2E_UNIPILE_V2_API_KEY=$V2_API_KEY
+E2E_UNIPILE_V2_WEBHOOK_TOKEN=$V2_WEBHOOK_TOKEN
+E2E_UNIPILE_HOSTED_DOMAIN=$V2_HOSTED_DOMAIN
 E2E_SEQUENCE_WEBHOOK_SECRET=local-sequence-webhook-secret
 E2E_STRIPE_WEBHOOK_SECRET=whsec_local_test
 E2E_CALENDLY_SIGNING_KEY=local-calendly-key

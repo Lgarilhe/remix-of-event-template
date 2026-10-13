@@ -21,15 +21,23 @@ async function load(file, stubs = {}) {
 }
 const profile = await load('src/lib/candidateProfile.ts');
 const scopeStubs = {
-  '@tanstack/react-query': 'export const useQuery = options => { globalThis.profileOptions = options; return {}; }; export const useMutation = options => options; export const useQueryClient = () => ({setQueryData(key,data){globalThis.profileCacheWrite={key,data};}});',
+  '@tanstack/react-query': 'export const useQuery = options => { globalThis.profileOptions = options; return {}; }; export const useMutation = options => options; export const useQueryClient = () => ({getQueryData(key){return globalThis.profileCacheRead?.(key);},setQueryData(key,data){globalThis.profileCacheWrite={key,data};}});',
   '@/hooks/useOrganization': 'export const useOrganization = () => ({organizationId:globalThis.profileOrg});',
   '@/hooks/useAuthReady': 'export const useAuthReady = () => ({user:globalThis.profileUser ? {id:globalThis.profileUser} : null,isReady:true});',
   '@/hooks/useMyLinkedInAccountId': 'export const useMyLinkedInAccountId = () => globalThis.profileAccount;',
   '@/lib/invokeUnipile': 'export const invokeUnipile = options => globalThis.profileInvoke(options.body);',
-  '@/lib/quotaEvents': 'export const emitQuotaAction = () => {};',
+  '@/lib/quotaEvents': 'export const emitQuotaAction = (...args) => { if (globalThis.profileQuotaEvents) globalThis.profileQuotaEvents.push(args); };',
 };
 const profiles = await load('src/hooks/useInboxCandidateProfile.ts', { ...scopeStubs, '@/integrations/supabase/client': 'export const supabase = {from: table => globalThis.profileQuery(table)};' });
 const messages = await load('src/hooks/useCandidateMessages.ts', scopeStubs);
+
+function storedRead(result = { data: [], error: null }) {
+  globalThis.profileQuery = () => {
+    const query = { then: resolve => Promise.resolve(result).then(resolve) };
+    for (const method of ['select', 'eq', 'in', 'not', 'order', 'limit', 'ilike']) query[method] = () => query;
+    return query;
+  };
+}
 
 test('Le profil conserve tous les postes, formations et compétences des formats historiques', () => {
   const result = profile.normalizeCandidateProfile({ about:'Présentation', positions:Array.from({length:8}, (_,i) => ({title:`Poste ${i}`,company:{name:`Entreprise ${i}`},start_date:{year:2010+i},end_date:{year:2011+i}})), educations:Array.from({length:5}, (_,i) => ({school_name:`École ${i}`,degree_name:'Master'})), skills:Array.from({length:12}, (_,i) => `Compétence ${i}`), languages:['Français'], certifications:[{name:'Certificat',authority:{name:'École'}}] }, 'candidate');
@@ -119,4 +127,284 @@ test('Une actualisation tardive du profil reste dans son organisation de départ
   latest.refresh.onSuccess(await pending);
   assert.equal(globalThis.profileCacheWrite.key[2],'org-a');
   assert.equal(globalThis.profileCacheWrite.data.summary,'Organisation A');
+});
+
+test('La messagerie consulte le véritable identifiant LinkedIn avant le slug public, sans trier les alias', async () => {
+  storedRead();
+  globalThis.profileUser = 'user-a';
+  globalThis.profileOrg = 'org-a';
+  globalThis.profileAccount = 'mine';
+  globalThis.profileQuotaEvents = [];
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { data: { success: true, profile: { summary: 'Profil complet', provider_id: 'ACoZZZ-provider' } }, httpStatus: 200 };
+  };
+  profiles.useInboxCandidateProfile({ profileId: 'ACoZZZ-provider', aliases: ['AEMAAA-recruiter', 'ACoZZZ-provider'], profileUrl: 'https://linkedin.com/in/camille' });
+  const options = globalThis.profileOptions;
+  const result = await options.queryFn();
+  assert.equal(result.summary, 'Profil complet');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].profile_id, 'ACoZZZ-provider');
+  assert.equal(requests[0].organization_id, 'org-a');
+  assert.equal(requests[0].account_id, 'mine');
+  assert.deepEqual(globalThis.profileQuotaEvents, [['profileVisits', 1, 'mine']]);
+  profiles.useInboxCandidateProfile({ profileId: 'AEMAAA-recruiter', aliases: ['ACoZZZ-provider'], profileUrl: 'https://linkedin.com/in/camille' });
+  assert.notDeepEqual(globalThis.profileOptions.queryKey, options.queryKey, 'La priorité du profil appartient au contexte du cache');
+  await globalThis.profileOptions.queryFn();
+  assert.equal(requests[1].profile_id, 'AEMAAA-recruiter');
+  globalThis.profileQuotaEvents = null;
+});
+
+for (const failure of [
+  { label: '404 profil absent sans message', httpStatus: 404, data: { success: false, errorType: 'PROFILE_NOT_FOUND' } },
+  { label: '404 profil absent', httpStatus: 404, data: { success: false, errorType: 'PROFILE_NOT_FOUND', error: 'Unipile internal error' } },
+]) {
+  test(`${failure.label} : une seule reprise par URL publique après un identifiant absent`, async () => {
+    storedRead();
+    const requests = [];
+    globalThis.profileQuotaEvents = [];
+    globalThis.profileInvoke = async body => {
+      requests.push(body);
+      return requests.length === 1 ? failure : { httpStatus: 200, data: { success: true, profile: { summary: 'Profil retrouvé', provider_id: 'ACo-resolved' } } };
+    };
+    const result = await profiles.fetchInboxCandidateProfile('org', ['ACo-missing', 'AEM-alias'], 'https://fr.linkedin.com/in/Camille/?trk=inbox', 'Camille', 'mine');
+    assert.equal(result.summary, 'Profil retrouvé');
+    assert.deepEqual(requests.map(body => body.profile_id), ['ACo-missing', 'camille']);
+    assert.ok(requests.every(body => body.organization_id === 'org' && body.account_id === 'mine'));
+    assert.deepEqual(globalThis.profileQuotaEvents, [['profileVisits', 1, 'mine']]);
+    globalThis.profileQuotaEvents = null;
+  });
+}
+
+test('Une reprise par URL qui échoue ne parcourt ni les autres alias ni de nouvelles tentatives', async () => {
+  storedRead();
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { httpStatus: 404, data: { success: false, errorType: 'PROFILE_NOT_FOUND', error: 'Profil non trouvé' } };
+  };
+  await assert.rejects(() => profiles.fetchInboxCandidateProfile('org', ['ACo-missing', 'AEM-alias', 'other-alias'], 'https://linkedin.com/in/camille', 'Camille', 'mine'), error => {
+    assert.equal(error.kind, 'not-found');
+    assert.equal(error.httpStatus, 404);
+    return true;
+  });
+  assert.deepEqual(requests.map(body => body.profile_id), ['ACo-missing', 'camille']);
+});
+
+for (const failure of [
+  { label: 'session expirée', httpStatus: 401, kind: 'session' },
+  { label: 'accès refusé', httpStatus: 403, kind: 'access', errorType: 'ACCOUNT_NOT_LINKED' },
+  { label: 'quota quotidien', httpStatus: 429, kind: 'quota', errorType: 'QUOTA' },
+  { label: 'limitation temporaire', httpStatus: 429, kind: 'quota', errorType: 'RATE_LIMIT' },
+  { label: '404 non qualifié', httpStatus: 404, kind: 'unavailable' },
+  { label: '404 NOT_FOUND générique', httpStatus: 404, kind: 'unavailable', errorType: 'NOT_FOUND' },
+  { label: 'panne serveur', httpStatus: 500, kind: 'unavailable' },
+  { label: 'passerelle indisponible', httpStatus: 502, kind: 'unavailable' },
+  { label: 'ancien 502 ambigu nommé profil absent', httpStatus: 502, kind: 'unavailable', error: 'Profil non trouvé' },
+  { label: 'service indisponible', httpStatus: 503, kind: 'unavailable' },
+  { label: 'délai dépassé', httpStatus: 504, kind: 'unavailable' },
+]) {
+  test(`${failure.label} : une explication sûre et aucune reprise sur un autre identifiant`, async () => {
+    storedRead();
+    const requests = [];
+    globalThis.profileQuotaEvents = [];
+    globalThis.profileInvoke = async body => {
+      requests.push(body);
+      return { httpStatus: failure.httpStatus, data: { success: false, errorType: failure.errorType, error: failure.error ?? 'Unipile internal failure: secret diagnostic' } };
+    };
+    await assert.rejects(() => profiles.fetchInboxCandidateProfile('org', ['ACo-primary', 'AEM-alias'], 'https://linkedin.com/in/camille', 'Camille', 'mine'), error => {
+      assert.equal(error.kind, failure.kind);
+      assert.equal(error.httpStatus, failure.httpStatus);
+      assert.doesNotMatch(error.message, /Unipile|internal failure|secret diagnostic/);
+      assert.match(error.message, /LinkedIn|session|profil|connexion|connect|accès/i);
+      return true;
+    });
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].profile_id, 'ACo-primary');
+    assert.deepEqual(globalThis.profileQuotaEvents, []);
+    globalThis.profileQuotaEvents = null;
+  });
+}
+
+test('Une panne 500 nommée profil absent ne devient pas une reprise consommant une autre consultation', async () => {
+  storedRead();
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { httpStatus: 500, data: { success: false, error: 'Profil non trouvé' } };
+  };
+  await assert.rejects(() => profiles.fetchInboxCandidateProfile('org', ['ACo-primary'], 'https://linkedin.com/in/camille', 'Camille', 'mine'), error => {
+    assert.equal(error.kind, 'unavailable');
+    assert.equal(error.httpStatus, 500);
+    return true;
+  });
+  assert.equal(requests.length, 1);
+});
+
+test('Une URL publique seule utilise son slug une fois et un slug déjà principal ne se répète pas', async () => {
+  storedRead();
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { httpStatus: 200, data: { success: true, profile: { summary: 'Par URL' } } };
+  };
+  const result = await profiles.fetchInboxCandidateProfile('org', [], 'https://linkedin.com/in/camille', 'Camille', 'mine');
+  assert.equal(result.summary, 'Par URL');
+  assert.deepEqual(requests.map(body => body.profile_id), ['camille']);
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { httpStatus: 404, data: { success: false, errorType: 'PROFILE_NOT_FOUND' } };
+  };
+  await assert.rejects(() => profiles.fetchInboxCandidateProfile('org', ['camille'], 'https://linkedin.com/in/camille', 'Camille', 'mine'), error => error.kind === 'not-found');
+  assert.equal(requests.length, 2);
+});
+
+test('Sans compte personnel ou identité utilisable, aucune consultation externe ne part', async () => {
+  storedRead();
+  globalThis.profileInvoke = () => { throw new Error('Aucune consultation autorisée'); };
+  assert.equal(await profiles.fetchInboxCandidateProfile('org', ['ACo-primary'], 'https://linkedin.com/in/camille', 'Camille', null), null);
+  assert.equal(await profiles.fetchInboxCandidateProfile('org', [], 'https://evil-linkedin.com/in/camille', 'Camille', 'mine'), null);
+  assert.equal(await profiles.fetchInboxCandidateProfile('org', [], null, 'Camille', 'mine'), null);
+});
+
+test('Une erreur de lecture du profil enregistré sans compte garde sa cause, sans détail technique', async () => {
+  storedRead({ data: null, error: { message: 'PostgREST internal secret diagnostic' } });
+  globalThis.profileInvoke = () => { throw new Error('Aucune consultation externe sans compte'); };
+  await assert.rejects(() => profiles.fetchInboxCandidateProfile('org', ['candidate'], null, 'Camille', null), error => {
+    assert.equal(error.kind, 'stored');
+    assert.doesNotMatch(error.message, /PostgREST|internal|secret diagnostic/);
+    assert.match(error.message, /profil enregistré/i);
+    return true;
+  });
+});
+
+test('Les données détaillées correspondent aux cinq sections affichées, y compris les langues seules', () => {
+  const normalize = value => profile.normalizeCandidateProfile(value, 'candidate');
+  for (const value of [
+    { summary: 'Présentation professionnelle' },
+    { work_experience: [{ position: 'Ingénieure', company: 'Entreprise' }] },
+    { education: [{ school: 'Université' }] },
+    { skills: ['Python'] },
+    { languages: ['Français'] },
+  ]) assert.equal(profile.hasCandidateProfileDetails(normalize(value)), true);
+  for (const value of [
+    { name: 'Camille', headline: 'Ingénieure', profile_picture_url: 'photo.svg' },
+    { summary: '   ', work_experience: [], education: [], skills: [], languages: [] },
+    { certifications: [{ name: 'Certificat' }], projects: [{ name: 'Projet' }] },
+  ]) assert.equal(profile.hasCandidateProfileDetails(normalize(value)), false);
+});
+
+test('Un instantané de recherche léger ne remplace pas la consultation détaillée quand le compte personnel est connecté', async () => {
+  storedRead({ data: [{ candidate_id: 'candidate', linkedin_profile_url: 'https://linkedin.com/in/camille', linkedin_profile_data: { name: 'Camille', headline: 'Snapshot', profile_picture_url: 'photo.svg' } }], error: null });
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { httpStatus: 200, data: { success: true, profile: { headline: 'Titre à jour', work_experience: [{ company: 'Entreprise', position: 'Ingénieure' }] } } };
+  };
+  const result = await profiles.fetchInboxCandidateProfile('org', ['candidate'], 'https://linkedin.com/in/camille', 'Camille', 'mine');
+  assert.equal(result.headline, 'Titre à jour');
+  assert.equal(result.work_experience[0].role, 'Ingénieure');
+  assert.deepEqual(requests, [{ action: 'get_profile', organization_id: 'org', account_id: 'mine', profile_id: 'candidate', profile_url: 'https://linkedin.com/in/camille', include_details: true }]);
+});
+
+test('Sans compte connecté, les données légères enregistrées restent accessibles sans consultation externe', async () => {
+  storedRead({ data: [{ candidate_id: 'candidate', linkedin_profile_url: null, linkedin_profile_data: { name: 'Camille', headline: 'Ingénieure' } }], error: null });
+  globalThis.profileInvoke = () => { throw new Error('Aucune consultation sans compte connecté'); };
+  const result = await profiles.fetchInboxCandidateProfile('org', ['candidate'], null, 'Camille', null);
+  assert.equal(result.name, 'Camille');
+  assert.equal(result.headline, 'Ingénieure');
+  assert.equal(profile.hasCandidateProfileDetails(result), false);
+});
+
+test('Un profil détaillé déjà enregistré suffit, même avec un compte LinkedIn connecté', async () => {
+  storedRead({ data: [{ candidate_id: 'candidate', linkedin_profile_url: null, linkedin_profile_data: { name: 'Camille', languages: ['Français'] } }], error: null });
+  globalThis.profileInvoke = () => { throw new Error('Le profil enregistré doit éviter une nouvelle consultation'); };
+  const result = await profiles.fetchInboxCandidateProfile('org', ['candidate'], null, 'Camille', 'mine');
+  assert.deepEqual(result.languages, [{ name: 'Français', proficiency: undefined }]);
+  assert.equal(profile.hasCandidateProfileDetails(result), true);
+});
+
+test('La reprise autorisée par URL demande également les sections détaillées', async () => {
+  storedRead();
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return requests.length === 1
+      ? { httpStatus: 404, data: { success: false, errorType: 'PROFILE_NOT_FOUND' } }
+      : { httpStatus: 200, data: { success: true, profile: { education: [{ school: 'Université' }] } } };
+  };
+  const result = await profiles.fetchInboxCandidateProfile('org', ['ACo-missing'], 'https://linkedin.com/in/camille', 'Camille', 'mine');
+  assert.equal(result.education[0].school, 'Université');
+  assert.deepEqual(requests.map(body => [body.profile_id, body.include_details]), [['ACo-missing', true], ['camille', true]]);
+});
+
+test('Les sections temporairement limitées par LinkedIn restent identifiées dans le profil normalisé', async () => {
+  storedRead();
+  globalThis.profileInvoke = async () => ({ httpStatus: 200, data: { success: true, profile: { provider_id: 'candidate', summary: 'Présentation disponible', work_experience: [], skills: [], throttled_sections: ['experience', 'skills'] } } });
+  const result = await profiles.fetchInboxCandidateProfile('org', ['candidate'], null, 'Camille', 'mine');
+  assert.equal(result.summary, 'Présentation disponible');
+  assert.deepEqual(result.throttled_sections, ['experience', 'skills']);
+  assert.deepEqual(profile.normalizeCandidateProfile(result, 'candidate').throttled_sections, ['experience', 'skills']);
+});
+
+test('Une actualisation partielle conserve le parcours connu et actualise les sections effectivement reçues', async context => {
+  globalThis.profileUser = 'user-a'; globalThis.profileOrg = 'org-a'; globalThis.profileAccount = 'mine';
+  const previous = profile.normalizeCandidateProfile({
+    name: 'Camille', headline: 'Ancien titre', summary: 'Ancienne présentation',
+    work_experience: [{ company: 'Entreprise', position: 'Ingénieure', start: { year: 2019 } }],
+    education: [{ school: 'Université', degree: 'Master' }], skills: ['Python'], languages: ['Français'],
+  }, 'candidate');
+  const cached = new Map();
+  globalThis.profileCacheRead = key => cached.get(JSON.stringify(key));
+  context.after(() => { globalThis.profileCacheRead = undefined; });
+  const hook = profiles.useInboxCandidateProfile({ profileId: 'candidate', profileUrl: 'https://linkedin.com/in/camille' });
+  cached.set(JSON.stringify(globalThis.profileOptions.queryKey), previous);
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { httpStatus: 200, data: { success: true, profile: { headline: 'Nouveau titre', summary: 'Présentation à jour', work_experience: [], skills: ['Go'], languages: [], throttled_sections: ['experience', 'education', 'languages'] } } };
+  };
+  const result = await hook.refresh.mutationFn();
+  assert.equal(result.profile.headline, 'Nouveau titre');
+  assert.equal(result.profile.summary, 'Présentation à jour');
+  assert.deepEqual(result.profile.work_experience, previous.work_experience);
+  assert.deepEqual(result.profile.education, previous.education);
+  assert.deepEqual(result.profile.languages, previous.languages);
+  assert.deepEqual(result.profile.skills, [{ name: 'Go' }]);
+  assert.deepEqual(result.profile.throttled_sections, ['experience', 'education', 'languages']);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].include_details, true);
+  hook.refresh.onSuccess(result);
+  assert.deepEqual(globalThis.profileCacheWrite.data, result.profile);
+});
+
+test('Une actualisation vide conserve les sections de son cache initial après un changement d’organisation', async context => {
+  globalThis.profileUser = 'user-a'; globalThis.profileOrg = 'org-a'; globalThis.profileAccount = 'mine';
+  const cached = new Map();
+  const readKeys = [];
+  globalThis.profileCacheRead = key => { readKeys.push(key); return cached.get(JSON.stringify(key)); };
+  context.after(() => { globalThis.profileCacheRead = undefined; });
+  const original = profiles.useInboxCandidateProfile({ profileId: 'candidate' });
+  const originalKey = globalThis.profileOptions.queryKey;
+  const initial = profile.normalizeCandidateProfile({ summary: 'Organisation A', work_experience: [{ company: 'Entreprise A', position: 'Ingénieure' }], education: [{ school: 'Université A' }], skills: ['Python'], languages: ['Français'] }, 'candidate');
+  cached.set(JSON.stringify(originalKey), initial);
+  let resolve;
+  globalThis.profileInvoke = () => new Promise(done => { resolve = done; });
+  const pending = original.refresh.mutationFn();
+  globalThis.profileOrg = 'org-b';
+  const latest = profiles.useInboxCandidateProfile({ profileId: 'candidate' });
+  cached.set(JSON.stringify(globalThis.profileOptions.queryKey), profile.normalizeCandidateProfile({ summary: 'Organisation B', work_experience: [{ company: 'Entreprise B', position: 'Autre profil' }] }, 'candidate'));
+  resolve({ httpStatus: 200, data: { success: true, profile: { provider_id: 'candidate', summary: '', work_experience: [], education: [], skills: [], languages: [], throttled_sections: ['experience', 'education', 'skills', 'languages'] } } });
+  const result = await pending;
+  latest.refresh.onSuccess(result);
+  assert.equal(result.profile.summary, 'Organisation A');
+  assert.deepEqual(result.profile.work_experience, initial.work_experience);
+  assert.deepEqual(result.profile.education, initial.education);
+  assert.deepEqual(result.profile.skills, initial.skills);
+  assert.deepEqual(result.profile.languages, initial.languages);
+  assert.ok(readKeys.length > 0);
+  assert.ok(readKeys.every(key => key[2] === 'org-a'));
+  assert.deepEqual(globalThis.profileCacheWrite.key, originalKey);
+  assert.equal(globalThis.profileCacheWrite.data.summary, 'Organisation A');
 });

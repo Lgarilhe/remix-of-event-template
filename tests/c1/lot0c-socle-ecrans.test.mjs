@@ -213,7 +213,9 @@ test('0c-4 : les gestes du Sourcing et de l\'inscription rafraîchissent les lec
   assert.equal([...hook.matchAll(/SOURCING_GESTURE\)/g)].length, 4, 'quatre gestes d\'étape');
   assert.equal([...hook.matchAll(/invalidateStageReaders\(queryClient\)/g)].length, 4, 'une relecture par geste');
   const enroll = code('src/components/outreach/EnrollmentPreviewModal.tsx');
-  assert.match(enroll, /\{ surface: 'enrollment' \}/);
+  assert.match(enroll, /surface: 'enrollment'/);
+  // Lot 5f-2 : le geste d'étape de l'inscription est écrit par un seul module, qui porte la surface reçue.
+  assert.match(code('src/lib/retainCandidates.ts'), /\{ surface: params\.surface \}/);
   assert.match(enroll, /invalidateStageReaders\(queryClient\)/);
   assert.match(code('src/components/calendar/CreateEventModal.tsx'), /invalidateStageReaders\(queryClient\)/);
 });

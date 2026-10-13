@@ -1,5 +1,5 @@
 import { requireOrgAccess } from "../_shared/require-auth.ts";
-import { resolveUnipileCredentials } from "../_shared/resolve-org-credentials.ts";
+import { assertAccountOwnedByOrg, describeForLog, isUnipileError, sendEmail } from "../_shared/unipile/index.ts";
 import { GdprRegistryUnavailableError, isCandidateErasedForOrg } from "../_shared/get-or-fetch-contact.ts";
 import { canPresentToManager, noteContent, textToHtml, validateSendPayload } from "../_shared/interview-followup.ts";
 
@@ -10,12 +10,6 @@ const corsHeaders = {
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
-
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 20000): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -100,30 +94,47 @@ Deno.serve(async (req) => {
       return json({ error: "Aucune boîte e-mail n'est reliée à votre compte. Reliez-la dans Paramètres, Mon compte, Connexions.", error_code: "NO_MAILBOX" }, 409);
     }
 
-    let creds: { apiKey: string; dsn: string } | null = null;
+    // Le service est global : la boîte doit être celle que cette personne a reliée dans cette organisation.
     try {
-      creds = await resolveUnipileCredentials(organizationId, adminClient);
+      await assertAccountOwnedByOrg(adminClient, organizationId, sender.email_account_id, { userId, kinds: ["email"] });
     } catch (err) {
-      console.error("[send-candidate-email] identifiants du service e-mail:", err);
+      console.error("[send-candidate-email] boîte non vérifiée:", describeForLog(err));
+      const ownershipFailure = isUnipileError(err) && err.code === "account_not_owned";
+      return json({
+        error: ownershipFailure
+          ? "Aucune boîte e-mail n'est reliée à votre compte. Reliez-la dans Paramètres, Mon compte, Connexions."
+          : "Votre boîte e-mail ne peut pas être vérifiée pour l'instant. Réessayez dans un instant.",
+        error_code: ownershipFailure ? "NO_MAILBOX" : "PROVIDER_UNAVAILABLE",
+      }, ownershipFailure ? 409 : 503);
     }
-    if (!creds) {
+
+    // Envoi au plus une fois : un envoi incertain n'est jamais donné pour parti et jamais repris.
+    let outcome: Awaited<ReturnType<typeof sendEmail>>;
+    try {
+      outcome = await sendEmail({
+        accountId: sender.email_account_id,
+        to: [{ email: payload.to_email, display_name: payload.to_name || payload.to_email }],
+        subject: payload.subject,
+        html: textToHtml(payload.body),
+      });
+    } catch (err) {
+      // Levée avant toute requête : clé absente, saisie invalide, identifiant de compte périmé. Rien n'est parti.
+      console.error("[send-candidate-email] envoi non tenté:", describeForLog(err));
+      if (isUnipileError(err) && err.kind === "account_disconnected") {
+        return json({ error: "Votre boîte e-mail doit être reconnectée dans Paramètres, Mon compte, Connexions, avant d'envoyer.", error_code: "MAILBOX_RECONNECT" }, 409);
+      }
       return json({ error: "Le service d'envoi est indisponible pour l'instant. Réessayez dans un instant.", error_code: "PROVIDER_UNAVAILABLE" }, 503);
     }
-    const baseDsn = creds.dsn.startsWith("http") ? creds.dsn : `https://${creds.dsn}`;
-
-    const res = await fetchWithTimeout(`${baseDsn}/api/v1/emails`, {
-      method: "POST",
-      headers: { "X-API-KEY": creds.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        account_id: sender.email_account_id,
-        subject: payload.subject,
-        body: textToHtml(payload.body),
-        to: [{ display_name: payload.to_name || payload.to_email, identifier: payload.to_email }],
-      }),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      console.error("[send-candidate-email] refus du service d'envoi:", res.status, detail.slice(0, 300));
+    if (outcome.outcome === "uncertain") {
+      console.error("[send-candidate-email] envoi non confirmé:", describeForLog(outcome.error));
+      return json({ error: "L'envoi n'est pas confirmé : le message est peut-être parti. Vérifiez vos éléments envoyés avant de réessayer.", error_code: "SEND_UNCERTAIN" }, 502);
+    }
+    if (outcome.outcome === "refused") {
+      console.error("[send-candidate-email] refus du service d'envoi:", describeForLog(outcome.error));
+      // Le service refuse l'accès à la boîte : même réponse qu'un envoi non tenté pour une boîte à reconnecter.
+      if (outcome.kind === "account_disconnected") {
+        return json({ error: "Votre boîte e-mail doit être reconnectée dans Paramètres, Mon compte, Connexions, avant d'envoyer.", error_code: "MAILBOX_RECONNECT" }, 409);
+      }
       return json({ error: "L'envoi a échoué. Vérifiez que votre boîte e-mail est bien reliée, puis réessayez.", error_code: "SEND_FAILED" }, 502);
     }
 

@@ -5,10 +5,41 @@
 > (npm, publié 2026-07-13) + docs https://developer.unipile.com/v2.0/docs/welcome.
 > Cartographie v1 du code : voir aussi `AUDITS/EDGE_FUNCTIONS_UNIPILE_AUDIT_2026-06-10.md`.
 
+## État au 2026-10-12 (remplace les sections « fait dans ce commit », « checklist d'activation » et « reste à faire » ci-dessous, gardées pour l'historique)
+
+> La stratégie « strangler » (v1 par défaut, v2 en option) est abandonnée. Le code de la branche `ccr-6c73a178-thbl61` n'utilise plus que l'API v2, sans repli. La branche **n'est pas fusionnée** : sa fusion déploie un code qui n'accepte que les identifiants `acc_...` et casse la messagerie tant que les secrets et la conversion ne sont pas faits. Déroulement complet, pour le propriétaire : `docs/unipile-v2-bascule.md`. Architecture : `docs/unipile-v2-architecture.md`.
+
+**Fait** (commits `7c1e042`, `1cbb8ec`, `1bcdac6`, `67c8953`, `9c1f537`, puis la vague 4c jusqu'à `8269b17` ; relevé dans le code le 2026-10-12)
+- Étapes A (comptes et connexion), B (messagerie, InMails, invitations, e-mails) et C (profils, recherche par licence) : toutes les fonctions passent par le client unique `supabase/functions/_shared/unipile/`. `_shared/unipile-v2.ts` est supprimé. Aucun `/api/v1`, `UNIPILE_DSN` ni `fetch` direct vers le prestataire (garde `tests/c1/unipile-client.test.mjs`).
+- Étape D (nettoyage) : faite pour le code (résolveur d'identifiants par organisation supprimé, section DSN de `CLAUDE.md` réécrite). **Reste** : colonnes `organization_integrations.unipile_*`, secrets `UNIPILE_API_KEY` et `UNIPILE_DSN`, anciennes notifications chez le prestataire (voir ci-dessous).
+- Notifications : un seul point de réception v2 (17 événements), jeton `?v2_token=`, dédoublonnage sur le type brut et l'identifiant d'événement, journal des livraisons et rejeu.
+- Connexion : lien hébergé sur un domaine à la marque (`UNIPILE_HOSTED_DOMAIN`), table `connection_attempts`, page de retour, connexion directe écrite mais éteinte (`CONNECTION_NATIVE_ENABLED`).
+- Outil de bascule des identifiants : fonction `unipile-migration`, page `/settings/admin/bascule`, migration `20261012051307_provider_account_id_remap.sql` (conversion par compte, sauvegarde, annulation), audits SQL câblés dans `e2e.yml`. Le plan prévoyait une fenêtre à deux identifiants : elle n'a pas été construite.
+- Nouveautés : recherche à partir d'une adresse collée, projets Recruiter, choix du contrat, invitations envoyées avec retrait, journal de livraisons. Lecture d'agenda : module client seulement, aucune fonction.
+- Tests : faux prestataire v2 (`e2e/local-stack/vendor-mock.mjs`), 39 specs d'API portées (`e2e/api/`). Dernière exécution complète (environ 22 minutes) : 552 réussis, 1 échec, 1 non joué, 0 violation du faux prestataire. L'échec était le test « au plus 15 étapes invisibles... » de `seq-engine-1.spec.ts`, causé par le double comptage d'une visite de profil (architecture, partie 11, point 1), corrigé au commit `6c1598f` ; ce test seul, rejoué le 2026-10-12 après la correction, est vert (0 violation). L'exécution complète n'a pas été refaite depuis la correction, et le test non joué non plus. Aucun test supprimé, ignoré ou affaibli pendant le port. Non joués : les projets Playwright de l'interface (aucun navigateur dans l'environnement).
+- Revue indépendante du port des tests : deux changements de comportement à faire confirmer par le propriétaire, repris dans le guide (partie 5) : une réponse e-mail sur une boîte reliée à aucune organisation est acquittée sans clore d'inscription (ligne 18, elle clôturait avant par le repli sur le compte d'inscription), et un compte LinkedIn relié à personne ne peut plus être rattaché que par un administrateur de la plateforme (ligne 4).
+
+**Relevé du tableau de bord du prestataire (2026-10-12, fait à la main par le propriétaire, lecture seule ; rien n'est confirmé par le code)**
+- Trois applications. « Dashboard / Development » : 0 compte, 0 notification, 3 clés de service (« test » 02/06/2026, « Migration claude code » 21/07/2026, « Notion mcp » 26/07/2026), habillage de la page de connexion déjà réglé (nom Konekt, logo, #000000, forme Pill, police Roboto). « Dashboard / Production » : 0 compte, rien de configuré, réglages par défaut. **« Konekt app / Production » : l'application réelle**, 4 comptes (LinkedIn Laurent GARILHE opérationnel, Outlook l.garilhe@konekt.fr opérationnel, LinkedIn Guillaume Valladier à authentifier, un numéro WhatsApp à authentifier sans ligne dans la base de Konekt), 4 points de réception actifs et sans nom (trois vers l'hôte n8n du propriétaire, un vers le projet Supabase de Konekt avec 23 événements, liste plus ancienne que les 17 du code), clés de service « n8n », « Linkedin - Unipile », « Notion - mcp », « Jarvis », clés de niveau compte « konekt-edge-prod » (deux, 24/09/2026) et trois clés Outlook (05/10/2026), habillage aux réglages par défaut (nom et logo vides, #000000, forme Rounded, police system-ui).
+- Aucun domaine personnalisé vérifié nulle part ; liens d'aide, de confidentialité et de conditions vides partout.
+- La base de production de Konekt liste 5 comptes LinkedIn et 1 boîte e-mail : environ 3 comptes LinkedIn de Konekt manquent dans l'application v2.
+- Conséquences, détaillées dans `docs/unipile-v2-bascule.md` : application à utiliser et contrôle de la clé posée (le propriétaire ne crée ni ne supprime de clé), habillage à recopier de Development vers « Konekt app / Production » avec les trois liens, deux options de lancement de l'adresse de la page (domaine vérifié, ou d'abord adresse du prestataire avec `CONNECTION_ALLOW_VENDOR_HOSTED_LINK=1`, choix temporaire), mise à jour du point de réception existant par `register` sans toucher aux trois points n8n, contrôle obligatoire de la fonction `jarvis-whatsapp` (hors dépôt) avant tout retrait de `UNIPILE_API_KEY` et `UNIPILE_DSN`, comptes à reconnecter (les deux affichés et environ 3 LinkedIn absents), numéro WhatsApp hors Konekt.
+
+**Reste à faire**
+1. Essai avec une vraie clé v2, hors production : aucun test de contrat réel n'existe. Liste des points à confirmer : `docs/unipile-v2-architecture.md`, partie 10 (formats d'identifiants de personnes, corps d'erreur, contenus de notifications, continuité des identifiants de conversation et de message, projets Recruiter, étapes de connexion directe...).
+2. Page de connexion : recopier l'habillage de Development vers « Konekt app / Production » et renseigner les trois liens ; choisir l'option A (adresse du prestataire avec l'habillage, `CONNECTION_ALLOW_VENDOR_HOSTED_LINK=1`, temporaire) ou B (domaine vérifié : enregistrement DNS, vérification chez le prestataire, secret `UNIPILE_HOSTED_DOMAIN`) ; contrôle des yeux de ce que montre la page (la mise en page ne se modifie pas depuis le code). Si l'option A est gardée, corriger les commentaires du code qui la disent réservée aux tests.
+3. Secrets : `UNIPILE_V2_API_KEY` (probablement déjà posé : à contrôler par le nombre de comptes que la page de bascule voit, 4 attendus, sans créer ni supprimer de clé), `UNIPILE_V2_WEBHOOK_TOKEN`, `UNIPILE_HOSTED_DOMAIN` (option B) ou `CONNECTION_ALLOW_VENDOR_HOSTED_LINK` (option A), `KONEKT_PLATFORM_ADMIN_USER_IDS`.
+4. Mise en production, dans l'ordre du guide : moteurs en pause, fusion, notifications (mise à jour du point de réception existant de Konekt), vérification, comptes absents du service (environ 3 LinkedIn de Konekt, plus Guillaume Valladier à reconnecter), simulation, conversion, reprise des moteurs, surveillance de 24 h, retrait des anciennes notifications puis des anciens secrets, ces derniers seulement après le contrôle de `jarvis-whatsapp`.
+5. Décisions produit ouvertes (22 ouvertes et 1 réglée, tableau de la partie 5 du guide) : retrait d'une invitation et étape d'attente, recherche Recruiter par projet, solde et signature d'InMail par licence, rattachement d'un compte non relié (réservé aux administrateurs de la plateforme), reconnexion depuis l'extension, adresse de support, agents de sourcing à recalibrer, propositions de l'assistant en attente, identifiants de conversation non convertis, lectures de l'équipe, filtres non représentables, historiques Outlook, définition d'une réponse, annuaire des entreprises, état « partiel », limites v2, réponse e-mail sur une boîte reliée à aucune organisation, compte supprimé chez le prestataire, rejeu des notifications sans limite ni trace durable, report sans plafond des InMails d'un compte dégradé, conversion partielle non bloquante, enrichissement toujours en pause. Réglée : le plafond de vues (ligne 17).
+6. Défauts connus à corriger (architecture, partie 11) : `filters_dropped` jamais affiché ; texte de l'extension devenu faux ; code mort de reconnexion de l'extension ; tests Deno hors CI ; retour de connexion perdu après une session expirée (`ProtectedRoute`) ; libellé anglais « Hiring Project (ID) » ; source de registre `manual_invitations` qui repousse les InMails de 5 minutes ; cache négatif des résolveurs d'identifiants d'organisation (antérieur à la v2) ; garde du courrier envoyé depuis un alias. Corrigé : la double comptée d'une visite de profil (`6c1598f`).
+7. Plus tard : suppression des colonnes `organization_integrations.unipile_*`, fermeture définitive de l'ancien tableau de bord (pas avant le contrôle de `jarvis-whatsapp` et des workflows n8n du propriétaire, qui appellent l'API du prestataire avec leur propre clé et sont hors du périmètre de la bascule), passage de l'option A à l'option B pour l'adresse de la page de connexion, connexion directe et connexion Google/Microsoft avec les applications propres de Konekt (décision sur la confidentialité des mots de passe LinkedIn saisis dans Konekt).
+
 ## Contexte & état des lieux
 
+> Section historique, état au 2026-07-20.
+
 - **Côté plateforme Unipile : migré.** Compte v2 créé (Dashboard V2), données migrées.
-- **Côté code Konekt : 100 % v1.** `/api/v1` est codé en dur dans ~40 fichiers d'edge
+- **Côté code Konekt : 100 % v1 au 2026-07-20 (n'est plus vrai sur la branche, voir « État au 2026-10-12 »).** `/api/v1` est codé en dur dans ~40 fichiers d'edge
   functions ; l'app prod tourne toujours sur le compte v1 (vérifié 2026-07-20 : 3 comptes
   LinkedIn `OK`, webhooks v1 actifs, toutes les fonctions répondent 200).
 - **La v2 est en BETA** : Unipile annonce des breaking changes possibles pendant la phase
@@ -50,7 +81,7 @@ dev, le SDK ne couvre que le REST). Les handlers v1 sont tolérants multi-format
 faudra **observer les logs des premiers events v2 réels** (`v2_origin:` dans les logs de
 `unipile-webhook`) et ajuster le parsing si besoin.
 
-## Fait dans ce commit (socle, aucun impact tant que `UNIPILE_V2_API_KEY` n'est pas posé)
+## Fait dans ce commit (socle) [historique, remplacé]
 
 1. **`_shared/unipile-v2.ts`** — client centralisé : `UNIPILE_V2_BASE_URL`,
    `resolveUnipileV2Credentials()` (env-only pour l'instant, signature prête pour le
@@ -66,6 +97,8 @@ faudra **observer les logs des premiers events v2 réels** (`v2_origin:` dans le
    (hosted auth v2) est accepté en fallback de `name`.
 
 ## Mapping réel constaté (2026-07-20, GET /v2/accounts/ sur l'app de production)
+
+> Mise à jour du 2026-10-12 : le relevé fait à la main par le propriétaire (voir « État au 2026-10-12 ») remplace cet inventaire. Il ne contient plus de doublon Outlook ; Guillaume Valladier, absent en juillet, est présent et à authentifier ; un numéro WhatsApp à authentifier est présent sans ligne dans la base de Konekt. Tiago BRITO n'est pas cité dans le relevé d'octobre. La page de bascule (`/settings/admin/bascule`) recalcule le rapprochement réel. Le tableau ci-dessous est gardé pour l'historique.
 
 La migration Unipile a préservé la correspondance dans `metadata.v1_account_id` de chaque
 compte v2 → **le remapping est déterministe**. Constat sur l'application v2 de production :
@@ -103,7 +136,7 @@ Notes (mises à jour 2026-07-21 après vérifications complémentaires) :
   les IDs v1). Stratégie transition : table de correspondance `v1_id → v2_id` consommée
   par les fonctions migrées, puis UPDATE final des colonnes `*_account_id` au cutover.
 
-## Checklist d'activation (actions Laurent)
+## Checklist d'activation (actions Laurent) [historique, remplacée par `docs/unipile-v2-bascule.md`]
 
 1. Dashboard V2 → Application → API keys → créer une clé, puis :
    `supabase secrets set --project-ref crckfywoyjxkawathdff UNIPILE_V2_API_KEY=<clé>`
@@ -120,7 +153,7 @@ Notes (mises à jour 2026-07-21 après vérifications complémentaires) :
    ajuster le parsing si un format diffère.
 5. Ensuite seulement : migrer les fonctions dans l'ordre ci-dessous.
 
-## Ordre de bascule recommandé (reste à faire)
+## Ordre de bascule recommandé [historique : étapes A à D faites dans le code, voir « État au 2026-10-12 »]
 
 Chaque étape = une PR, testée avec la clé v2 réelle avant de passer à la suivante.
 
@@ -182,7 +215,7 @@ Chaque étape = une PR, testée avec la clé v2 réelle avant de passer à la su
 - **Sales Navigator** : lead lists / account lists (lecture + save).
 - **UX connexion** : `account.initial_sync.completed` + `wait_initial_sync` (hosted auth).
 
-## Garde-fous
+## Garde-fous [historique : `_shared/unipile-v2.ts` n'existe plus ; la règle « jamais d'URL à la main » est tenue par `tests/c1/unipile-client.test.mjs`]
 
 - Ne PAS mélanger clé v1 et endpoints v2 (401 garanti). Ne PAS écraser
   `UNIPILE_API_KEY`/`UNIPILE_DSN` tant que des fonctions v1 tournent.

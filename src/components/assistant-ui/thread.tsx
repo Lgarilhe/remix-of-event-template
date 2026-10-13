@@ -12,7 +12,6 @@ import {
   ClipboardList, MessageSquare, CheckCircle2, XCircle, AlertTriangle,
   MapPin, Briefcase, Loader2, Square,
 } from 'lucide-react';
-import KonektLogo from '@/components/KonektLogo';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScoreBadge } from '@/components/ui/score-badge';
@@ -25,9 +24,20 @@ import { useNavigate } from 'react-router-dom';
 import { useAgent } from '@/contexts/AgentContext';
 import { ToolFallbackChip } from './tool-uis';
 import { FileUpload, FileUploadTrigger, FileUploadContent } from '@/components/prompt-kit/file-upload';
+import { AssistantAvatar, AssistantMessageLayout, UserMessageLayout } from './message-layout';
+import {
+  ASSISTANT_COMPOSER_CLASS,
+  ASSISTANT_COMPOSER_INPUT_CLASS,
+  ASSISTANT_COMPOSER_TOOLBAR_CLASS,
+  ASSISTANT_SEND_CLASS,
+} from './composer-styles';
 
 interface SkalrThreadProps {
   contextMode?: string | null;
+  /** Le même assistant, avec messages et composer sur toute la largeur disponible. */
+  fullWidth?: boolean;
+  /** Les pièces jointes restent proposées uniquement aux adaptateurs qui les traitent. */
+  attachmentsEnabled?: boolean;
   /** Notion-style: model selector rendered inside the composer toolbar */
   modelSlot?: React.ReactNode;
   /** Menu + : fichiers joints et connecteurs disponibles pour le chat. */
@@ -123,19 +133,6 @@ const ReasoningBlock = ({ text }: { text: string }) => {
     </div>
   );
 };
-
-/** Avatar de l'assistant : le monogramme Konekt, fixe (plus d'œil animé, E-14). */
-const AssistantAvatar = ({ size = 'sm' }: { size?: 'sm' | 'lg' }) => (
-  <span
-    className={cn(
-      'flex shrink-0 items-center justify-center rounded-full bg-muted',
-      size === 'lg' ? 'h-10 w-10' : 'h-7 w-7',
-    )}
-    aria-hidden="true"
-  >
-    <KonektLogo variant="mark" theme="auto" size={size === 'lg' ? 20 : 14} ariaLabel="" />
-  </span>
-);
 
 /** Avant le premier contenu : une ligne d'état en texte, avec l'indicateur de chargement. */
 const ThinkingLine = () => (
@@ -680,49 +677,44 @@ const AssistantMessage = () => {
   }
 
   return (
-    <div className="flex gap-3 animate-fade-in">
-      <div className="mt-0.5">
-        <AssistantAvatar />
-      </div>
-      <div className="flex-1 min-w-0 space-y-2 pt-0.5">
-        <MessagePrimitive.Content
-          components={{
-            Text: ({ text }) => <MarkdownText text={text} />,
-            Reasoning: ({ text }) => <ReasoningBlock text={text} />,
-            // Chips de progression des tools de la boucle backend — les tool
-            // UIs enregistrées par nom (tool-uis.tsx) gardent la priorité.
-            tools: { Fallback: ToolFallbackChip as any },
-          }}
-        />
-        {isRunning && hasText && (
-          <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-muted-foreground align-middle" aria-hidden="true" />
-        )}
-      </div>
-    </div>
+    <AssistantMessageLayout>
+      <MessagePrimitive.Content
+        components={{
+          Text: ({ text }) => <MarkdownText text={text} />,
+          Reasoning: ({ text }) => <ReasoningBlock text={text} />,
+          // Chips de progression des tools de la boucle backend — les tool
+          // UIs enregistrées par nom (tool-uis.tsx) gardent la priorité.
+          tools: { Fallback: ToolFallbackChip as any },
+        }}
+      />
+      {isRunning && hasText && (
+        <span className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-muted-foreground align-middle" aria-hidden="true" />
+      )}
+    </AssistantMessageLayout>
   );
 };
 
 /** User message — soft right-aligned bubble (ChatGPT/Claude style) */
 const UserMessage = () => (
-  <div className="flex justify-end animate-fade-in">
-    <div className="max-w-[80%] rounded-xl rounded-br-sm bg-muted px-4 py-2.5 text-md leading-relaxed text-foreground">
-      <MessagePrimitive.Content components={{ Text: ({ text }) => <span className="whitespace-pre-wrap">{text}</span> }} />
-    </div>
-  </div>
+  <UserMessageLayout>
+    <MessagePrimitive.Content components={{ Text: ({ text }) => <span className="whitespace-pre-wrap">{text}</span> }} />
+  </UserMessageLayout>
 );
 
-export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot, toolsSlot, filesBridge }) => {
+export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot, toolsSlot, filesBridge, fullWidth = false, attachmentsEnabled = true }) => {
   const w = WELCOME[(contextMode as string) || 'free'] ?? WELCOME.free;
   const [files, setFiles] = useState<File[]>([]);
 
-  const addFiles = (added: File[]) =>
+  const addFiles = (added: File[]) => {
+    if (!attachmentsEnabled) return;
     setFiles((prev) => [...prev, ...added].slice(0, 5));
+  };
   const removeFile = (idx: number) =>
     setFiles((prev) => prev.filter((_, i) => i !== idx));
 
   // Publie l'état courant vers le pont — lu par l'adaptateur à l'envoi.
   if (filesBridge) {
-    filesBridge.current.files = files;
+    filesBridge.current.files = attachmentsEnabled ? files : [];
     filesBridge.current.clear = () => setFiles([]);
   }
 
@@ -730,7 +722,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
     <ThreadPrimitive.Root className="flex flex-col h-full bg-background">
       {/* Messages area */}
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="mx-auto w-full max-w-2xl space-y-5">
+        <div className={cn('mx-auto w-full', !fullWidth && 'max-w-2xl', 'space-y-5')}>
           {/* Notion-style welcome — only on an empty thread */}
           <ThreadPrimitive.Empty>
             <div className="flex flex-col items-center text-center pt-10 pb-7">
@@ -768,12 +760,12 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
       {/* Marge basse = max(0.75rem, safe-area) : évite que la barre de saisie
           soit rognée par la barre de navigation système sur mobile. */}
       <div className="shrink-0 px-3 pb-3 pt-1" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-        <div className="mx-auto w-full max-w-2xl">
+        <div className={cn('mx-auto w-full', !fullWidth && 'max-w-2xl')}>
           {/* Formats alignés sur ingest-user-file (PDF, Word .docx, images, texte). */}
-          <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.docx,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
-            <ComposerPrimitive.Root className="relative flex flex-col rounded-xl border border-input bg-background p-2 transition-colors focus-within:border-brand">
+          <FileUpload onFilesAdded={addFiles} multiple disabled={!attachmentsEnabled} accept=".pdf,.docx,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
+            <ComposerPrimitive.Root className={ASSISTANT_COMPOSER_CLASS}>
               {/* Attached files */}
-              {files.length > 0 && (
+              {attachmentsEnabled && files.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pt-1.5 pb-1">
                   {files.map((f, i) => (
                     <span
@@ -809,12 +801,12 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                 aria-label="Message à l’assistant"
                 rows={1}
                 autoFocus
-                className="w-full resize-none bg-transparent px-3 py-2.5 text-md leading-relaxed text-foreground placeholder:text-muted-foreground outline-none max-h-40 min-h-[24px]"
+                className={ASSISTANT_COMPOSER_INPUT_CLASS}
               />
 
               {/* Toolbar */}
-              <div className="flex items-center gap-1 pl-1 pr-0.5 pt-1">
-                {toolsSlot ?? (
+              <div className={ASSISTANT_COMPOSER_TOOLBAR_CLASS}>
+                {toolsSlot ?? (attachmentsEnabled && (
                   <Tooltip>
                     {/* FileUploadTrigger ne transmet pas de ref : l'infobulle s'ancre sur le bouton. */}
                     <FileUploadTrigger asChild>
@@ -832,7 +824,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                     </FileUploadTrigger>
                     <TooltipContent side="top">Joindre un fichier</TooltipContent>
                   </Tooltip>
-                )}
+                ))}
 
                 {modelSlot}
 
@@ -841,11 +833,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                   <ComposerPrimitive.Send
                     aria-label="Envoyer"
                     title="Envoyer"
-                    className={cn(
-                      'ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors max-md:h-11 max-md:w-11',
-                      'bg-foreground text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                      'disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground'
-                    )}
+                    className={ASSISTANT_SEND_CLASS}
                   >
                     <ArrowUp className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
                   </ComposerPrimitive.Send>

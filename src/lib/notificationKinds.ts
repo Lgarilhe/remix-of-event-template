@@ -16,7 +16,10 @@
  * | unipile-webhook (rebond d'e-mail)                 | action                | Adresse e-mail invalide, séquence arrêtée | /missions/…?tab=outreach ou /sequences/… | email_bounce | action |
  * | unipile-webhook (relances non arrêtées après une réponse) | action        | Relances non arrêtées après une réponse | /missions/…?tab=outreach, /sequences/… ou /pipeline?candidate=… | reply_sibling_stop_failed | action |
  * | calendly-webhook (RDV pris)                       | action                | RDV pris, séquence arrêtée           | /qualification/… ou /missions | calendly          | action  |
- * | unipile-webhook (compte déconnecté ou en erreur)  | linkedin_disconnected | Compte LinkedIn déconnecté           | /settings?tab=account     | —                     | action  |
+ * | unipile-webhook (compte déconnecté, CREDENTIALS)  | linkedin_disconnected | Compte LinkedIn déconnecté           | /settings?tab=account     | —                     | action  |
+ * | unipile-webhook (compte en erreur, ERROR)         | linkedin_disconnected | Problème de connexion LinkedIn       | /settings?tab=account     | —                     | action  |
+ * | unipile-webhook (connexion partielle, PARTIAL)    | linkedin_disconnected | Connexion LinkedIn partielle         | /settings?tab=account     | —                     | action  |
+ * | unipile-webhook (compte restreint, LOCKED)        | linkedin_disconnected | Compte LinkedIn restreint            | /settings?tab=account     | —                     | action  |
  * | unipile-webhook (rattachement du compte échoué)   | error                 | Compte LinkedIn non rattaché         | /settings?tab=account     | —                     | action  |
  * | process-sequences (auto-pause, trop d'échecs)     | error                 | Séquence mise en pause automatiquement | /missions/…?tab=outreach ou /sequences/… | sequence_auto_pause | action |
  * | CandidateCommentsTab (mention)                    | mention               | … vous a mentionné                   | /pipeline?candidate=…     | —                     | action  |
@@ -45,9 +48,21 @@
  * /pipeline?candidate=<id> (décision du 07/10/2026), ou /pipeline sans
  * identifiant connu.
  *
- * Compte déconnecté : écrit sur account_disconnected / account_error, et sur
- * account_status_updated au passage de OK vers CREDENTIALS, ERROR ou
- * PERMISSIONS (une seule fois par panne, pas à chaque statut répété).
+ * Comptes LinkedIn (unipile-webhook), quatre titres, même type et même lien,
+ * metadata { linkedin_account_id } plus account_status pour les trois derniers :
+ * - « Compte LinkedIn déconnecté » (CREDENTIALS) sur account.status.disconnected et
+ *   « Problème de connexion LinkedIn » (ERROR) sur account.status.errored, une
+ *   seule fois par panne (pas depuis un statut déjà en panne) ;
+ * - « Connexion LinkedIn partielle » (PARTIAL, account.status.partial : un
+ *   produit demande une nouvelle authentification, le membre doit reconnecter) au
+ *   passage d'un compte qui n'était ni en panne à reconnecter ni déjà PARTIAL ;
+ * - « Compte LinkedIn restreint » (LOCKED, account.locked ou account.status.*
+ *   avec is_locked : les envois sont en pause, se reconnecter n'y change rien) au
+ *   passage d'un compte OK, DEGRADED, PARTIAL, sans statut ou inconnu, jamais
+ *   depuis CREDENTIALS ni ERROR.
+ * Les deux derniers passent par une écriture conditionnelle au statut d'avant
+ * (compare-and-set) : des livraisons simultanées préviennent une seule fois.
+ * DEGRADED : état de carte seulement, aucune notification.
  *
  * Limites connues : aucune écriture n'émet aujourd'hui de notification
  * d'invitation (les invitations partent par email) ; un scoring terminé sans

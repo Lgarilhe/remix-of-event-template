@@ -18,6 +18,9 @@
  *    transcription and analysis by cascade
  * 8. Qualification sessions (agenda Outlook, Calendly) whose event ended
  *    more than 24 months ago, with the knowledge chunks derived from them
+ * 9. Rappels et tâches (candidate_reminders) 24 mois après leur dernière
+ *    activité (création, modification, échéance ou réalisation, la plus
+ *    tardive), rappels sans organisation compris (décision du 12/10/2026)
  *
  * Lignes candidat (1 et 3) : sélection et suppression par la fonction SQL
  * rgpd_purge_candidate_rows (lot 0c-2), sur l'étape générale : 24 mois sans
@@ -36,6 +39,13 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check";
 import { CALL_RETENTION_MONTHS, TRANSCRIPT_RETENTION_MONTHS, retentionCutoff } from "../_shared/phone-call-erasure.ts";
+import {
+  REMINDER_RETENTION_MONTHS,
+  isReminderExpired,
+  reminderAgeFilters,
+  reminderRetentionCutoff,
+  type ReminderDates,
+} from "../_shared/reminder-retention.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,6 +90,8 @@ Deno.serve(async (req) => {
       call_transcripts_purged: 0,
       phone_calls_purged: 0,
       qualification_sessions_purged: 0,
+      reminders_purged: 0,
+      reminders_without_org_purged: 0,
       knowledge_chunks_purged: 0,
       candidate_action_plans_purged: 0,
       candidate_action_messages_purged: 0,
@@ -495,6 +507,62 @@ Deno.serve(async (req) => {
       }
     } catch (e) {
       stats.errors.push(`qualification sessions purge: ${e}`);
+    }
+
+    // ── 9. Rappels et tâches après 24 mois (décision du 12/10/2026) ─────
+    // Un rappel porte le nom affiché du candidat, l'intitulé de la mission et
+    // une note libre. Il part 24 mois après sa dernière activité, la plus
+    // tardive de sa création, de sa modification, de son échéance et de sa
+    // réalisation (_shared/reminder-retention.ts) : une échéance lointaine le
+    // garde jusqu'à 24 mois après elle. Les rappels sans organisation
+    // (extension Chrome, état hérité) suivent la même règle ; ils sont aussi
+    // comptés à part (reminders_without_org_purged). La règle pure confirme
+    // chaque ligne lue, et le même filtre d'âge est rejoué à la suppression,
+    // pour garder un rappel touché entre la lecture et la suppression.
+    const reminderCutoff = reminderRetentionCutoff(now);
+    const REMINDER_AGE_FILTERS = reminderAgeFilters(reminderCutoff.toISOString());
+    try {
+      let oldRemindersQuery = adminClient
+        .from("candidate_reminders")
+        .select("id, organization_id, created_at, updated_at, due_at, completed_at");
+      for (const filter of REMINDER_AGE_FILTERS) oldRemindersQuery = oldRemindersQuery.or(filter);
+      const { data: oldReminders, error: remindersError } = await oldRemindersQuery.limit(500);
+      if (remindersError) {
+        stats.errors.push(`reminders query: ${remindersError.message}`);
+      } else {
+        const rows = ((oldReminders ?? []) as Array<ReminderDates & { id: string; organization_id: string | null }>)
+          .filter((r) => isReminderExpired(r, reminderCutoff));
+        const withoutOrg = new Set(rows.filter((r) => r.organization_id === null).map((r) => r.id));
+        const ids = rows.map((r) => r.id);
+        if (dryRun) {
+          stats.reminders_purged = ids.length;
+          stats.reminders_without_org_purged = withoutOrg.size;
+        }
+        for (let i = 0; !dryRun && i < ids.length; i += 100) {
+          let deleteQuery = adminClient
+            .from("candidate_reminders")
+            .delete()
+            .in("id", ids.slice(i, i + 100));
+          for (const filter of REMINDER_AGE_FILTERS) deleteQuery = deleteQuery.or(filter);
+          const { data: deleted, error: deleteError } = await deleteQuery.select("id");
+          if (deleteError) {
+            stats.errors.push(`delete reminders: ${deleteError.message}`);
+            break;
+          }
+          for (const r of (deleted ?? []) as Array<{ id: string }>) {
+            stats.reminders_purged += 1;
+            if (withoutOrg.has(r.id)) stats.reminders_without_org_purged += 1;
+          }
+        }
+        if (stats.reminders_purged > 0) {
+          console.log(
+            `[rgpd-purge] (${mode}) ${stats.reminders_purged} reminders (> ${REMINDER_RETENTION_MONTHS} months), ` +
+              `${stats.reminders_without_org_purged} without organization`,
+          );
+        }
+      }
+    } catch (e) {
+      stats.errors.push(`reminders purge: ${e}`);
     }
 
     // ── Summary ─────────────────────────────────────────────────────

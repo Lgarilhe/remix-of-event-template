@@ -186,7 +186,7 @@ test('S-6b : profils des groupes, recherche en cours et décisions de la mission
 // ---------------------------------------------------------------- interrupteur éteint
 
 test('S-7 : la nouvelle page mission et la page d\'une recherche passent la disposition « mission-v3 »', () => {
-  assert.match(code('src/components/missions/v3/shell/SourcingScreen.tsx'), /<MissionSourcing project=\{project\} layout="mission-v3" \/>/);
+  assert.match(code('src/components/missions/v3/shell/SourcingScreen.tsx'), /<MissionSourcing project=\{project\} layout="mission-v3" initialPhrase=\{start\?\.phrase\} initialSource=\{start\?\.source\}/);
   assert.match(code('src/components/missions/v2/MissionWorkspaceV2.tsx'), /<MissionSourcing project=\{project\} \/>/);
   // Depuis 2148cfab, /sourcing/:id affiche le Sourcing de la mission, plus LinkedInSearch seul.
   const standalone = code('src/pages/SourcingSearch.tsx');
@@ -194,7 +194,7 @@ test('S-7 : la nouvelle page mission et la page d\'une recherche passent la disp
   assert.doesNotMatch(standalone, /<LinkedInSearch\b/);
 
   // Défauts : le rendu actuel.
-  assert.match(code('src/components/missions/MissionSourcing.tsx'), /\{ project, layout = 'default', initialPhrase, startWithFilters \}/);
+  assert.match(code('src/components/missions/MissionSourcing.tsx'), /project: serverProject, layout = 'default', initialPhrase, initialSource, startWithFilters/);
   assert.match(code('src/components/outreach/LinkedInSearch.tsx'), /layout = 'default',\n  initialPhrase,\n  startWithFilters,\n\}\) => \{\n  const isV3 = layout === 'mission-v3' && !!activeProject;/);
   const panel = code('src/components/outreach/search/SearchResultsPanel.tsx');
   assert.match(panel, /layout = 'default',/);
@@ -217,7 +217,7 @@ test('S-7 : la nouvelle page mission et la page d\'une recherche passent la disp
 test('S-7b : la nouvelle page n\'écrit rien dans l\'état ni le cache de l\'ancienne', () => {
   const search = code('src/components/outreach/LinkedInSearch.tsx');
   // Clé du cache à part : l'ancienne page garde `mission-sourcing:{id}`.
-  assert.match(search, /`\$\{isV3 \? 'mission-sourcing-v3' : 'mission-sourcing'\}:\$\{user\.id\}:\$\{organizationId\}:\$\{activeProject\.id\}:\$\{selectedAccount \?\? 'database'\}`/);
+  assert.match(search, /`\$\{isV3 \? 'mission-sourcing-v3' : 'mission-sourcing'\}:\$\{user\.id\}:\$\{organizationId\}:\$\{activeProject\.id\}:\$\{searchSource\}:\$\{selectedAccount \?\? 'database'\}`/);
   // Vue du vivier jamais forcée dans l'état : seule la lecture change en v3.
   assert.match(search, /showPoolView: isV3 \|\| showPoolView,/);
   const panel = code('src/components/outreach/search/SearchResultsPanel.tsx');
@@ -332,7 +332,7 @@ test('S-11 : un seul bouton plein, boutons discrets, puces sans cadre, zéro non
   const results = code(`${V3_DIR}/SourcingResultsV3.tsx`);
   const top = code(`${V3_DIR}/SourcingTopBar.tsx`);
   // Branche des résultats : après l'écran de chargement et l'écran « aucun profil » (qui ont leurs propres boutons).
-  const resultsBranch = results.slice(results.indexOf('const canLoadMore'));
+  const resultsBranch = results.slice(results.indexOf('const allToSortSelected'));
   // Liste de résultats : « Noter » est le seul bouton plein, son coût écrit à côté (lu par aria-describedby).
   assert.equal((resultsBranch.match(/variant="primary"/g) || []).length, 1, 'un seul bouton plein dans les résultats');
   assert.match(resultsBranch, /variant="primary"[\s\S]{0,200}aria-describedby="sourcing-cout-notation"/);
@@ -345,7 +345,7 @@ test('S-11 : un seul bouton plein, boutons discrets, puces sans cadre, zéro non
   assert.doesNotMatch(results, /variant="(outline|default)"/);
   assert.doesNotMatch(results, /size="sm"\s+variant="default"/);
   assert.doesNotMatch(top, /variant="(primary|outline|default)"/);
-  assert.equal((top.match(/variant="ghost"/g) || []).length, 2, '« Filtres » et « Nouvelle recherche » en boutons discrets');
+  assert.equal((top.match(/variant="ghost"/g) || []).length, 3, 'assistant, filtres et nouvelle recherche en boutons discrets');
   // Pas de cadre autour des sections ni des listes (le seul cadre gardé : la barre flottante de sélection).
   // Seule exception : l'option choisie de la bascule d'affichage, en carte blanche sur son rail gris (rendu quiet, contraste v2).
   const QUIET_OPTION = "'bg-card font-semibold text-foreground dark:bg-background'";
@@ -370,7 +370,7 @@ test('S-11 : un seul bouton plein, boutons discrets, puces sans cadre, zéro non
   assert.match(results, /aria-label="Groupes de résultats"/);
   // Une seule phrase de pied de liste, qui ne répète pas ce que dit « Noter ».
   assert.doesNotMatch(results, /pas encore notés/i);
-  assert.match(results, /Tous les profils de cette recherche sont chargés\. Élargissez vos filtres pour en trouver d'autres\./);
+  assert.match(results, /Fin des résultats disponibles pour cette recherche\. Élargissez vos filtres pour en trouver d'autres\./);
 });
 
 test('S-11b : cibles de 44 px sur téléphone et nom accessible des boutons gardé', () => {
@@ -390,10 +390,12 @@ test('S-11b : cibles de 44 px sur téléphone et nom accessible des boutons gard
   assert.match(results, /<ScorePill score=\{row\.note\} \/>/);
 });
 
-test('S-11c : écran de départ et carte « Relier LinkedIn » sans cadre ; exemples en liens discrets', () => {
+test('S-11c : sourcing ouvert sans LinkedIn, source explicite ; exemples en liens discrets', () => {
   const screen = code('src/components/missions/v3/shell/SourcingScreen.tsx');
-  assert.match(screen, /<Button asChild variant="primary"/);
-  assert.match(screen, /<IconTile icon=\{Link2\}/);
+  assert.doesNotMatch(screen, /accounts\.length === 0/);
+  const mission = code('src/components/missions/MissionSourcing.tsx');
+  assert.doesNotMatch(mission, /return <EmptyLinkedInAccountState/);
+  assert.match(mission, /accounts\.length \? 'linkedin' : 'database'/);
   assert.doesNotMatch(screen, /bg-card|rounded-xl border/);
   const flow = code('src/components/outreach/search/SourcingFlow.tsx');
   // Les exemples de la nouvelle page ne sont plus des pastilles encadrées ; l'ancien rendu garde les siennes.
@@ -590,7 +592,9 @@ test('S-13d : écran de départ, bouton plein monochrome, consigne lisible ; « 
   assert.match(results, /aria-disabled=\{loadingMore \|\| undefined\}/);
   assert.match(results, /disabled=\{loading && !loadingMore\}/);
   assert.doesNotMatch(results, /loadingMore \? \(\s*<span aria-hidden="true" className="inline-flex items-center gap-1\.5 px-2">/);
-  assert.match(results, /<span role="status" className="sr-only">\{loadAnnouncement\}<\/span>/);
+  assert.match(results, /loadingMore=\{loadingMore\}/);
+  const feedback = code(`${V3_DIR}/SourcingSearchFeedback.tsx`);
+  assert.match(feedback, /role="status" aria-label="État de la recherche" aria-live="polite" aria-atomic="true"/);
 });
 
 test('S-13e : liste Tri, la ligne du nom ne se coupe plus, titre sous le nom jusqu\'à xl, action de retour en icône sur téléphone', () => {

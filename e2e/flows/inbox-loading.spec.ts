@@ -62,8 +62,11 @@ test.describe('Messagerie — chargement et interactions @critical', () => {
             }
             if (body.action === 'get_messages')
                 data = { success: true, messages: [{ id: 'message-0', text: 'Bonjour, je suis disponible vendredi.', timestamp: '2026-10-09T09:00:00Z', is_sender: false }], cursor: null };
-            if (body.action === 'get_profile')
-                data = { success: true, profile: { id: 'ACo_fixture_camille', provider_id: 'ACo_fixture_camille', name: 'Camille Durand' } };
+            if (body.action === 'get_profile') {
+                const emailProfile = body.profile_id === 'candidate-email';
+                const id = emailProfile ? 'candidate-email' : 'ACo_fixture_camille';
+                data = { success: true, profile: { id, provider_id: id, name: emailProfile ? 'Camille Email' : 'Camille Durand' } };
+            }
             // Refus : en production, un 403 ou un 503 dont invokeUnipile relit le
             // corps (tests/ux/correctif4-ecrans.test.mjs) ; le transport du harnais
             // ne transmet pas le corps d'une réponse en erreur, d'où le statut 200.
@@ -125,18 +128,23 @@ test.describe('Messagerie — chargement et interactions @critical', () => {
         await list(page).getByRole('button', { name: /^Camille Email/ }).click();
         await expect(page.locator('[data-component="multichannel-conversation"]')).toBeVisible();
         await page.locator('[data-component="multichannel-conversation"]').getByRole('button', { name: 'Fiche candidat', exact: true }).click();
-        const sheet = page.getByRole('dialog', { name: 'Fiche de Camille Email' });
+        const sheet = page.getByRole('dialog', { name: 'Camille Email', exact: true });
         await expect(sheet).toBeVisible();
+        await expect(sheet.getByRole('tab', { name: 'Profil', exact: true })).toHaveAttribute('aria-selected', 'true');
+        for (const name of ['Aperçu', 'Évaluation', 'CV', 'Séquences', 'Interactions', 'Notes'])
+            await expect(sheet.getByRole('tab', { name, exact: true })).toBeAttached();
         await state(page, { accountsReady: true, accountsLoading: false, mappingsReady: true });
         await expect.poll(() => api.calls.filter(call => call.body.action === 'get_chats').length).toBe(1);
         await expect(page.locator('[data-component="multichannel-conversation"]')).toBeVisible();
         await expect(sheet).toBeVisible();
+        await expect(sheet.getByRole('heading', { name: 'Camille Email', exact: true })).toBeVisible();
         api.releaseChats();
         await expect(page.locator('[aria-label="Conversations"]').getByText('Camille Durand', { exact: true })).toBeAttached();
         await expect(sheet).toBeVisible();
         await sheet.getByRole('button', { name: 'Fermer', exact: true }).click();
         await page.getByRole('button', { name: 'Retour aux conversations', exact: true }).click();
         await expect(list(page).getByText('Camille Durand')).toBeVisible();
+        expect(api.calls.filter(call => ['send_message', 'create_chat', 'send_invitation'].includes(String(call.body.action)))).toHaveLength(0);
         expect(api.errors).toEqual([]);
     });
     for (const width of [390, 320])

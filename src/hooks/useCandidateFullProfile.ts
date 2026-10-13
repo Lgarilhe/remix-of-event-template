@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { aiRecommendationMeta, qualificationVerdictMeta } from '@/lib/verdicts';
 import { enrollmentStatusLabel, manualStopLabel, readManualStopFromTracking, type ManualStopInfo } from '@/lib/sequenceLabels';
 import { useMemberName } from '@/hooks/useTeamMembers';
 import { isInternalSequenceAction, sequenceExecutionTitle, stepNumberLabel } from '@/lib/sequenceActionLabels';
 import { fetchPhoneCallsForCandidate } from '@/lib/phoneCalls';
+import { useOrganization } from '@/hooks/useOrganization';
+import { extractLinkedInSlug } from '@/lib/linkedinUtils';
 
 export interface CandidateActivity {
   type: 'scored' | 'messaged' | 'sequence_enrolled' | 'sequence_step' | 'inmail_sent' | 'qualification_scheduled' | 'qualification_verdict' | 'stage_change' | 'note_added' | 'appointment' | 'shortlist_added' | 'aircall_call';
@@ -110,6 +112,11 @@ export interface CandidateFullProfile {
 }
 
 export function useCandidateFullProfile(candidateId: string, linkedinUrl: string | null, reloadKey = 0): CandidateFullProfile {
+  const { organizationId } = useOrganization();
+  const scopeKey = `${organizationId ?? ''}|${candidateId}|${linkedinUrl ?? ''}`;
+  const currentScope = useRef({ key: scopeKey });
+  if (currentScope.current.key !== scopeKey) currentScope.current = { key: scopeKey };
+  const scope = currentScope.current;
   const [qualificationSessions, setQualificationSessions] = useState<QualificationSession[]>([]);
   const [sequenceEnrollments, setSequenceEnrollments] = useState<SequenceEnrollmentInfo[]>([]);
   // Auteur d'un arrêt manuel, pour la chronologie.
@@ -132,7 +139,28 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
   const [aircallCalls, setAircallCalls] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // A reused sheet must never display the previous candidate or organisation
+  // while its new history loads. Reloads within this scope keep their content.
+  useLayoutEffect(() => {
+    setQualificationSessions([]);
+    setSequenceEnrollments([]);
+    setSequenceSteps([]);
+    setInmailsSent([]);
+    setScoringHistory([]);
+    accountIdRef.current = null;
+    setAccountId(null);
+    setAirtableMatch(null);
+    setAirtableShortlists([]);
+    setAirtableNotes([]);
+    setAirtableAppointments([]);
+    setAircallCalls([]);
+    setLoading(!!organizationId && !!candidateId);
+  }, [scopeKey, candidateId, organizationId]);
+
   useEffect(() => {
+    let cancelled = false;
+    const isCurrent = () => !cancelled && currentScope.current === scope;
+    if (!organizationId || !candidateId) return;
     const fetchAll = async () => {
       setLoading(true);
       try {
@@ -144,8 +172,10 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
           linkedinUrl ? fetchAirtableHistory(linkedinUrl) : Promise.resolve(),
           fetchAircallCalls(),
         ]);
+      } catch (error) {
+        console.warn('[useCandidateFullProfile] historique indisponible:', error);
       } finally {
-        setLoading(false);
+        if (isCurrent()) setLoading(false);
       }
     };
 
@@ -153,9 +183,11 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       const { data } = await supabase
         .from('qualification_sessions')
         .select('*')
+        .eq('organization_id', organizationId)
         .eq('candidate_profile_id', profileId)
         .order('created_at', { ascending: false });
       
+      if (!isCurrent()) return;
       setQualificationSessions((data || []).map((s: any) => ({
         id: s.id,
         status: s.status,
@@ -173,9 +205,12 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       const { data } = await supabase
         .from('sequence_enrollments')
         .select('*, outreach_sequences (name)')
+        .eq('organization_id', organizationId)
         .eq('profile_id', profileId)
         .order('created_at', { ascending: false });
       
+      if (!isCurrent()) return;
+      setSequenceSteps([]);
       if (data && data.length > 0) {
         // fetchSequences = source prioritaire de account_id (plus fiable que inmails)
         const newAccountId = data[0].account_id || null;
@@ -189,15 +224,19 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         const { data: executions } = await supabase
           .from('sequence_step_executions')
           .select('id, enrollment_id, step_id, step_order, status, executed_at, final_subject')
+          .eq('organization_id', organizationId)
           .in('enrollment_id', enrollmentIds)
           .order('executed_at', { ascending: false });
 
+        if (!isCurrent()) return;
         if (executions && executions.length > 0) {
           const stepIds = [...new Set(executions.map((e: any) => e.step_id))];
           const { data: steps } = await supabase
             .from('sequence_steps')
             .select('id, action_type')
+            .eq('organization_id', organizationId)
             .in('id', stepIds);
+          if (!isCurrent()) return;
           const stepMap = new Map((steps || []).map((s: any) => [s.id, s.action_type]));
           const enrollmentSeqMap = new Map(data.map((e: any) => [e.id, e.outreach_sequences?.name || 'Séquence']));
 
@@ -234,9 +273,11 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       const { data } = await supabase
         .from('inmail_queue')
         .select('*')
+        .eq('organization_id', organizationId)
         .eq('recipient_profile_id', profileId)
         .order('created_at', { ascending: false });
       
+      if (!isCurrent()) return;
       // Fallback : utilise account_id depuis inmails UNIQUEMENT si les séquences
       // n'en ont pas fourni (check sur la ref, pas le state — fix race condition)
       if (data && data.length > 0 && !accountIdRef.current) {
@@ -261,15 +302,18 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         supabase
           .from('job_candidate_status')
           .select('*')
+          .eq('organization_id', organizationId)
           .eq('candidate_id', profileId)
           .order('updated_at', { ascending: false }),
         supabase
           .from('match_scores')
           .select('candidate_id, job_id, score, scoring_result')
+          .eq('organization_id', organizationId)
           .eq('candidate_id', profileId)
           .order('created_at', { ascending: false }),
       ]);
       
+      if (!isCurrent()) return;
       if (!data || data.length === 0) {
         setScoringHistory([]);
         return;
@@ -294,7 +338,9 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         const { data: searches } = await supabase
           .from('search_history')
           .select('job_id, job_title')
+          .eq('organization_id', organizationId)
           .in('job_id', uniqueJobIds);
+        if (!isCurrent()) return;
         
         if (searches) {
           searches.forEach((s: any) => {
@@ -339,14 +385,22 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     }
 
     async function fetchAirtableHistory(url: string) {
+      const slug = extractLinkedInSlug(url);
+      if (!slug) return;
       const { data: candidates } = await supabase
         .from('airtable_candidates')
         .select('*')
-        .ilike('linkedin_url', `%${extractSlug(url)}%`)
-        .limit(1);
+        .eq('organization_id', organizationId)
+        .ilike('linkedin_url', `%/in/${slug.replace(/[\\%_]/g, '\\$&')}%`)
+        .limit(20);
       
-      if (candidates && candidates.length > 0) {
-        const c = candidates[0];
+      if (!isCurrent()) return;
+      setAirtableMatch(null);
+      setAirtableShortlists([]);
+      setAirtableNotes([]);
+      setAirtableAppointments([]);
+      const c = candidates?.find(row => extractLinkedInSlug(row.linkedin_url || '') === slug);
+      if (c) {
         setAirtableMatch({
           fullName: c.full_name,
           status: c.status,
@@ -358,9 +412,11 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         const { data: shortlists } = await supabase
           .from('airtable_shortlists')
           .select('*, airtable_jobs(title), airtable_companies(name)')
+          .eq('organization_id', organizationId)
           .eq('candidate_airtable_id', c.airtable_id)
           .order('date_added', { ascending: false });
         
+        if (!isCurrent()) return;
         setAirtableShortlists((shortlists || []).map((s: any) => ({
           id: s.id,
           status: s.status,
@@ -372,9 +428,11 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         const { data: notes } = await supabase
           .from('airtable_notes')
           .select('*')
+          .eq('organization_id', organizationId)
           .eq('candidate_airtable_id', c.airtable_id)
           .order('note_date', { ascending: false });
         
+        if (!isCurrent()) return;
         setAirtableNotes((notes || []).map((n: any) => ({
           id: n.id,
           title: n.title || '',
@@ -387,9 +445,11 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
         const { data: appointments } = await supabase
           .from('airtable_appointments')
           .select('*')
+          .eq('organization_id', organizationId)
           .eq('candidate_airtable_id', c.airtable_id)
           .order('appointment_date', { ascending: false });
 
+        if (!isCurrent()) return;
         setAirtableAppointments((appointments || []).map((a: any) => ({
           id: a.id,
           title: a.title,
@@ -403,7 +463,8 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
 
     // Appels de l'opérateur relié (table phone_calls), par les numéros connus du candidat.
     async function fetchAircallCalls() {
-      const calls = await fetchPhoneCallsForCandidate(candidateId);
+      const calls = await fetchPhoneCallsForCandidate(candidateId, [], organizationId);
+      if (!isCurrent()) return;
       setAircallCalls(calls.map(c => ({
         id: c.id,
         direction: c.direction ?? 'unknown',
@@ -416,8 +477,9 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
       })));
     }
 
-    fetchAll();
-  }, [candidateId, linkedinUrl, reloadKey]);
+    void fetchAll();
+    return () => { cancelled = true; };
+  }, [candidateId, linkedinUrl, organizationId, scopeKey, scope, reloadKey]);
 
   // Build unified timeline
   const timeline: CandidateActivity[] = [];
@@ -550,9 +612,4 @@ export function useCandidateFullProfile(candidateId: string, linkedinUrl: string
     timeline,
     loading,
   };
-}
-
-function extractSlug(url: string): string {
-  const match = url.match(/\/in\/([^/?]+)/);
-  return match ? match[1] : url;
 }

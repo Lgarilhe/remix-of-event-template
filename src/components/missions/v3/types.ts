@@ -529,6 +529,8 @@ export interface MissionV3ContextValue {
   openCandidate: (rowId: string, opts?: { replace?: boolean }) => void;
   /** Ouvre le panneau Prise de contact (entrée d'historique). */
   openContactPanel: () => void;
+  /** Ouvre le panneau Prise de contact en mode Contacter, sur la sélection du Pipeline (lot 5f-2c). */
+  openContactFlow: () => void;
   /** Ferme le panneau : Retour si la page l'a ouvert, sinon retrait des paramètres. */
   closePanel: () => void;
   /** Ouvre (entrée d'historique) ou ferme le Bilan. */

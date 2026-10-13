@@ -251,6 +251,13 @@ export function formerPassageLabel(count: number): string {
     : '1 candidat était déjà passé par cette séquence il y a plus de 90 jours, sous un autre identifiant LinkedIn : il a été réinscrit et recevra de nouveau ses étapes.';
 }
 
+/** Règle Retenu : l'inscription est faite, l'étape du candidat dans la mission n'a pas pu changer. */
+export function retainFailedLabel(count: number): { title: string; description: string } {
+  return count > 1
+    ? { title: `${count} candidats n'ont pas pu passer en Retenu`, description: "Leur inscription est enregistrée : ils restent à leur étape actuelle." }
+    : { title: "1 candidat n'a pas pu passer en Retenu", description: "Son inscription est enregistrée : il reste à son étape actuelle." };
+}
+
 type StepLike = FirstStepCandidate & {
   id?: string;
   action_type?: string;

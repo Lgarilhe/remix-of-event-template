@@ -4,6 +4,7 @@ import { useOrganization } from './useOrganization';
 import { toast } from 'sonner';
 import { invokeEdgeFunction } from '@/lib/invokeEdgeFunction';
 import { useAuthReady } from './useAuthReady';
+import { EMAIL_CARD } from '@/lib/connectionCopy';
 
 export interface MemberEmailMapping {
   id: string;
@@ -36,7 +37,8 @@ export function useMemberEmailAccounts() {
   });
 
   const unlinkAccount = useMutation({
-    mutationFn: async ({ mappingId, expectedAccountId }: { mappingId: string; expectedAccountId: string }) => {
+    // `address` ne sert qu'au message de succès (la boîte dissociée est nommée) : le serveur ne le reçoit pas.
+    mutationFn: async ({ mappingId, expectedAccountId }: { mappingId: string; expectedAccountId: string; address?: string }) => {
       const { data, error } = await invokeEdgeFunction('unipile-accounts', {
         action: 'unlink_email_account',
         organization_id: organizationId,
@@ -46,12 +48,12 @@ export function useMemberEmailAccounts() {
       if (error) throw error;
       if (!data?.success) throw new Error('La dissociation n’a pas été enregistrée');
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['member-email-accounts'] });
       queryClient.invalidateQueries({ queryKey: ['candidate-actions'] });
       queryClient.invalidateQueries({ queryKey: ['assistant-email-connector'] });
       queryClient.invalidateQueries({ queryKey: ['multichannel-inbox'] });
-      toast.success('Compte e-mail dissocié');
+      toast.success(EMAIL_CARD.unlinkedToast(variables.address));
     },
     onError: () => toast.error("Le compte e-mail n'a pas été dissocié", { description: 'Réessayez dans un instant.' }),
   });

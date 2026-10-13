@@ -73,7 +73,7 @@ test('SEQ-074 — échéance du cycle testée avant le verrou, verrou gardé à 
   assert.ok(budgetAt !== -1 && lockAt !== -1 && budgetAt < lockAt, 'test du temps restant avant le verrou');
   assert.match(loop, /if \(Date\.now\(\) >= cycleDeadline\) \{[\s\S]*?break;/);
   assert.match(engine, /p_ttl_minutes: 10/, 'TTL du verrou non raccourcie');
-  assert.match(loop, /generatePersonalizedMessage\(supabase, enrollment, step, exec, uCreds\.apiKey, uCreds\.dsn, aiDiag\)/);
+  assert.match(loop, /generatePersonalizedMessage\(supabase, enrollment, step, exec, aiDiag\)/);
 });
 
 // ---------------------------------------------------------------- SEQ-076
@@ -208,8 +208,9 @@ test('SEQ-191 / SEQ-221 — réponse comptée une fois, « Marquer comme répond
 
 // ---------------------------------------------------------------- SEQ-192 / SEQ-193
 test('SEQ-192 / SEQ-193 — service indisponible reporté d\'une heure, report du plafond selon la cause', () => {
-  const creds = slice(loop, 'let uCreds', 'const senderUserId =');
-  assert.match(creds, /catch \(credsErr\)/);
+  const creds = slice(loop, 'let providerConfigured = true;', 'const senderUserId =');
+  assert.match(creds, /assertProviderConfigured\(\);/);
+  assert.match(creds, /catch \(providerErr\)/);
   assert.match(creds, /stepSendChannel\(step\) !== 'email'/);
   assert.match(creds, /error_message: PROVIDER_UNAVAILABLE_MESSAGE/);
   const gate = slice(loop, 'await checkQuotaForAction(', 'results.quota_blocked++;');

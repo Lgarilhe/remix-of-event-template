@@ -2,7 +2,7 @@
  * Dashboard — page d'accueil de l'application (design simplifié,
  * docs/design/06-simplicite.md).
  *
- * L'en-tête, puis deux sections :
+ * L'en-tête, puis la recherche guidée et les deux sections du quotidien :
  *   1. À faire — ce qui attend une action (compte LinkedIn à reconnecter,
  *      réponses, relances, candidats qui n'avancent plus), puis les tâches en
  *      retard et la journée (entretiens, envois, tâches).
@@ -30,12 +30,13 @@ import { useTodayScheduledMessages } from '@/hooks/useTodayScheduledMessages';
 import { useAllReminders } from '@/hooks/useAllReminders';
 import { useSidebarNotifications } from '@/hooks/sidebar/useSidebarNotifications';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
-import { useDashboardConnections } from '@/hooks/useDashboardConnections';
+import { useLinkedInOutage } from '@/hooks/sidebar/useLinkedInOutage';
 import { useCandidateAvatars } from '@/hooks/useCandidateAvatars';
 import { DashboardGreeting } from '@/components/dashboard/DashboardGreeting';
 import { DashboardFocusPanel, type FocusPerson } from '@/components/dashboard/DashboardFocusPanel';
 import { DashboardMissionsPanel, type InterviewingPeople } from '@/components/dashboard/DashboardMissionsPanel';
 import { DashboardTodayPanel } from '@/components/dashboard/DashboardTodayPanel';
+import { DashboardSourcingPanel } from '@/components/dashboard/DashboardSourcingPanel';
 
 // Stagnant : même règle que la carte, le tableau et l'analyse du /pipeline
 // (délais de useATSData, jours depuis l'entrée dans l'étape). À trier et Retenu
@@ -94,7 +95,8 @@ export default function Dashboard() {
   const unreadPeople = replies.data?.candidates.filter((c) => c.counted).slice(0, STACK_FACES).map((r) => ({ name: r.name }));
   const unreadMessagesUnavailable = replies.status === 'error' || replies.status === 'offline';
   const { displayName } = useCurrentProfile();
-  const connections = useDashboardConnections();
+  // Même lecture que la ligne d'À traiter de la barre latérale : un seul prédicat pour la panne LinkedIn.
+  const linkedinOutage = useLinkedInOutage();
 
   const candidatesUnavailable = !!candidatesError && candidates.length === 0;
 
@@ -181,6 +183,8 @@ export default function Dashboard() {
       />
 
       <div className="mt-4 space-y-12">
+        <DashboardSourcingPanel projects={projects} loading={projectsLoading}
+          error={projectsError ? (projectsError as { message?: string }).message ?? 'Erreur' : null} />
         <section aria-labelledby="dashboard-todo">
           <div className="flex flex-wrap items-baseline justify-between gap-4 pb-1">
             <h2 id="dashboard-todo" className="text-lg font-semibold text-foreground">
@@ -192,7 +196,9 @@ export default function Dashboard() {
           </div>
           <DashboardFocusPanel
             isLoading={loading}
-            linkedinIssue={connections.linkedin.status === 'error'}
+            linkedinIssue={linkedinOutage.kind === 'reconnect'}
+            linkedinPartial={linkedinOutage.kind === 'partial'}
+            linkedinLocked={linkedinOutage.kind === 'locked'}
             unreadMessages={unreadMessages}
             unreadMessagesUnavailable={unreadMessagesUnavailable}
             unreadPeople={unreadPeople}

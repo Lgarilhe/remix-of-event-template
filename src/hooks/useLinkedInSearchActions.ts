@@ -15,6 +15,7 @@ import { BASE_KONEKT_QUERY_KEY } from '@/hooks/useBaseKonekt';
 import { toast } from 'sonner';
 import { stableScoringContextKey } from '@/lib/sourcingScoringContext';
 import { sourcingSearchInputKey, type ExecutedSourcingSearch } from '@/lib/sourcingSearchLifecycle';
+import { readSearchFiltersNotice, type SearchFiltersNotice } from '@/lib/searchFilterNotice';
 
 const RESULTS_PER_BATCH = 25;
 
@@ -64,6 +65,7 @@ interface SearchSetters {
   setTotal: (v: number | null) => void;
   setHasSearched: (v: boolean) => void;
   setExecutedSearch: (v: ExecutedSourcingSearch | null) => void;
+  onNewSearchResults?: (scopeKey: string) => void;
 }
 
 /** Optional augmentation : injecte des IDs LinkedIn pré-résolus (annuaire
@@ -726,6 +728,7 @@ export function useLinkedInSearchActions(
     setTotal,
     setHasSearched,
     setExecutedSearch,
+    onNewSearchResults,
   } = setters;
 
   const queryClient = useQueryClient();
@@ -843,6 +846,8 @@ export function useLinkedInSearchActions(
     let latestTotal: number | null = null;
     let receivedPage = false;
     let exhausted = false;
+    // Filtres que la licence n'a pas appliqués : lus sur la première page d'une nouvelle recherche, gardés avec elle.
+    let filtersNotice: SearchFiltersNotice | null = null;
 
     try {
       const currentFilters = execution.filters;
@@ -915,6 +920,7 @@ export function useLinkedInSearchActions(
         const batchCursor: string | null = (data.cursor as string) || null;
         const fetchedTotal: number | null = typeof data.total === 'number' ? data.total : null;
         receivedPage = true;
+        if (!appendMode && round === 0) filtersNotice = readSearchFiltersNotice(data);
 
         if (fetchedTotal !== null) latestTotal = fetchedTotal;
         // Le quota de recherche LinkedIn (anti-ban) ne concerne QUE LinkedIn.
@@ -931,7 +937,10 @@ export function useLinkedInSearchActions(
         const linkedinFiltersExperience = !isDatabase
           && (currentFilters.api === 'recruiter' || currentFilters.api === 'sales_navigator')
           && (currentFilters.years_of_experience_min !== null || currentFilters.years_of_experience_max !== null);
-        const filteredBatch = linkedinFiltersExperience
+        // The Base Konekt applies experience to the complete dataset server-side.
+        // Its previews have no education/dates: estimating again would erase
+        // valid results or call them unknown after a successful range query.
+        const filteredBatch = isDatabase || linkedinFiltersExperience
           ? batch
           : filterByCalculatedExperience(
             batch,
@@ -1020,7 +1029,7 @@ export function useLinkedInSearchActions(
 
       if (!isCurrent()) return;
       const noMoreResults = exhausted || !currentCursor;
-      setExecutedSearch(execution);
+      setExecutedSearch(filtersNotice ? { ...execution, filtersNotice } : execution);
       setCursor(currentCursor);
       if (!appendMode || latestTotal !== null) setTotal(latestTotal);
       setHasMoreResults(!noMoreResults);
@@ -1074,6 +1083,7 @@ export function useLinkedInSearchActions(
       } else {
         setResults(scoredBatch);
         setHasSearched(true);
+        onNewSearchResults?.(execution.scopeKey);
       }
 
     } catch (error: any) {
@@ -1082,7 +1092,7 @@ export function useLinkedInSearchActions(
 
       // Une page déjà servie a été payée : on l'affiche avant le message.
       if (receivedPage) {
-        setExecutedSearch(execution);
+        setExecutedSearch(filtersNotice ? { ...execution, filtersNotice } : execution);
         setCursor(currentCursor);
         if (!appendMode || latestTotal !== null) setTotal(latestTotal);
         setHasMoreResults(!exhausted && !!currentCursor);
@@ -1091,6 +1101,7 @@ export function useLinkedInSearchActions(
         } else {
           setResults(allCollected);
           setHasSearched(true);
+          onNewSearchResults?.(execution.scopeKey);
         }
       }
 
@@ -1122,8 +1133,8 @@ export function useLinkedInSearchActions(
         // NEVER auto-retry on session conflicts
         toast.error(
           isStandaloneSearch
-            ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si ça se répète, reconnectez-le avec la méthode cookie (Paramètres › Connexions) : elle partage la session au lieu d’en créer une deuxième.'
-            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si ça se répète, reconnectez votre compte avec la méthode cookie (Paramètres › Connexions) : elle partage la session au lieu d’en créer une deuxième.',
+            ? 'Conflit de session LinkedIn : votre compte est utilisé ailleurs. Si cela se répète, reconnectez-le dans Paramètres › Connexions.'
+            : 'Conflit de session LinkedIn. Attendez 2-3 minutes, ou si cela se répète, reconnectez votre compte dans Paramètres › Connexions.',
           {
             id: 'search-error',
             duration: 15000,
@@ -1150,12 +1161,12 @@ export function useLinkedInSearchActions(
         } else if (lowerErr.includes('rate') || lowerErr.includes('429')) {
           detail = 'Trop de requêtes LinkedIn. Patientez 5-10 min avant de relancer.';
         } else if (lowerErr.includes('credentials') || lowerErr.includes('expired')) {
-          detail = 'Session LinkedIn expirée. Reconnectez votre compte avec un nouveau cookie li_at.';
+          detail = 'Votre session a expiré. Reconnectez votre compte dans Paramètres › Connexions.';
         } else if (lowerErr.includes('not found') || lowerErr.includes('404')) {
-          detail = 'Compte LinkedIn introuvable. Reconnectez ou recréez le mapping.';
+          detail = 'Compte introuvable. Reconnectez votre compte dans Paramètres › Connexions.';
         }
 
-        toast.error(`Compte LinkedIn indisponible — ${detail}`, {
+        toast.error(`Compte LinkedIn indisponible. ${detail}`, {
           id: "search-error",
           duration: 15000,
           action: {
@@ -1188,22 +1199,19 @@ export function useLinkedInSearchActions(
         setLoadingMore(false);
       }
     }
-  }, [selectedAccount, selectedJob, cursor, results, quota, candidateStatus, activeProject?.kind, context, scopeKey, pedigreeAugmentation, queryClient, setExecutedSearch, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
+  }, [selectedAccount, selectedJob, cursor, results, quota, candidateStatus, activeProject?.kind, context, scopeKey, pedigreeAugmentation, queryClient, setExecutedSearch, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched, onNewSearchResults]);
 
   const handleLoadMore = useCallback(() => {
     if (!cursor) return;
-    const isDatabase = context.searchSource === 'database';
-    // La Base Konekt n'est pas soumise au quota de recherche LinkedIn (anti-ban) :
-    // la 1re page l'ignore déjà (cf. handleSearch), la pagination doit aussi —
-    // sinon « Lot suivant » reste sans effet une fois le compteur LinkedIn plein.
-    if (isDatabase || context.quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
-      handleSearch(true);
-    }
-  }, [cursor, handleSearch, context.quota, context.searchSource]);
+    // Let the search guard explain a reached quota instead of silently ignoring
+    // the click. It also preserves the database source's LinkedIn quota exemption.
+    void handleSearch(true);
+  }, [cursor, handleSearch]);
 
   return {
     handleSearch,
     handleLoadMore,
     searchNeedsRerun,
+    searchScopeKey: scopeKey,
   };
 }

@@ -66,6 +66,8 @@ function slice(source, start, marker) {
 const previewHook = read('src/hooks/useEnrollmentPreview.ts');
 const previewModal = read('src/components/outreach/EnrollmentPreviewModal.tsx');
 const enrollModal = read('src/components/outreach/SequenceEnrollModal.tsx');
+// Lot 5f-1 : l'écriture des inscriptions est dans la bibliothèque, pas dans les fenêtres.
+const enrollLib = read('src/lib/enrollCandidates.ts');
 const bulkInMail = read('src/components/outreach/BulkInMailModal.tsx');
 const accountsHook = read('src/hooks/useFilteredLinkedInAccounts.ts');
 
@@ -138,12 +140,17 @@ test('SEQ-032 — première étape A/B : tirage pondéré comme le moteur, jamai
 });
 
 test('SEQ-032 — les deux inscriptions tirent la première étape par candidat et l’enregistrent', () => {
+  // Un seul constructeur de première exécution, appelé pour chaque inscription créée par les deux écrivains.
+  assert.match(enrollLib, /const \{ step, variantAssigned \} = pickFirstStep\(ctx\.sequence\.steps\)/);
+  assert.match(enrollLib, /variant_assigned: variantAssigned/);
+  assert.match(enrollLib, /insertedRows\.flatMap\(enrollment => \{\s*const row = buildFirstExecution\(ctx, enrollment\.id, \{\}\);/, 'écriture groupée : un tirage par inscription');
+  assert.match(enrollLib, /buildFirstExecution\(ctx, enrollment\.id, stepConfigOverrides\)/, 'un candidat après l’autre : un tirage par inscription');
   for (const [name, source] of [['aperçu', previewModal], ['inscription simple', enrollModal]]) {
-    assert.match(source, /const \{ step: firstStep, variantAssigned \} = pickFirstStep\(sequence\.steps\)/, name);
-    assert.match(source, /variant_assigned: variantAssigned/, name);
+    assert.match(source, /await enrollCandidates\(\{/, name);
+    assert.doesNotMatch(source, /pickFirstStep\(sequence\.steps\)/, `${name} : le tirage n'est plus dans la fenêtre`);
   }
-  assert.doesNotMatch(previewModal, /sequence\.steps\.find\(\(s: any\) => \(s\.step_order \?\? s\.stepOrder\) === 0\)/);
-  assert.doesNotMatch(enrollModal, /const firstStep = sortedSteps\[0\]/);
+  assert.doesNotMatch(enrollLib, /sequence\.steps\.find\(\(s: any\) => \(s\.step_order \?\? s\.stepOrder\) === 0\)/);
+  assert.doesNotMatch(enrollLib, /const firstStep = sortedSteps\[0\]/);
 });
 
 // ---------------------------------------------------------------- SEQ-043
@@ -247,8 +254,11 @@ test('SEQ-046 / SEQ-066 — chaque inscription porte provider_id, email_used et 
   );
   assert.deepEqual(enrollmentRowFields({}), { provider_id: null, email_used: null, phone_used: null });
   assert.deepEqual(enrollmentRowFields({ contact_info: { emails: [''], phones: [] } }), { provider_id: null, email_used: null, phone_used: null });
+  // Un seul constructeur de ligne, pour les deux écrivains de la bibliothèque.
+  assert.match(enrollLib, /\.\.\.enrollmentRowFields\(profile\),/, 'la ligne d\'inscription doit poser les champs de contact');
+  assert.equal((enrollLib.match(/\.\.\.enrollmentRowFields\(/g) || []).length, 1);
   for (const [name, source] of [['aperçu', previewModal], ['inscription simple', enrollModal]]) {
-    assert.match(source, /\.\.\.enrollmentRowFields\(profile\),/, `${name} : la ligne d'inscription doit poser les champs de contact`);
+    assert.doesNotMatch(source, /enrollmentRowFields/, `${name} : la ligne n'est plus construite dans la fenêtre`);
   }
 });
 
@@ -268,7 +278,8 @@ test('SEQ-047 — pendant l’inscription, la préparation ne se ferme pas et mo
   assert.match(previewModal, /onClick=\{requestClose\} disabled=\{isBusy\}/);
   assert.doesNotMatch(slice(previewModal, 'function SummaryMode(', 'function SummaryRow('), /onClose|onEnroll|onShortlist/, 'le résumé n’a plus de bouton qui ferme ou inscrit hors de la garde');
   assert.match(previewModal, /`Inscription \$\{progress\.done\} sur \$\{progress\.total\}…`/);
-  assert.match(previewModal, /setEnrollProgress\(\{ done: index \+ 1, total: enrollSet\.length \}\)/);
+  assert.match(previewModal, /onProgress: \(done, total\) => setEnrollProgress\(\{ done, total \}\)/);
+  assert.match(enrollLib, /options\.onProgress\?\.\(index \+ 1, enrollSet\.length\)/);
   assert.match(previewModal, /Inscription en cours, ne fermez pas cette fenêtre\./);
   // Inscription simple : Échap, clic extérieur et croix ignorés pendant l'écriture.
   assert.match(enrollModal, /if \(!open && !isEnrolling\) handleClose\(\);/);
@@ -278,30 +289,33 @@ test('SEQ-047 — pendant l’inscription, la préparation ne se ferme pas et mo
 // ---------------------------------------------------------------- SEQ-048
 test('SEQ-048 — « Shortlister sans message » écrit organization_id et annonce le nombre réel', () => {
   const body = slice(previewModal, 'const handleShortlist = async () => {', 'const handleClose = () => {');
-  assert.match(body, /organization_id: organizationId/);
-  assert.match(body, /\.upsert\(rows, \{ onConflict: 'job_id,candidate_id,created_by' \}\)\s*\.select\('id'\)/);
-  assert.match(body, /if \(writeError\) throw writeError;/);
+  // Lot 5f-2 : la création des lignes et l'étape sont dans retainCandidates, appelé par la fenêtre et par la règle de l'inscription.
+  const retain = read('src/lib/retainCandidates.ts');
+  assert.match(retain, /organization_id: organizationId/);
+  assert.match(retain, /\.upsert\(rows, \{ onConflict: 'job_id,candidate_id,created_by' \}\)\s*\.select\('id'\)/);
+  assert.match(retain, /if \(writeError\) throw writeError;/);
   // Lot 0b-4 (N15) : le nombre annoncé est celui des lignes retenues par la base.
-  assert.match(body, /const saved = outcome\.updated \+ outcome\.unchanged;/);
+  assert.match(retain, /const saved = outcome\.updated \+ outcome\.unchanged;/);
   assert.match(body, /Ajout impossible : aucun candidat n'a été enregistré\./);
-  assert.doesNotMatch(body, /00000000-0000-0000-0000-000000000000/);
-  assert.doesNotMatch(body, /count\+\+/);
+  assert.doesNotMatch(retain, /00000000-0000-0000-0000-000000000000/);
+  assert.doesNotMatch(retain, /count\+\+/);
   // Jamais de rétrogradation d'un candidat contacté ou plus loin : plus de statut dans
   // l'upsert, Retenu seulement depuis À trier, Retenu ou Écarté (set_candidate_stages,
   // origine user), et les candidats laissés à leur étape sont annoncés.
-  const rowsPayload = slice(body, 'const missingProfiles = activeProfiles', '}));');
+  const rowsPayload = slice(retain, 'const missingProfiles = profiles', '}));');
   assert.doesNotMatch(rowsPayload, /\bstatus:/);
   // Lignes réelles du candidat dans la mission : clé du Sourcing (job.id, « project:<uuid> »),
   // lignes existantes sous l'une des deux formes reprises, jamais doublées.
   assert.match(rowsPayload, /job_id: job\.id,/);
-  assert.match(body, /\.in\('job_id', jobIdForms\)/);
-  assert.match(rowsPayload, /activeProfiles\.filter\(profile => !existingCandidates\.has\(profile\.id\)\);\s*const rows = missingProfiles\.map\(profile => \(\{/);
-  assert.match(body, /const ids = \[\.\.\.\(existingRows \?\? \[\]\)\.map\(r => r\.id\), \.\.\.written\.map\(r => r\.id\)\];/);
-  assert.match(body, /setCandidateStages\(ids, \{ stage: 'retained' \}, RETAIN_FROM_STAGES, \{ surface: 'enrollment' \}\)/);
+  assert.match(retain, /\.in\('job_id', jobIdForms\)/);
+  assert.match(rowsPayload, /profiles\.filter\(profile => !existingCandidates\.has\(profile\.id\)\);\s*const rows = missingProfiles\.map\(profile => \(\{/);
+  assert.match(retain, /const ids = \[\.\.\.\(existingRows \?\? \[\]\)\.map\(r => r\.id\), \.\.\.written\.map\(r => r\.id\)\];/);
+  assert.match(retain, /setCandidateStages\(\s*ids, \{ stage: 'retained' \}, params\.fromStages, \{ surface: params\.surface \},/);
+  assert.match(body, /fromStages: RETAIN_FROM_STAGES,\s*surface: 'enrollment',/);
   assert.match(previewModal, /const RETAIN_FROM_STAGES: GeneralStage\[\] = \['to_sort', 'retained', 'rejected'\];/);
-  assert.match(body, /skippedStageMessage\(outcome\.skipped\)/);
+  assert.match(body, /skippedStageMessage\(skippedCount\)/);
   // Sur échec total, la fenêtre reste ouverte : onSuccess n'est pas appelé.
-  const failure = slice(body, 'if (saved === 0 && outcome.skipped === 0) {', '}');
+  const failure = slice(body, 'if (saved === 0 && skippedCount === 0) {', '}');
   assert.doesNotMatch(failure, /onSuccess/);
   assert.match(failure, /return;/);
 });

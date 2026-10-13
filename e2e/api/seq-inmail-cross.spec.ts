@@ -28,16 +28,19 @@ import {
   enroll,
   enrollmentRow,
   executionsOf,
+  isNewChat,
   messageSequence,
   minutesFromNow,
   mockCalls,
   postJson,
   rand,
+  routes,
   runCycle,
   schedule,
   sendingOrg,
   sentTexts,
   setMockMode,
+  v2,
   webhook,
 } from '../helpers/sequence-engine';
 
@@ -166,7 +169,7 @@ async function makeDue(id: string) {
 
 /** InMails (et messages) réellement partis depuis ce compte vers le faux prestataire. */
 async function inmailSends(accountId: string) {
-  return (await mockCalls(accountId)).filter((c) => c.method === 'POST' && c.path === '/api/v1/chats');
+  return (await mockCalls(accountId)).filter(isNewChat);
 }
 
 type ProcessBody = { processed?: number; results?: Array<{ id: string; success: boolean; error?: string }> };
@@ -200,15 +203,9 @@ async function drainQueue() {
 // ─── Réponses ───────────────────────────────────────────────────────────────
 
 function replyOn(accountId: string, profileId: string) {
-  return webhook({
-    event: 'message_received',
-    account_id: accountId,
-    account_type: 'LINKEDIN',
-    chat_id: `chat_${rand()}`,
-    message_id: `msg_${rand()}`,
-    message: 'Bonjour, oui avec plaisir',
-    sender: { attendee_provider_id: profileId, attendee_id: `att_${rand()}`, attendee_name: 'Camille Martin' },
-  });
+  return webhook(v2.messageNew({
+    accountId, chatId: `chat_${rand()}`, messageId: `msg_${rand()}`, senderId: profileId, senderName: 'Camille Martin', text: 'Bonjour, oui avec plaisir',
+  }));
 }
 
 async function ownerToken(org: TestOrg) {
@@ -395,31 +392,36 @@ test.describe('InMail groupé et réponses du candidat', () => {
   // reponse-email-annule-inmail-programme
   test('une réponse par e-mail qui clôt l’inscription annule aussi l’InMail programmé de l’organisation vers ce candidat', async () => {
     const { org, accountId } = await newSendingOrg('E2E InMailX réponse e-mail');
-    const mailbox = `mbx_${rand()}`;
+    const mailbox = `acc_mbx${rand()}`;
     const mailboxAddress = `recruteur.${rand()}@e2e.konekt.test`;
     const { error: mbxError } = await admin().from('member_email_accounts').insert({
       organization_id: org.orgId, user_id: org.owner.userId, linked_by: org.owner.userId,
       email_account_id: mailbox, email_address: mailboxAddress, provider: 'GOOGLE',
     });
     if (mbxError) throw new Error(`member_email_accounts: ${mbxError.message}`);
-    // Le webhook lit l'e-mail reçu chez le prestataire : le faux prestataire l'adresse à cette boîte.
-    await setMockMode(mailbox, { email_address: mailboxAddress });
-    mockAccounts.push(mailbox);
     const candidateEmail = `camille.${rand()}@e2e.konekt.test`;
     const { sequenceId } = await messageSequence(org, org.owner.userId, ['Bonjour']);
     const { enrollmentId, profileId } = await enroll(org, sequenceId, org.owner.userId, accountId, { email_used: candidateEmail });
     const inmailId = await queueRow(org, accountId, profileId, { scheduled_at: minutesFromNow(90) });
 
-    await webhook({
-      event: 'mail_received',
-      account_id: mailbox,
-      email_id: `mail_${rand()}`,
-      message_id: `<${rand()}@mail.e2e>`,
+    // L'événement ne fait que nommer le courriel : l'application le relit sous le compte de la boîte (GET /emails/{id}).
+    const emailId = `mail_${rand()}`;
+    mockAccounts.push(mailbox);
+    await setMockMode(mailbox, { routes: [{ method: 'GET', op: 'getEmail', body: {
+      object: 'Email', id: emailId, message_id: `<${emailId}@mock.invalid>`, thread_id: `thread_${emailId}`, subject: 'Re: Votre parcours',
+      body: '<p>Bonjour, avec plaisir.</p>', body_plain: 'Bonjour, avec plaisir.', snippet: 'Bonjour, avec plaisir.', headers: [],
+      from: [{ email: candidateEmail }], to: [{ email: mailboxAddress }], cc: [], bcc: [], reply_to: [], date: new Date().toISOString(),
+      attachments: [], folders: ['INBOX'], is_unread: true,
+    } }] });
+    await webhook(v2.emailNew({
+      accountId: mailbox,
+      provider: 'google',
+      emailId,
       subject: 'Re: Votre parcours',
-      body_plain: 'Bonjour, avec plaisir.',
-      from_attendee: { display_name: 'Camille Martin', identifier: candidateEmail },
-      to_attendees: [{ display_name: 'Recruteur', identifier: 'recruteur@e2e.konekt.test' }],
-    });
+      bodyPlain: 'Bonjour, avec plaisir.',
+      from: candidateEmail,
+      to: mailboxAddress,
+    }));
 
     expect((await enrollmentRow(enrollmentId)).status, 'témoin : inscription close par la réponse').toBe('replied');
     // DÉFAUT inmail-programme-non-annule-apres-reponse-email : le canal e-mail ne lit jamais inmail_queue (unipile-webhook/index.ts:1874-2052).
@@ -610,8 +612,7 @@ test.describe('InMail groupé : mise en file et envoi', () => {
     await openSendingHours(org.orgId, org.owner.userId);
     mockAccounts.push(accountId);
     await setMockMode(accountId, {
-      routes: [{ method: 'GET', path: '^/api/v1/linkedin/inmail_balance$', status: 200, delay_ms: 8_000,
-        body: { object: 'InMailBalance', premium: 10, recruiter: 10, sales_navigator: 10 } }],
+      routes: [routes.inmailCredits({ classic: 10, recruiter: 10, sales_navigator: 10 }, { delay_ms: 8_000 })],
     });
     await drainQueue();
     const profileId = newProfileId();
@@ -622,7 +623,7 @@ test.describe('InMail groupé : mise en file et envoi', () => {
     // Le traitement attend le solde (8 s) : l'InMail est annulé pendant ce temps,
     // comme le ferait une réponse ou un effacement.
     const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline && !(await mockCalls(accountId)).some((c) => c.path === '/api/v1/linkedin/inmail_balance')) {
+    while (Date.now() < deadline && !(await mockCalls(accountId)).some((c) => c.op === 'getInmailCredits')) {
       await new Promise((r) => setTimeout(r, 200));
     }
     const { data: cancelled } = await admin().from('inmail_queue').update({ status: 'cancelled', error_message: 'Annulé par le test' })

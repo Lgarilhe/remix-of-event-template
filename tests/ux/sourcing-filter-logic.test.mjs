@@ -29,6 +29,7 @@ const symbols = Object.fromEntries([
   'Dialog', 'DialogContent', 'DialogHeader', 'DialogTitle', 'DialogFooter', 'Search', 'Loader2', 'Pencil', 'Plus', 'X', 'Lock', 'AlertTriangle', 'JobSelector',
   'Switch', 'Alert', 'AlertDescription', 'AlertTitle', 'Tooltip', 'TooltipContent', 'TooltipProvider', 'TooltipTrigger',
   'SearchHistory', 'LinkedInFilters', 'BaseKonektDialog', 'FilterFacets', 'AutoFillFiltersButton', 'SearchPromptBar', 'QuotaDisplay',
+  'PasteSearchUrl', 'RecruiterProjectPicker',
 ].map(name => [name, name]));
 const globals = { ...types, ...symbols, cn: (...args) => args.filter(Boolean).join(' '), plural: (_, singular) => singular };
 const flow = compile('src/components/outreach/search/SourcingFlow.tsx', globals, '\nexport { buildChips };');

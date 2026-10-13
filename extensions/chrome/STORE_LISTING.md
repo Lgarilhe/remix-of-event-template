@@ -146,7 +146,7 @@ Required to read the current tab's URL and title when the user clicks "Quick Add
 
 ### `scripting`
 ```
-Required to capture the real user-agent string from the active LinkedIn tab (via chrome.scripting.executeScript with a single navigator.userAgent line). The user-agent is needed by the Konekt backend + Unipile to avoid LinkedIn duplicate-session detection during reconnect.
+Required to capture the real user-agent string from the active LinkedIn tab (via chrome.scripting.executeScript with a single navigator.userAgent line). The user-agent is needed by the Konekt backend to avoid LinkedIn duplicate-session detection during reconnect.
 ```
 
 ### `host_permissions` — `https://*.linkedin.com/*`

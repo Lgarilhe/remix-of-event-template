@@ -217,8 +217,11 @@ test('F-15 — libellés reliés, boutons icône nommés, type d’organisation 
   assert.match(src.invite, /<label htmlFor="invite-role"/);
   assert.match(src.invite, /<SelectTrigger id="invite-role"/);
   assert.match(src.integrations, /<label htmlFor=\{fieldId\}/);
-  assert.match(src.integrations, /aria-label=\{`Déconnecter le compte \$\{accountName\}`\}/);
-  assert.match(src.integrations, /aria-label="Actualiser la liste des comptes"/);
+  assert.match(src.integrations, /aria-label=\{ORG_LINKEDIN_CARD\.removeAria\(accountName\)\}/);
+  assert.match(src.integrations, /aria-label=\{ORG_LINKEDIN_CARD\.refreshAria\}/);
+  const copy = read('src/lib/connectionCopy.ts');
+  assert.match(copy, /removeAria: \(name: string\) => `Retirer le compte \$\{name\} de Konekt`/);
+  assert.match(copy, /refreshAria: 'Actualiser la liste des comptes'/);
   assert.match(src.presets, /aria-label=\{`Modifier l'ICP \$\{preset\.name\}`\}/);
   assert.match(src.presets, /aria-label=\{`Supprimer l'ICP \$\{preset\.name\}`\}/);
   // Interrupteur du résumé du matin nommé par son libellé.
@@ -353,8 +356,9 @@ test('F-24 — « Ajouter une intégration » : menu du kit, icône Plus, filet 
 
 // ---------------------------------------------------------------- F-25 (part dans ces fichiers)
 test('F-25 — comptes LinkedIn de l’organisation : statut en mots, jamais le code brut', () => {
-  assert.match(src.integrations, /import \{ classifyLinkedInStatus, type LinkedInHealth \} from '@\/lib\/linkedinStatus';/);
-  assert.match(src.integrations, /const health = LINKEDIN_HEALTH\[classifyLinkedInStatus\(account\.status\)\];/);
+  assert.match(src.integrations, /import \{ classifyConnectionHealth, classifyLinkedInStatus \} from '@\/lib\/linkedinStatus';/);
+  assert.match(src.integrations, /const health = viewOfHealth\(\s*classifyConnectionHealth\(\{ status: account\.status, isLocked: account\.is_locked, sync: account\.initial_sync_status \}\),\s*'linkedin',\s*\);/);
+  assert.match(src.integrations, /readableConnectionName\(account\.name, 'linkedin'\)/, 'nom lisible, jamais un état encodé');
   assert.doesNotMatch(src.integrations, /: account\.status\}/, 'le statut brut ne s’affiche plus');
 });
 

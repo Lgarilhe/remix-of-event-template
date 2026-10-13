@@ -1,0 +1,241 @@
+{
+  "_meta": {
+    "basis": "schema-derived",
+    "values": "synthetic",
+    "note": "POST /v2/{account_id}/linkedin/sales-navigator/search/people (SalesNavPeople, spec recruiter-salesnav.md); requested at offset 25"
+  },
+  "context": {
+    "product": "sales_navigator",
+    "offset": 25
+  },
+  "input": {
+    "data": [
+      {
+        "object": "PeopleSearchResult",
+        "product": "sales_navigator",
+        "id": "ACoAAS0001",
+        "member_id": "4242",
+        "display_name": "Hugo Rousseau",
+        "public_identifier": "hugo-rousseau",
+        "profile_url": "https://www.linkedin.com/in/hugo-rousseau",
+        "location": "Bordeaux",
+        "headline": "Directeur commercial",
+        "network_distance": "SECOND_DEGREE",
+        "can_send_inmail": true,
+        "shared_relations_count": 8,
+        "summary": "Vente B2B.",
+        "has_been_viewed": false,
+        "has_been_saved": false,
+        "has_posted_recently": true,
+        "has_viewed_your_profile": false,
+        "was_hired_recently": true,
+        "was_promoted_recently": false,
+        "follows_your_company": false,
+        "is_premium": true,
+        "is_past_colleague": false,
+        "is_open_profile": true,
+        "contact_info": {
+          "emails": [
+            "hugo@example.com"
+          ],
+          "phones": []
+        },
+        "lists_count": 1,
+        "notes_count": 0,
+        "latest_contact": {
+          "type": "MESSAGE",
+          "performed_at": "2026-08-01T12:00:00.000Z"
+        },
+        "education": [],
+        "skills": [
+          {
+            "name": "Négociation",
+            "endorsement_count": 5
+          }
+        ],
+        "work_experience": [
+          {
+            "company": {
+              "id": "88",
+              "name": "VenteCo"
+            },
+            "job_title": "Directeur commercial",
+            "started_on": "02/01/2022"
+          }
+        ],
+        "languages": [],
+        "volunteering": []
+      },
+      {
+        "object": "PeopleSearchResult",
+        "product": "sales_navigator",
+        "id": "ACoAAS0002",
+        "display_name": "Ines Garcia",
+        "network_distance": "THIRD_DEGREE"
+      }
+    ],
+    "total_count": 60,
+    "next_cursor": "ignored_by_offset_licence"
+  },
+  "expected": {
+    "success": true,
+    "results": [
+      {
+        "id": "ACoAAS0001",
+        "provider_id": "ACoAAS0001",
+        "public_identifier": "hugo-rousseau",
+        "member_urn": "urn:li:member:4242",
+        "recruiter_candidate_id": null,
+        "name": "Hugo Rousseau",
+        "first_name": null,
+        "last_name": null,
+        "headline": "Directeur commercial",
+        "summary": "Vente B2B.",
+        "location": "Bordeaux",
+        "industry": null,
+        "profile_url": "https://www.linkedin.com/in/hugo-rousseau",
+        "public_profile_url": "https://www.linkedin.com/in/hugo-rousseau",
+        "profile_picture_url": null,
+        "profile_picture_url_large": null,
+        "network_distance": "DISTANCE_2",
+        "network_degree": "SECOND_DEGREE",
+        "can_send_inmail": true,
+        "open_to_work": null,
+        "is_open_to_work": null,
+        "premium": true,
+        "is_premium": true,
+        "open_profile": true,
+        "is_open_profile": true,
+        "verified": null,
+        "connections_count": null,
+        "followers_count": null,
+        "shared_connections_count": 8,
+        "profile_visibility": null,
+        "hiddenCandidate": null,
+        "interests": [],
+        "interestLikelihood": null,
+        "keywords_match": null,
+        "recently_hired": true,
+        "last_outreach_activity": {
+          "type": "MESSAGE",
+          "performed_at": "2026-08-01T12:00:00.000Z"
+        },
+        "contact_info": {
+          "emails": [
+            "hugo@example.com"
+          ],
+          "phones": [],
+          "adresses": [],
+          "socials": []
+        },
+        "work_experience": [
+          {
+            "id": null,
+            "company": "VenteCo",
+            "company_id": "88",
+            "company_url": null,
+            "company_picture_url": null,
+            "industry": null,
+            "location": null,
+            "role": "Directeur commercial",
+            "description": null,
+            "employment_type": null,
+            "workplace_type": null,
+            "current": true,
+            "skills": null,
+            "start": {
+              "year": 2022,
+              "month": 2
+            },
+            "end": null
+          }
+        ],
+        "current_positions": [
+          {
+            "id": null,
+            "company": "VenteCo",
+            "company_id": "88",
+            "company_url": null,
+            "company_picture_url": null,
+            "industry": null,
+            "location": null,
+            "role": "Directeur commercial",
+            "description": null,
+            "employment_type": null,
+            "workplace_type": null,
+            "current": true,
+            "skills": null,
+            "start": {
+              "year": 2022,
+              "month": 2
+            },
+            "end": null
+          }
+        ],
+        "past_positions": [],
+        "education": [],
+        "skills": [
+          {
+            "name": "Négociation",
+            "endorsement_count": 5,
+            "endorsement_id": null,
+            "endorsed": null,
+            "insights": null
+          }
+        ],
+        "languages": [],
+        "product": "sales_navigator",
+        "source_object": null
+      },
+      {
+        "id": "ACoAAS0002",
+        "provider_id": "ACoAAS0002",
+        "public_identifier": null,
+        "member_urn": null,
+        "recruiter_candidate_id": null,
+        "name": "Ines Garcia",
+        "first_name": null,
+        "last_name": null,
+        "headline": null,
+        "summary": null,
+        "location": null,
+        "industry": null,
+        "profile_url": null,
+        "public_profile_url": null,
+        "profile_picture_url": null,
+        "profile_picture_url_large": null,
+        "network_distance": "DISTANCE_3",
+        "network_degree": "THIRD_DEGREE",
+        "can_send_inmail": null,
+        "open_to_work": null,
+        "is_open_to_work": null,
+        "premium": null,
+        "is_premium": null,
+        "open_profile": null,
+        "is_open_profile": null,
+        "verified": null,
+        "connections_count": null,
+        "followers_count": null,
+        "shared_connections_count": null,
+        "profile_visibility": null,
+        "hiddenCandidate": null,
+        "interests": [],
+        "interestLikelihood": null,
+        "keywords_match": null,
+        "recently_hired": null,
+        "last_outreach_activity": null,
+        "contact_info": null,
+        "work_experience": null,
+        "current_positions": null,
+        "past_positions": null,
+        "education": null,
+        "skills": null,
+        "languages": null,
+        "product": "sales_navigator",
+        "source_object": null
+      }
+    ],
+    "cursor": "offset:27",
+    "total": 60
+  }
+}

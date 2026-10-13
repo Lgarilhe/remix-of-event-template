@@ -117,12 +117,15 @@ test('5D1-E1 previewProfileOf : les colonnes que handleEnroll écrira, sans entr
     id: 'x', provider_id: null, profile_name: null, profile_headline: null, profile_url: 'https://a', job_title: null, network_distance: 'OUT_OF_NETWORK',
   });
   // Mêmes sources que l'inscription : sinon l'aperçu ne serait pas le texte envoyé.
-  const upsert = between(modal, ".from('sequence_enrollments')\n            .upsert({", '}, {');
+  // Lot 5f-1 : la ligne est construite par la bibliothèque, pour les deux fenêtres.
+  const lib = read('src/lib/enrollCandidates.ts');
+  const upsert = between(lib, 'function buildEnrollmentRow(', 'const UPSERT_OPTIONS');
   assert.match(upsert, /profile_name: profile\.name,/);
   assert.match(upsert, /profile_headline: profile\.headline,/);
   assert.match(upsert, /profile_url: profile\.profile_url \|\| profile\.public_profile_url,/);
-  assert.match(upsert, /job_title: job\?\.title,/);
-  assert.match(upsert, /network_distance: normalizedDistance,/);
+  assert.match(upsert, /job_title: ctx\.jobTitle,/);
+  assert.match(lib, /jobTitle: options\.job\?\.title,/);
+  assert.match(upsert, /network_distance: normalizeNetworkDistance\(profile\.network_distance\),/);
   assert.match(upsert, /\.\.\.enrollmentRowFields\(profile\),/);
   assert.doesNotMatch(upsert, /company_name/, "l'inscription n'écrit pas d'entreprise : l'aperçu non plus");
   assert.match(modal, /jobTitle: job\?\.title \?\? null,/);
