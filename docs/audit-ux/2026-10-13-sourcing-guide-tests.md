@@ -5,10 +5,12 @@ Le dashboard propose « Trouver des candidats ». Une nouvelle recherche ou une 
 ## Ce que le testeur peut faire
 
 1. Décrire le poste depuis l’accueil, ou choisir une mission pour reprendre son cadrage complet.
-2. Répondre aux questions de l’assistant. Modifier un champ directement, demander un retrait ou un ajout de critères, changer les niveaux Bonus / Important / Indispensable et le caractère éliminatoire.
+2. Répondre aux questions de l’assistant. Modifier un champ directement, demander un retrait ou un ajout de critères, changer les niveaux Indispensable / Souhaité / Bonus et le caractère rédhibitoire.
 3. Ajuster les cinq pondérations de notation. Le total doit être 100 %. Le poids influence la notation ; il ne transforme pas une information absente du profil en information vérifiée.
 4. Choisir la source, valider, puis vérifier les filtres, les résultats et leur source. Le cadrage sauvegardé est aussi visible dans l’onglet Cadrage de la mission.
 5. Ouvrir un profil, le noter si nécessaire, le retenir ou l’écarter. Les retenus rejoignent le Pipeline. Modifier les filtres ou la source puis relancer explicitement. Un simple retour dans le sourcing conserve les résultats sans nouvelle recherche.
+
+Les champs du poste, les critères et les détails réutilisent les composants de Cadrage. Le chat reprend les enveloppes de messages et le composer de l’assistant existant ; la source utilise le SegmentedControl partagé. Aucun nouveau jeu de couleurs ni nouveau modèle de critères.
 
 Une réponse non envoyée empêche la validation. Une sortie avec un brouillon modifié demande confirmation. Les champs restent verrouillés pendant un échange. Un échec conserve le texte ; une modification du cadrage par une autre session empêche son remplacement. La sauvegarde utilise une condition sur `updated_at`.
 
@@ -30,7 +32,8 @@ La localisation de la Base Konekt est un nom de lieu, conservé dans les filtres
 ## Vérifications automatisées
 
 - `tests/agent/guided-sourcing.test.mjs` : validation des tours, plages et pondérations, refus des credentials service et des organisations étrangères, garde de crédits avant appel, décompte même si la sortie du modèle est invalide, aucune écriture du brief côté fonction, lieux sans appel LinkedIn.
-- `e2e/flows/guided-sourcing.spec.ts` : accueil et mission, sources reliée/non reliée, critères et pondérations réellement transmis à la génération, accès base absent, erreurs IA/sauvegarde, cadrage concurrent, protection du brouillon et lancement unique.
+- `tests/agent/guided-sourcing-filter-reset.test.mjs` : lancement depuis un cadrage validé sans conserver les anciens lieux, compétences, entreprises ou exclusions ; affinage manuel conservé.
+- `e2e/flows/guided-sourcing.spec.ts` : accueil et mission, sources reliée/non reliée, critères et pondérations réellement transmis à la génération, accès base absent, erreurs IA/sauvegarde, cadrage concurrent, protection du brouillon, lancement unique, refus d’un forfait incompatible, métadonnées des critères et du client conservées, description libre modifiable sans troncature, Échap dans les suggestions Client et critères vides.
 - Dialogues à 1440, 390 et 320 px en clair et sombre, avec vérification de débordement et audit axe WCAG A/AA. Les captures sont des données fictives.
 - `e2e/flows/sourcing-return.spec.ts` : résultats, notes, sélection, groupes, pagination, changements de contexte et retour depuis le Pipeline, sur les composants réels.
 
@@ -44,4 +47,4 @@ Les transports, la base et le modèle sont simulés aux frontières dans ces tes
 4. Refaire le parcours avec un compte LinkedIn de test et sa licence. Contrôler les filtres réellement représentables ; les limites de Classic, Sales Navigator et Recruiter ne sont pas interchangeables.
 5. Faire deux ou trois échanges avec le modèle réel, dont un retrait de compétence et une demande de changement de pondération. Vérifier le cadrage enregistré et la recherche finale avant d’ouvrir aux recruteurs.
 
-Vérification en lecture seule de production le 13 octobre 2026 : aucune clé Base Konekt par organisation et aucune ligne `base_konekt_usage` retrouvées ; une organisation porte un historique d’activation. Le resolver peut aussi utiliser une clé globale serveur : cette vérification ne prouve ni son absence ni un accès opérationnel. Ne pas annoncer la recherche sans LinkedIn comme validée en conditions réelles avant la recette ci-dessus.
+Vérification en lecture seule de production le 13 octobre 2026 : `sourcing-interview` n’est pas encore déployée ; aucune clé Base Konekt par organisation et aucune ligne `base_konekt_usage` retrouvées ; une organisation porte un historique d’activation. Le resolver peut aussi utiliser une clé globale serveur : cette vérification ne prouve ni son absence ni un accès opérationnel. Ne pas annoncer la recherche sans LinkedIn comme validée en conditions réelles avant la recette ci-dessus.

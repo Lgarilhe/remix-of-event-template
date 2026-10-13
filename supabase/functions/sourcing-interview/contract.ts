@@ -43,7 +43,7 @@ const enumValue = (v: unknown, values: readonly string[]) => {
 };
 
 /** Reject malformed fields; ignore unknown keys so AI cannot change access, client or process. */
-export function readBriefPatch(value: unknown, requireWeightsTotal = true): BriefPatch {
+export function readBriefPatch(value: unknown, requireWeightsTotal = true, allowEmptyCriteria = false): BriefPatch {
   const row = object(value);
   const out: Record<string, unknown> = {};
   if ('client' in row) {
@@ -76,7 +76,7 @@ export function readBriefPatch(value: unknown, requireWeightsTotal = true): Brie
     const ids = new Set<string>();
     out.evaluation_criteria = list(row.evaluation_criteria, 30).map(v => {
       const c = object(v); const id = text(c.id, 100); const label = text(c.label, 200);
-      if (!id || !label || ids.has(id) || ![1, 2, 3].includes(Number(c.weight)) || typeof c.weight !== 'number') throw new Error('Critère invalide.');
+      if (!id || (!label && !allowEmptyCriteria) || ids.has(id) || ![1, 2, 3].includes(Number(c.weight)) || typeof c.weight !== 'number') throw new Error('Critère invalide.');
       ids.add(id);
       if ('deal_breaker' in c && typeof c.deal_breaker !== 'boolean') throw new Error('Critère éliminatoire invalide.');
       return { id, label, description: text(c.description, 2000), category: enumValue(c.category, categories),

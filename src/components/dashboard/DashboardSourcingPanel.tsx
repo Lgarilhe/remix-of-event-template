@@ -35,14 +35,14 @@ export function DashboardSourcingPanel({ projects, loading, error }: { projects:
   return <section aria-labelledby="dashboard-sourcing-title">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       <h2 id="dashboard-sourcing-title" className="text-lg font-semibold">Trouver des candidats</h2>
-      <Button asChild variant="link" size="sm" className="min-h-11 px-0"><Link to="/sourcing">Mes recherches</Link></Button>
+      <Button asChild variant="link" size="sm" className="max-sm:min-h-11 px-0"><Link to="/sourcing">Mes recherches</Link></Button>
     </div>
     <Card className="space-y-4 p-4 sm:p-5">
       <p className="text-sm text-muted-foreground">Décrivez le profil. L’assistant complète le cadrage avec vous avant de chercher, avec ou sans compte LinkedIn relié.</p>
       <form onSubmit={event => { event.preventDefault(); open(); }} className="space-y-3">
         <label className="block space-y-1.5 text-sm">Pour une mission ou une nouvelle recherche
           <Select value={missionId || 'new'} disabled={loading} onValueChange={value => setMissionId(value === 'new' ? '' : value)}>
-            <SelectTrigger aria-label="Contexte de la recherche" className="min-h-11"><SelectValue /></SelectTrigger>
+            <SelectTrigger aria-label="Contexte de la recherche" className="max-sm:min-h-11"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="new">Nouvelle recherche</SelectItem>
               {projects.filter(p => p.status === 'active' && p.kind !== 'search').map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
@@ -52,7 +52,7 @@ export function DashboardSourcingPanel({ projects, loading, error }: { projects:
           onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); open(); } }} />
         {error && <p role="alert" className="text-sm">Les missions n’ont pas pu être chargées : {error}</p>}
         {missionError && <p role="alert" className="text-sm">Le cadrage de cette mission n’a pas pu être chargé. Choisissez une autre mission ou une nouvelle recherche.</p>}
-        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Vous pourrez ajuster les critères et leur importance.</p><Button type="submit" variant="primary" disabled={disabled} className="min-h-11"><Search aria-hidden="true" />Préparer la recherche</Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">Vous pourrez ajuster les critères et leur importance.</p><Button type="submit" variant="primary" disabled={disabled} className="max-sm:min-h-11"><Search aria-hidden="true" />Préparer la recherche</Button></div>
       </form>
     </Card>
     {dialog && <SourcingInterviewDialog initialBrief={dialog.mission?.job_details ?? {}} initialMessage={dialog.message}

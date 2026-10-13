@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { useFixture } from './mocks';
 import type { FixtureWindow } from './types';
 const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
-function App() {
+export function App() {
   useFixture();
   const location = useLocation();
   const [visible, setVisible] = useState(true);

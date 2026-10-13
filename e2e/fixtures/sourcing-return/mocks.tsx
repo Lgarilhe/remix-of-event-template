@@ -109,7 +109,7 @@ function from(table: string) {
 }
 export const supabase = {
   from,
-  rpc: async (name: string) => ({ data: name === 'get_base_konekt_state' ? { enabled: !!w.qaState.baseEnabled, plan_allows: !!w.qaState.baseEnabled, included_remaining: 10, credits_per_search: 2 } : null, error: null }),
+  rpc: async (name: string) => ({ data: name === 'get_base_konekt_state' ? { enabled: !!w.qaState.baseEnabled, plan_allows: w.qaState.basePlanAllows ?? !!w.qaState.baseEnabled, included_remaining: 10, credits_per_search: 2 } : null, error: null }),
   auth: { getUser: async () => ({ data: { user: user() } }), getSession: async () => ({ data: { session: session() } }), refreshSession: async () => ({ data: { session: session() } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: noop } } }) },
   functions: { invoke: async (name: string, options: { body: unknown }) => {
     const response = await fetch('/qa-api/' + name, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(options.body) });

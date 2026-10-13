@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { SourcingProject, useSourcingProjects } from '@/hooks/useSourcingProjects';
 import { useFilteredLinkedInAccounts } from '@/hooks/useFilteredLinkedInAccounts';
+import { useBaseKonektState } from '@/hooks/useBaseKonekt';
 import { OutreachSearchProvider } from '@/contexts/OutreachSearchContext';
 import { LinkedInSearch } from '@/components/outreach/LinkedInSearch';
 import { BrutalLoader } from '@/components/ui/brutal-loader';
@@ -42,6 +43,7 @@ export const MissionSourcing = ({ project: serverProject, layout = 'default', in
   }, []);
   const isV3 = layout === 'mission-v3';
   const { accounts, accountsLoading, selectedAccount, setSelectedAccount } = useFilteredLinkedInAccounts({ selectionScope: project.id });
+  const base = useBaseKonektState();
 
   const jd = (project.job_details || {}) as JobDetails;
   const briefCompletion = countBriefFields(jd);
@@ -96,7 +98,15 @@ export const MissionSourcing = ({ project: serverProject, layout = 'default', in
       linkedInAccount
         ? `Compte LinkedIn : ${linkedInAccount.name || linkedInAccount.identifier} (${linkedInAccount.status})${(linkedInAccount as any).subscriptions?.recruiter ? ' — Licence Recruiter' : (linkedInAccount as any).subscriptions?.sales_navigator ? ' — Licence Sales Navigator' : ' — Licence Classic'}`
         : 'Pas de compte LinkedIn connecté',
-      'Base Konekt : disponible',
+      base.isLoading
+        ? 'Base Konekt : vérification de l’accès en cours'
+        : base.isError
+          ? 'Base Konekt : accès non vérifié'
+          : !base.planAllows
+            ? 'Base Konekt : accès non inclus dans le forfait actuel'
+            : !base.isEnabled
+              ? 'Base Konekt : non activée pour cette organisation'
+              : `Base Konekt : activée pour cette organisation, ${base.includedRemaining} recherches incluses restantes. L’accès fournisseur et les crédits doivent encore être vérifiés au lancement.`,
       hasFilters ? `Filtres déjà générés : oui` : 'Filtres : non générés',
     ].join('\n');
 
@@ -108,7 +118,7 @@ export const MissionSourcing = ({ project: serverProject, layout = 'default', in
       projectId: project.id,
       accountId: selectedAccount || undefined,
     });
-  }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent]);
+  }, [project, jd, accounts, selectedAccount, hasFilters, openContextualAgent, base.isLoading, base.isError, base.planAllows, base.isEnabled, base.includedRemaining]);
 
   if (accountsLoading) {
     return (

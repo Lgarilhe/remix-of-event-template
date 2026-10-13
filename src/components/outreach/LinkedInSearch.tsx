@@ -1269,9 +1269,11 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (search.hasSearched || search.results.length > 0) { heroLaunchRef.current = false; return; }
     if (flowMode !== 'results') return;
     heroLaunchRef.current = false;
-    setFlowError('La recherche n\'a pas abouti. Vérifiez votre connexion LinkedIn et vos filtres, puis relancez.');
+    setFlowError(searchSource === 'database'
+      ? 'La recherche n’a pas abouti. Vérifiez l’accès à la Base Konekt et vos filtres, puis relancez.'
+      : 'La recherche n’a pas abouti. Vérifiez votre connexion LinkedIn et vos filtres, puis relancez.');
     setFlowMode('hero');
-  }, [activeProject?.id, flowMode, search.loading, search.hasSearched, search.results.length]);
+  }, [activeProject?.id, flowMode, search.loading, search.hasSearched, search.results.length, searchSource]);
 
   // Édition de filtres depuis la barre de chips : synchronise le ref (lu par
   // handleSearch) et marque la vue « modifiée » — la recherche ne repart que
@@ -1288,7 +1290,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   // Phrase (hero ou affinage) → filtres via IA Konekt. runSearch=false pour
   // l'affinage : les chips se mettent à jour, l'user choisit quand relancer.
-  const applyPhrase = useCallback(async (phrase: string, runSearch: boolean) => {
+  const applyPhrase = useCallback(async (phrase: string, runSearch: boolean, freshGeneration = false) => {
     if (!memoryContextReady) throw new Error('Attendez la vérification des mémoires avant de générer les filtres.');
     if (!search.selectedJob) throw new Error('Brief mission manquant.');
     if (!selectedAccount && searchSource !== 'database') throw new Error('Connectez votre compte LinkedIn pour lancer une recherche.');
@@ -1296,14 +1298,19 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     const scopeAtStart = liveMemoryScope.current;
     const briefAtStart = liveBriefKey.current;
     const epochAtStart = generationEpoch.current.version;
+    // A validated brief replaces the previous search request. Old locations,
+    // exclusions and skills must not survive a removal in the dialogue.
+    const generationFilters = freshGeneration
+      ? { ...INITIAL_FILTERS, api: search.filtersRef.current.api }
+      : search.filtersRef.current;
     const { update, suggestions, memoryContext } = await generateFiltersFromJob({
       job,
       organizationId,
       projectId: activeProject?.id ?? null,
       accountId: selectedAccount,
       searchSource: searchSource === 'database' ? 'database' : 'linkedin',
-      api: search.filtersRef.current.api,
-      currentLocation: search.filtersRef.current.location,
+      api: generationFilters.api,
+      currentLocation: generationFilters.location,
     });
     const currentScope = liveMemoryScope.current;
     if (scopeAtStart.organizationId !== currentScope.organizationId || scopeAtStart.projectId !== currentScope.projectId
@@ -1317,7 +1324,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     }
     if (!memoryContext && searchMemoryCount > 0) throw new Error('La génération n’a pas confirmé les mémoires utilisées. Réessayez.');
     setPlanChips(chipsFromUpdate(update));
-    const merged = { ...search.filtersRef.current, ...update };
+    const merged = { ...(freshGeneration ? generationFilters : search.filtersRef.current), ...update };
     search.setFilters(merged);
     search.filtersRef.current = merged;
     handleSuggestionsGenerated(suggestions ?? null);
@@ -1382,7 +1389,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   );
   const rerunFromChips = useCallback(() => { setChipsDirty(false); handleSearch(false); }, [handleSearch]);
 
-  const launchFlow = useCallback(async (phrase: string) => {
+  const launchFlow = useCallback(async (phrase: string, freshGeneration = false) => {
     if (flowBusyRef.current) return;
     flowBusyRef.current = true;
     setFlowError(null);
@@ -1392,7 +1399,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     setPlanStage('analyze');
     setFlowMode('plan');
     try {
-      await applyPhrase(phrase, true);
+      await applyPhrase(phrase, true, freshGeneration);
       // Updater fonctionnel : si l'effet de retour au hero est déjà passé
       // (recherche échouée), on ne l'écrase pas.
       setFlowMode(prev => (prev === 'plan' ? 'results' : prev));
@@ -1428,7 +1435,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
     if (searchSource === 'linkedin' && search.filters.api === 'database') return;
     if (!selectedAccount && searchSource !== 'database') return;
     initialPhraseDoneRef.current = true;
-    void launchFlow(initialPhrase.trim());
+    void launchFlow(initialPhrase.trim(), true);
   }, [isV3, initialPhrase, flowMode, search.selectedJob, search.loading, search.filters.api, selectedAccount, searchSource, launchFlow, memoryContextReady]);
 
   // Filtres du brief déjà chargés (filters_snapshot → useLinkedInSearch) et

@@ -67,6 +67,14 @@ test('edge validates output, settles consumed tokens even for malformed output, 
   assert.equal(bad.response.status, 400);
   assert.deepEqual(bad.events, ['gate', 'model', 'settle']);
 });
+test('existing unnamed Cadrage rows can be discussed, but AI cannot generate unnamed criteria', async () => {
+  const unnamed = { id: 'draft', label: '', description: '', category: 'technical', weight: 2 };
+  const result = await endpoint({ body: { brief: { evaluation_criteria: [unnamed] } } });
+  assert.equal(result.response.status, 200);
+  assert.ok(result.events.includes('model'));
+  const generated = await endpoint({ turn: { reply: 'Critère mis à jour', patch: { evaluation_criteria: [unnamed] } } });
+  assert.equal(generated.response.status, 400);
+});
 
 test('generated database places are visible chips, require no LinkedIn parameter lookup and keep user locations', async () => {
   let lookups = 0;

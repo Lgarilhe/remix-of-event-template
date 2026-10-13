@@ -12,6 +12,7 @@ export interface FixtureState {
   accountIds?: string[];
   projectId?: string;
   baseEnabled?: boolean;
+  basePlanAllows?: boolean;
   failSave?: boolean;
 }
 export interface FixtureCandidateStatus {

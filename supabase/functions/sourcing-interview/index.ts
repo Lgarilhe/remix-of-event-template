@@ -34,7 +34,9 @@ Deno.serve(async req => {
     if (!orgId || !await verifyOrgMembership(admin, auth.userId, orgId)) return json(403, { error: 'Organisation inaccessible' });
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     if (!message || message.length > 6000 || JSON.stringify(body.brief ?? {}).length > 40000) return json(400, { error: 'Réponse trop longue ou vide.' });
-    const brief = readBriefPatch(body.brief ?? {}, false);
+    // Existing Cadrage rows can still be drafts; the assistant may name them.
+    // Generated patches stay strict, and the UI rejects empty rows on save.
+    const brief = readBriefPatch(body.brief ?? {}, false, true);
     validateBriefRanges(brief, false);
     const { data: allowed, error: rateError } = await admin.rpc('check_rate_limit', { p_user_id: auth.userId, p_action: action, p_max_requests: 20, p_window_seconds: 60 });
     if (rateError || allowed !== true) return json(429, { error: 'Trop de demandes. Réessayez dans un instant.' });
