@@ -1415,7 +1415,16 @@ async function handleGetProfile(
   }
 
   if (beforeProvider) await beforeProvider();
-  const response = await fetchWithTimeout(`${baseUrl}/users/${unipileId(profile_id, 'profile_id')}?account_id=${encodeURIComponent(accountId)}`, {
+  let profileUrl = `${baseUrl}/users/${unipileId(profile_id, 'profile_id')}?account_id=${encodeURIComponent(accountId)}`;
+  if (params.include_details === true) {
+    // The provider otherwise returns identity only. Ask for the sections used
+    // by the candidate profile without notifying the person of this read.
+    for (const section of ['about', 'experience', 'education', 'skills', 'languages']) {
+      profileUrl += `&linkedin_sections=${section}`;
+    }
+    profileUrl += '&notify=false';
+  }
+  const response = await fetchWithTimeout(profileUrl, {
     headers: {
       'X-API-KEY': apiKey,
       'Accept': 'application/json',

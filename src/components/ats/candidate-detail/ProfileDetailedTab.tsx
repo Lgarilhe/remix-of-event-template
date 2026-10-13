@@ -31,7 +31,7 @@ export const ProfileDetailedTab: React.FC<Props> = ({ linkedinProfileData, enric
   const skills = enrichedProfile?.skills || [];
   const languages = enrichedProfile?.languages || [];
 
-  if (!summary && workExperience.length === 0 && education.length === 0 && skills.length === 0) {
+  if (!summary && workExperience.length === 0 && education.length === 0 && skills.length === 0 && languages.length === 0) {
     return (
       <EmptyState
         className="border-0 py-8"
