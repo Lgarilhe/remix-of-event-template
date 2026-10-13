@@ -12,8 +12,8 @@
 // Design simplifié (04/10/2026, docs/design/06-simplicite.md) : une seule rangée
 // (puces d'état sans cadre, comme au Pipeline, et bascule d'affichage sur fond
 // neutre) ; « Noter » est le seul bouton plein de l'écran, son coût écrit à côté ;
-// lignes avec visage et note en anneau ; décisions en boutons discrets ; une
-// seule phrase de pied de liste, qui dit combien de profils sont chargés.
+// lignes avec visage et note en anneau ; décisions en boutons discrets ;
+// un compteur et un accès à la suite près des groupes, hors du défilement de la liste.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
@@ -37,6 +37,7 @@ import { missionV3Path } from '@/lib/missionBeta';
 import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
 import { ScorePill } from '../pipeline/CandidateListRow';
+import { SourcingSearchFeedback } from './SourcingSearchFeedback';
 import {
   SOURCING_GROUPS,
   SOURCING_GROUP_LABEL,
@@ -121,6 +122,10 @@ export interface SourcingResultsV3Props {
   hasMoreResults: boolean;
   cursor: string | null;
   total: number | null;
+  /** La nouvelle recherche acceptée de cet écran ; une reprise du cache garde zéro. */
+  searchSuccessKey?: number;
+  /** Contexte complet de la recherche, pour ne jamais animer le retour d'une autre mission ou d'un autre compte. */
+  searchScopeKey?: string;
   selectedJob: Job | null;
   selectedProfiles: Set<string>;
   jobScores: Record<string, JobMatchResult>;
@@ -165,7 +170,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
     activeProject, chipsDirty, refineLoading, scrollAreaRef, onRerun, onLoadMore, onRefineSearch, onSetSelection,
     onToggleProfileSelection, onBatchScore, onRetainProfiles, onDismissProfiles, onRestoreCandidate, onOpenProfile,
     onOrderChange, onOpenInMail, onSequenceEnrollSuccess, renderCompact, renderCard, view = 'compact', onViewChange,
-    group, onGroupChange,
+    group, onGroupChange, searchSuccessKey = 0, searchScopeKey,
   } = props;
 
   const [localGroup, setLocalGroup] = useState<SourcingResultGroup>('to_sort');
@@ -180,9 +185,6 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
   const aiTriggerRef = useRef<HTMLButtonElement>(null);
   const selectAllRef = useRef<HTMLButtonElement>(null);
   const wasConfirmingRef = useRef(false);
-  // Annonce vocale du chargement de la suite : le bouton « Voir la suite » reste en place (le focus ne se perd pas).
-  const [loadAnnouncement, setLoadAnnouncement] = useState('');
-  const wasLoadingMoreRef = useRef(false);
 
   const rows = useMemo<Row[]>(() => profiles.map((profile) => {
     const status = treatedCandidates.get(profile.id);
@@ -215,19 +217,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
     [groups.retained],
   );
 
-  const loadedLabel = `${plural(results.length, 'profil chargé', 'profils chargés')}${
-    total !== null && total > results.length ? ` sur ${total.toLocaleString('fr-FR')}` : ''
-  }`;
-  useEffect(() => {
-    if (loadingMore) {
-      wasLoadingMoreRef.current = true;
-      setLoadAnnouncement('Chargement de la suite');
-      return;
-    }
-    if (!wasLoadingMoreRef.current) return;
-    wasLoadingMoreRef.current = false;
-    setLoadAnnouncement(`${loadedLabel}.`);
-  }, [loadingMore, loadedLabel]);
+  const canLoadMore = hasMoreResults && !!cursor;
 
   // Fin de notation : plus de « Notation en cours » sur les lignes lancées.
   useEffect(() => {
@@ -310,11 +300,56 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
     onBatchScore(ids);
   };
 
+  const showEmpty = hasSearched && !loading && profiles.length === 0 && !canLoadMore && !loadingMore;
+  // Même premier enfant dans les trois états : la réponse garde le feedback et son animation montés.
+  const feedback = (loading || hasSearched || results.length > 0 || canLoadMore || loadingMore || (chipsDirty && !!onRerun)) && (
+    <SourcingSearchFeedback
+      loading={loading}
+      loadingMore={loadingMore}
+      loadedCount={results.length}
+      total={total}
+      hasSearched={hasSearched}
+      searchSuccessKey={searchSuccessKey}
+      searchScopeKey={searchScopeKey ?? `${activeProject?.id ?? 'search'}:${selectedAccount ?? 'database'}`}
+    >
+      {!showEmpty && (chipsDirty && onRerun ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onRerun}
+          disabled={loading || loadingMore}
+          className="text-foreground max-sm:min-h-11"
+        >
+          {loading ? 'Recherche en cours' : 'Relancer avec les nouveaux filtres'}
+        </Button>
+      ) : !chipsDirty && (canLoadMore || loadingMore) && (
+        // aria-disabled conserve le focus pendant le chargement ; un clic depuis Retenus ou Écartés ouvre À trier.
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={loadingMore ? undefined : () => {
+            if (loading || chipsDirty || !canLoadMore) return;
+            pickTab('to_sort');
+            onLoadMore();
+          }}
+          disabled={loading && !loadingMore}
+          aria-disabled={loadingMore || undefined}
+          className={cn('text-foreground max-sm:min-h-11', loadingMore && 'cursor-default hover:bg-transparent')}
+        >
+          {loadingMore ? <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+          {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}
+        </Button>
+      ))}
+    </SourcingSearchFeedback>
+  );
+
   // ------------------------------------------------------------ chargement
 
   if (loading && results.length === 0) {
     return (
-      <div role="status" aria-busy="true" aria-label="Chargement des résultats" className="flex min-h-[420px] flex-col">
+      <div className="flex min-h-[420px] w-full min-w-0 flex-col lg:h-full lg:min-h-0">
+        {feedback}
+        <div data-testid="sourcing-search-skeleton" aria-hidden="true" aria-busy="true">
         <div className="flex h-8 items-center gap-3">
           <span className="h-3.5 w-52 rounded bg-muted" />
           <span className="h-3.5 w-36 rounded bg-muted/60" />
@@ -338,15 +373,18 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             <span className="hidden h-3 flex-1 rounded bg-muted/50 md:block" />
           </div>
         ))}
+        </div>
       </div>
     );
   }
 
   // ------------------------------------------------------------ aucun profil
 
-  if (hasSearched && !loading && profiles.length === 0) {
+  if (showEmpty) {
     return (
-      <div className="flex flex-col items-center px-4 py-16 text-center">
+      <div className="flex min-h-[420px] w-full min-w-0 flex-col lg:h-full lg:min-h-0">
+        {feedback}
+        <div className="flex flex-col items-center px-4 py-16 text-center">
         <IconTile icon={Search} size="lg" aria-hidden="true" className="mb-4" />
         <p className="text-base font-semibold text-foreground">Aucun profil trouvé</p>
         <p className="mt-1 max-w-md text-sm text-muted-foreground">Essayez d'ajuster vos filtres pour élargir votre recherche.</p>
@@ -366,13 +404,13 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             Élargir les filtres avec l'IA
           </Button>
         )}
+        </div>
       </div>
     );
   }
 
   // ------------------------------------------------------------ résultats
 
-  const canLoadMore = hasMoreResults && !!cursor;
   const allToSortSelected = toSort.length > 0 && selectedRows.length === toSort.length;
   const someToSortSelected = selectedRows.length > 0 && !allToSortSelected;
   const activeTabId = `sourcing-onglet-${tab}`;
@@ -386,6 +424,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
 
   return (
     <div className="flex min-h-[420px] w-full min-w-0 flex-col lg:h-full lg:min-h-0">
+      {feedback}
       {/* Rangée B : une seule rangée, comme au Pipeline : puces d'état sans cadre et bascule d'affichage. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
         <div role="tablist" aria-label="Groupes de résultats" className="flex shrink-0 items-center gap-1">
@@ -418,16 +457,6 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             );
           })}
         </div>
-        {chipsDirty && onRerun && (
-          <button
-            type="button"
-            onClick={onRerun}
-            disabled={loading}
-            className="inline-flex h-8 items-center rounded-md px-1 text-sm text-brand underline-offset-4 transition-colors duration-150 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:text-muted-foreground disabled:no-underline max-sm:min-h-11"
-          >
-            {loading ? 'Recherche en cours' : 'Relancer avec les nouveaux filtres'}
-          </button>
-        )}
         {renderCompact && renderCard && onViewChange && (
           <div role="group" aria-label="Affichage des profils à trier" className="ml-auto inline-flex shrink-0 items-center rounded-lg bg-muted p-0.5">
             {VIEW_OPTIONS.map((option) => (
@@ -449,7 +478,7 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
         )}
       </div>
 
-      <section id="sourcing-groupe" role="tabpanel" aria-labelledby={activeTabId} className="flex min-h-0 flex-1 flex-col">
+      <section id="sourcing-groupe" role="tabpanel" aria-labelledby={activeTabId} aria-busy={loading || loadingMore || undefined} className="flex min-h-0 flex-1 flex-col">
         {/* Rangée C : actions du groupe. */}
         {tab === 'to_sort' && !confirmAi && (
           <div role="toolbar" aria-label="Actions sur les profils à trier" className={cn('mt-3 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-2', !richCompact && 'pl-2')}>
@@ -721,8 +750,6 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             </tbody>
           </table>
           )}
-          <span role="status" className="sr-only">{loadAnnouncement}</span>
-
           {groups[tab].length === 0 && tab === 'to_sort' && !(hasSearched && results.length === 0) && (
             <div className="flex flex-col items-center gap-3 px-2 py-8 text-center">
               <Illustration name="tri" size="lg" />
@@ -733,33 +760,18 @@ export function SourcingResultsV3(props: SourcingResultsV3Props) {
             <p className="px-2 py-5 text-sm text-muted-foreground">
               {tab === 'to_sort'
                 ? hasSearched && results.length === 0
-                  ? 'Aucun profil à trier. Cette recherche ne trouve aucun profil : ajustez vos filtres.'
+                  ? canLoadMore
+                    ? 'Aucun profil à trier dans les résultats déjà parcourus. Consultez la suite pour continuer la recherche.'
+                    : 'Aucun profil à trier. Ajustez vos filtres pour trouver d’autres profils.'
                   : 'Aucun profil à trier.'
                 : tab === 'retained' ? 'Aucun profil retenu.' : 'Aucun profil écarté.'}
             </p>
           )}
-          {/* Pied de liste : une seule phrase, qui dit où en est le chargement. */}
+          {/* Pied de liste : une seule phrase pour annoncer la fin du chargement. */}
           {tab === 'to_sort' && !hasMoreResults && results.length > 0 && groups.to_sort.length > 0 && (
             <p className="px-2 py-4 text-sm text-muted-foreground">
-              Tous les profils de cette recherche sont chargés. Élargissez vos filtres pour en trouver d'autres.
+              Fin des résultats disponibles pour cette recherche. Élargissez vos filtres pour en trouver d'autres.
             </p>
-          )}
-          {tab === 'to_sort' && (canLoadMore || loadingMore) && (
-            <div className="flex flex-wrap items-center gap-x-1 px-2 py-3 text-sm text-muted-foreground">
-              <span>{loadedLabel}.</span>
-              {/* Le bouton reste en place pendant le chargement (aria-disabled, jamais disabled) : le focus ne tombe pas sur la page. */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={loadingMore ? undefined : onLoadMore}
-                disabled={loading && !loadingMore}
-                aria-disabled={loadingMore || undefined}
-                className={cn('text-foreground max-sm:min-h-11', loadingMore && 'cursor-default hover:bg-transparent')}
-              >
-                {loadingMore ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-                {loadingMore ? 'Chargement de la suite' : 'Voir la suite'}
-              </Button>
-            </div>
           )}
 
           {/* Barre de sélection, flottante en bas (À trier seulement). */}

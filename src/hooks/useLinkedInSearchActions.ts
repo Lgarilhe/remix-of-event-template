@@ -64,6 +64,7 @@ interface SearchSetters {
   setTotal: (v: number | null) => void;
   setHasSearched: (v: boolean) => void;
   setExecutedSearch: (v: ExecutedSourcingSearch | null) => void;
+  onNewSearchResults?: (scopeKey: string) => void;
 }
 
 /** Optional augmentation : injecte des IDs LinkedIn pré-résolus (annuaire
@@ -726,6 +727,7 @@ export function useLinkedInSearchActions(
     setTotal,
     setHasSearched,
     setExecutedSearch,
+    onNewSearchResults,
   } = setters;
 
   const queryClient = useQueryClient();
@@ -1074,6 +1076,7 @@ export function useLinkedInSearchActions(
       } else {
         setResults(scoredBatch);
         setHasSearched(true);
+        onNewSearchResults?.(execution.scopeKey);
       }
 
     } catch (error: any) {
@@ -1091,6 +1094,7 @@ export function useLinkedInSearchActions(
         } else {
           setResults(allCollected);
           setHasSearched(true);
+          onNewSearchResults?.(execution.scopeKey);
         }
       }
 
@@ -1188,22 +1192,19 @@ export function useLinkedInSearchActions(
         setLoadingMore(false);
       }
     }
-  }, [selectedAccount, selectedJob, cursor, results, quota, candidateStatus, activeProject?.kind, context, scopeKey, pedigreeAugmentation, queryClient, setExecutedSearch, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched]);
+  }, [selectedAccount, selectedJob, cursor, results, quota, candidateStatus, activeProject?.kind, context, scopeKey, pedigreeAugmentation, queryClient, setExecutedSearch, setLoading, setLoadingMore, setResults, setCursor, setHasMoreResults, setTotal, setHasSearched, onNewSearchResults]);
 
   const handleLoadMore = useCallback(() => {
     if (!cursor) return;
-    const isDatabase = context.searchSource === 'database';
-    // La Base Konekt n'est pas soumise au quota de recherche LinkedIn (anti-ban) :
-    // la 1re page l'ignore déjà (cf. handleSearch), la pagination doit aussi —
-    // sinon « Lot suivant » reste sans effet une fois le compteur LinkedIn plein.
-    if (isDatabase || context.quota.canPerformAction('searchResultsFetched', RESULTS_PER_BATCH)) {
-      handleSearch(true);
-    }
-  }, [cursor, handleSearch, context.quota, context.searchSource]);
+    // Let the search guard explain a reached quota instead of silently ignoring
+    // the click. It also preserves the database source's LinkedIn quota exemption.
+    void handleSearch(true);
+  }, [cursor, handleSearch]);
 
   return {
     handleSearch,
     handleLoadMore,
     searchNeedsRerun,
+    searchScopeKey: scopeKey,
   };
 }

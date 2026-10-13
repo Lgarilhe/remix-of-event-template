@@ -32,6 +32,61 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — BUG — Profil candidat consultable depuis la messagerie
+
+**Contexte** : le panneau Profil de la messagerie pouvait échouer malgré un identifiant LinkedIn utilisable. Le participant, ses alias triés et l’URL publique ne conservaient pas la priorité de l’identité du profil. Le lecteur serveur présentait aussi certaines pannes, limitations ou déconnexions comme un profil introuvable ; une relecture ratée masquait les données déjà affichées.
+**Fait** : le contexte utilise l’identifiant du profil avant celui du participant, puis conserve cet ordre dans le chargement et le cache. L’URL publique ne sert de reprise qu’après un `404 PROFILE_NOT_FOUND` confirmé par le serveur, avec deux consultations au maximum ; un ancien 502, un refus ou un quota ne déclenchent aucune autre consultation. Le serveur distingue l’absence explicite du profil, la connexion LinkedIn, l’accès, le quota et l’indisponibilité, sans exposer ses messages internes. La fiche déjà chargée reste visible après une relecture ou actualisation ratée. Réessayer garde son bouton et son focus pendant l’attente, bloque les doubles clics et annonce le chargement ; fermer le contexte restitue le focus sans le reprendre à une autre fenêtre ouverte.
+**Validation** : 27 parcours Chromium passent sur les sources finales, dont le véritable écran de messagerie à 920 et 390 px, les courses entre personnes/organisations/comptes et les contrôles mobiles 320/390 px (axe sans violation, aucun débordement). Trois parcours navigateur échouent sur le code initial. 27 cas comportementaux du profil passent, dont 18 échouent sur l’ancien hook ; 83 cas UX ciblés et 32 fichiers de tests agents passent. Le lecteur serveur est vérifié sur 11 tests / 30 variantes sans fournisseur réel. Build réussi ; onze diagnostics TypeScript hérités identiques hors décalage de lignes, lint sans aggravation et quinze compteurs design inchangés. Revue indépendante favorable.
+
+| Persona | Parcours | Verdict |
+|---|---|---|
+| Guillaume | Profil enregistré complet sans consultation, priorité de l’identité, fiche conservée après erreur | PASS |
+| Claire | Profil sans fiche locale, absence explicite, erreur compréhensible et reprise réussie | PASS |
+| Théo | Refus et quota sans repli, réessai protégé, réponses tardives et caches isolés | PASS |
+| Sophie | 320/390 px, chargement visible, focus du réessai et retour au contexte, accessibilité | PASS |
+
+**Limites** : transports simulés pour la QA ; aucun contact candidat, appel fournisseur réel ni écriture de données en production. La capture du signalement ne donne pas la cause distante exacte pour ce candidat ; sa disponibilité réelle reste à confirmer après déploiement.
+**Refs** : branche `codex/fix-inbox-profile-20261013` ; `useInboxCandidateProfile.ts`, `CandidateProfilePanel.tsx`, `MessageView.tsx`, `unipile-search`, `e2e/flows/inbox-profile.spec.ts`.
+
+---
+
+## 2026-10-13 — BUG — Recherche visible pendant l’attente et à réception des résultats
+
+**Contexte** : relancer une recherche conservait les anciens profils sans indication assez claire de l’attente ni de l’arrivée d’une nouvelle réponse. Le compteur ne distinguait pas une actualisation des résultats d’une reprise du cache.
+**Fait** : feedback V3 stable pendant le premier chargement, la relance et un résultat vide. Un rail indéterminé annonce « Recherche en cours » et identifie les anciens profils encore affichés. Chaque première page réellement acceptée fournit un signal lié au contexte complet ; à réception, « Résultats mis à jour » accompagne un compteur animé pendant 500 ms. Une valeur inconnue reste non communiquée et zéro reste zéro. La pagination possède son annonce propre ; les retours depuis le cache et les changements A→B→A ne rejouent pas de réussite. Les anciennes valeurs restent conservées quand la recherche n’est pas actualisée. Une annonce accessible utilise les valeurs finales, sans suivre chaque image de l’animation ; le mouvement réduit affiche ces valeurs immédiatement.
+**Focus** : la fermeture des filtres après une relance pouvait perdre sa cible parce que « Nouvelle recherche » devenait désactivé. Ce bouton conserve désormais le focus avec `aria-disabled` pendant l’attente ; son activation est bloquée tant que la recherche est en cours.
+**Validation** : build final réussi ; onze diagnostics TypeScript hérités exactement identiques au socle, lint sans aggravation et quinze compteurs design inchangés. Trente et un fichiers de tests agents passent, dont 39 cas de cycle de recherche et de provenance des réponses. Gardes UX concernés réussis. Couverture locale de 42 parcours : 40 réussis avant le dernier correctif de focus, puis quatre parcours mobiles rejoués sur le code final, dont les deux nouveaux qui échouaient sur le focus. La suite complète est prévue dans la CI de publication.
+
+| Persona | Parcours | Verdict |
+|---|---|---|
+| Guillaume | Trente notes, sélection et groupes conservés ; relance identique, suite distincte et retour au cache | PASS |
+| Claire | Activité visible immédiatement, nouveau total 75→128, zéro résultat explicite | PASS |
+| Théo | Réponse en échec ou partielle, total inconnu, réessai et provenance mission/compte/source/contexte | PASS |
+| Sophie | 320/390 px, mouvement réduit, focus pendant et après attente, activation bloquée, aucun débordement ni violation axe | PASS |
+
+**Limites** : transports et modèle simulés ; aucun sourcing réel, contact candidat ou écriture en production pour les tests. Changements de présentation et signal de réponse acceptée seulement ; taille des lots, scores et contrats serveur conservés.
+**Refs** : branche `codex/sourcing-search-feedback-20261013` ; `SourcingSearchFeedback.tsx`, `e2e/flows/sourcing-return.spec.ts`, `tests/agent/sourcing-search-lifecycle.test.mjs`.
+
+---
+
+## 2026-10-13 — BUG — Accès visible à la suite des résultats de sourcing
+
+**Contexte** : « Voir la suite » était placé au bas du défilement et seulement dans À trier. Une page entièrement retirée par les filtres locaux masquait l’action malgré un curseur restant ; une nouvelle recherche pouvait garder Retenus ou Écartés. Le contrôle préalable du quota ignorait aussi le clic sans message. Cinq parcours sur le code initial reproduisent les défauts de visibilité et de groupe ; le test du quota échoue également avant correction.
+**Fait** : un seul compteur des profils chargés et une action pour la suite, près des groupes et hors du défilement. L’action reste accessible avec un lot localement vide et depuis Retenus ou Écartés ; elle ouvre À trier. Une nouvelle recherche ouvre ce groupe uniquement quand ses résultats sont appliqués, y compris après une réussite partielle. Les retours depuis le cache, les lots suivants et les erreurs sans résultat conservent le groupe choisi. Le total annoncé est distinct des profils chargés ; la fin des lots ne promet pas l’exhaustivité du marché. Le clic passe par le contrôle de quota qui affiche le motif, avec exemption LinkedIn conservée pour la Base Konekt.
+**Validation** : build réussi ; onze diagnostics TypeScript exactement identiques au socle, lint sans aggravation. Quatorze compteurs design inchangés et un bouton brut en moins. Trente parcours navigateur validés sur onze sources applicatives dont les SHA256 correspondent au worktree : 29 réussis dans le passage complet, puis le parcours de modification des filtres réussi avec l’action réellement affichée. Trente et un fichiers de tests agents passent, dont 38 cas comportementaux de cycle de recherche ; gardes UX ciblés réussis. Les attentes asynchrones des tests suivent maintenant l’état réel plutôt qu’un délai fixe de 5 ms.
+
+| Persona | Parcours | Verdict |
+|---|---|---|
+| Guillaume | Trente notes et sélection conservées ; suite depuis chaque groupe ; nouveau résultat et retour au sourcing | PASS |
+| Claire | Action visible sans défilement, 25 puis 50 puis 75 profils, total annoncé et fin des lots distincts | PASS |
+| Théo | Lot filtré vide, curseurs exacts, double clic, réessai après erreur, quota, résultats partiels et relance après modification | PASS |
+| Sophie | 320/390 px, cible de 44 px, focus pendant et après chargement, aucun débordement ni violation axe | PASS |
+
+**Limites** : services simulés ; aucune recherche réelle, aucun modèle réel ni contact candidat ou écriture en production pour les tests. Aucune modification de la taille des lots, du scoring, du serveur ou du schéma. La visibilité corrigée concerne la présentation V3 ; la vue historique reste couverte par ses régressions.
+**Refs** : branche `codex/fix-sourcing-pagination-20261013` ; `e2e/flows/sourcing-return.spec.ts`, `tests/agent/sourcing-search-lifecycle.test.mjs`, `tests/ux/lot12-sourcing.test.mjs`.
+
+---
+
 ## 2026-10-12 — SHIP — Lot 5f-2b : onglet Contactés et pastille de Prise de contact
 
 **Contexte** : première part de la fin du lot 5f-2, en lecture seule, construite sur les propositions de `docs/refonte-mission/lot5f2b-conception.md` (la spec-cible citée par le plan n'existe pas dans le dépôt).

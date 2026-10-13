@@ -111,9 +111,9 @@ export function SourcingTopBar({ filterCount, onRefine, onNewSearch, disabled = 
             type="button"
             variant="ghost"
             size="sm"
-            onClick={onNewSearch}
-            disabled={disabled}
-            className="max-sm:min-h-11"
+            onClick={() => { if (!disabled) onNewSearch(); }}
+            aria-disabled={disabled || undefined}
+            className="max-sm:min-h-11 aria-disabled:cursor-not-allowed aria-disabled:text-muted-foreground aria-disabled:hover:bg-transparent"
           >
             Nouvelle recherche
           </Button>

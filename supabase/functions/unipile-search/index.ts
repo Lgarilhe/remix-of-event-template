@@ -1422,12 +1422,39 @@ async function handleGetProfile(
     },
   });
 
-  const data = await response.json();
+  const data = response.ok ? await response.json() : await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    let status = response.status === 503 ? 503 : 502;
+    let errorType = 'PROFILE_UNAVAILABLE';
+    let error = 'LinkedIn ne répond pas pour le moment. Réessayez dans quelques instants.';
+    const detail = typeof data?.detail === 'string' ? data.detail : data?.message;
+    // A missing account or route is not a missing candidate. Only the documented
+    // user absence permits the client to retry this identity using its public URL.
+    const profileNotFound = response.status === 404
+      && (!data?.type || data.type === 'errors/resource_not_found')
+      && typeof detail === 'string' && /^(?:User|Profile) not found\.?$/i.test(detail.trim());
+    if (profileNotFound) {
+      status = 404;
+      errorType = 'PROFILE_NOT_FOUND';
+      error = 'Ce profil est introuvable sur LinkedIn. Vérifiez le lien du candidat.';
+    } else if (response.status === 401) {
+      // Provider credentials are distinct from the authenticated Konekt session.
+      status = 403;
+      errorType = 'LINKEDIN_CONNECTION_REQUIRED';
+      error = 'Reconnectez votre compte LinkedIn dans les paramètres pour consulter ce profil.';
+    } else if (response.status === 403) {
+      status = 403;
+      errorType = 'ACCOUNT_ACCESS';
+      error = 'Votre compte LinkedIn ne permet pas de consulter ce profil.';
+    } else if (response.status === 429) {
+      status = 429;
+      errorType = 'RATE_LIMIT';
+      error = 'La limite de consultation des profils LinkedIn est atteinte. Réessayez plus tard.';
+    }
     return new Response(
-      JSON.stringify({ success: false, error: data.message || 'Profil non trouvé' }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: false, error, errorType }),
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 

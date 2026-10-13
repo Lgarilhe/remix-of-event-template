@@ -16,11 +16,13 @@ export async function sourcingReturnHarnessHtml() {
     'contexts/LinkedInAccountsContext', 'hooks/useMemberLinkedInAccounts', 'contexts/AgentContext',
     'hooks/useAgentMemories', 'hooks/useSourcingProjects', 'hooks/useJobCandidateStatus',
   ].map(file => path.join(root, 'src', file)));
-  const baselineFiles = new Set(['src/components/outreach/LinkedInSearch.tsx', 'src/hooks/useFilteredLinkedInAccounts.ts', 'src/components/missions/MissionSourcing.tsx']);
+  const baselineFiles = new Set(['src/components/outreach/LinkedInSearch.tsx', 'src/hooks/useFilteredLinkedInAccounts.ts', 'src/components/missions/MissionSourcing.tsx',
+    'src/components/missions/v3/sourcing/SourcingResultsV3.tsx', 'src/hooks/useLinkedInSearchActions.ts']);
   const observedSources = new Set([...baselineFiles, 'src/hooks/useLinkedInSearch.ts',
     'src/hooks/useLinkedInScoring.ts', 'src/lib/invokeWithCredits.ts', 'src/lib/invokeEdgeFunction.ts',
     'src/components/outreach/search/SearchResultsPanel.tsx', 'src/components/missions/v3/sourcing/SourcingResultsV3.tsx',
-    'src/lib/sourcingSearchLifecycle.ts']);
+    'src/components/missions/v3/sourcing/SourcingSearchFeedback.tsx',
+    'src/components/missions/v3/sourcing/SourcingTopBar.tsx', 'src/lib/sourcingSearchLifecycle.ts']);
   const sourceHashes: Record<string, string> = {};
   const bundle = await build({
     entryPoints: [path.join(fixture, 'main.tsx')], bundle: true, write: false,
@@ -44,7 +46,9 @@ export async function sourcingReturnHarnessHtml() {
     } }],
     alias: { '@': path.join(root, 'src') },
   });
+  const cssSource = await readFile(path.join(root, 'src/index.css'), 'utf8');
+  sourceHashes['src/index.css'] = createHash('sha256').update(cssSource).digest('hex');
   const css = await postcss([tailwindcss({ config: path.join(root, 'tailwind.config.ts') })])
-    .process(await readFile(path.join(root, 'src/index.css'), 'utf8'), { from: path.join(root, 'src/index.css') });
+    .process(cssSource, { from: path.join(root, 'src/index.css') });
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sourcing QA</title><style>${css.css}</style></head><body><div id="root"></div><script>window.qaSourceHashes=${JSON.stringify(sourceHashes)};${bundle.outputFiles[0].text.replaceAll('</script', '<\\/script')}</script></body></html>`;
 }
