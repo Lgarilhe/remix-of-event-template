@@ -65,6 +65,8 @@ interface InvokeWithCreditsOptions {
   skipCreditCheck?: boolean;
   /** User-selected model override (e.g. from ModelPicker) */
   modelOverride?: string;
+  /** Cancel both the credit pre-auth and the following request */
+  signal?: AbortSignal;
 }
 
 interface InvokeResult<T> {
@@ -99,7 +101,14 @@ export async function invokeWithCredits<T = Record<string, unknown>>(
         action: 'preauth',
         ai_action: aiAction,
         model,
-      });
+      }, { signal: options?.signal });
+
+      if (preauthError?.code === 'ABORTED') {
+        return {
+          data: { success: false, error: preauthError.message, error_code: 'ABORTED' } as InvokeResult<T>['data'],
+          error: preauthError,
+        };
+      }
 
       // Only block when pre-auth explicitly says "no credits"
       if (!preauthError && preauthResult && preauthResult.has_credits === false) {
@@ -130,7 +139,7 @@ export async function invokeWithCredits<T = Record<string, unknown>>(
     _ai_model: model,
     _ai_action: aiAction,
     _ai_description: options?.description || functionName,
-  });
+  }, { signal: options?.signal });
 
   // Refus de crédits renvoyé par la fonction : 402 du garde serveur, posé avant
   // l'appel au modèle. Le test porte sur le code, pas sur le texte du message,
