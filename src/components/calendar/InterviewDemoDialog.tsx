@@ -1,19 +1,18 @@
+import { useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { ArrowRight, CheckCircle2, ClipboardList, FileText, Mic, Play, User, Video, X } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ClipboardList, FileText, Mic, Play, User, X } from 'lucide-react';
 import { ProfileDetailedTab } from '@/components/ats/candidate-detail/ProfileDetailedTab';
+import { ScorecardEditor, type ScorecardCriterion } from '@/components/ats/ScorecardEditor';
+import { ProfileDetailSheet } from '@/components/outreach/result-card/ProfileDetailSheet';
+import type { LinkedInProfile } from '@/components/outreach/types';
 import { CalendarServiceLogo } from '@/components/calendar/CalendarServiceLogo';
 import type { DemoDraft, PreviewTab } from '@/components/calendar/CalendarDemoProvider';
 import { texturedCard } from '@/components/layout';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
 import { CALENDAR_DEMO_SERVICE_LABELS, type CalendarDemoInterview } from '@/lib/calendarDemo';
-import { cn } from '@/lib/utils';
 
 interface InterviewDemoDialogProps {
   selected: CalendarDemoInterview;
@@ -25,132 +24,131 @@ interface InterviewDemoDialogProps {
   onRestoreFocus: (event: Event) => void;
 }
 
-/** Fiche d'exemple : mêmes contenus de profil, brouillons entièrement locaux. */
+/** La fiche et l'éditeur habituels ; seules les données et leur sauvegarde sont locales. */
 export default function InterviewDemoDialog({ selected, tab, draft, onClose, onTabChange, onDraftChange, onRestoreFocus }: InterviewDemoDialogProps) {
-  return (
-    <Sheet open onOpenChange={value => { if (!value) onClose(); }}>
-      <SheetContent side="right" hideClose className="flex !w-full !max-w-[100vw] min-w-0 flex-col gap-0 overflow-hidden p-0 sm:!w-[95vw] sm:!max-w-[720px]"
-        onCloseAutoFocus={onRestoreFocus}>
-        <>
-          <SheetHeader className="shrink-0 border-b border-border p-4 pr-14 text-left sm:p-5 sm:pr-14">
-            <div className="flex min-w-0 items-start gap-3">
-              <Avatar className="h-12 w-12 shrink-0"><AvatarFallback>{selected.initials}</AvatarFallback></Avatar>
-              <div className="min-w-0 space-y-1">
-                <p className="text-xs text-muted-foreground">Fiche candidat · Exemple</p>
-                <SheetTitle className="break-words text-lg">{selected.event.meta?.candidateName}</SheetTitle>
-                <SheetDescription className="break-words">{selected.event.meta?.candidateHeadline}</SheetDescription>
-              </div>
-            </div>
-          </SheetHeader>
-          <SheetClose asChild><Button variant="ghost" size="icon" className="absolute right-2 top-3 h-11 w-11" aria-label="Fermer"><X aria-hidden="true" /></Button></SheetClose>
-          <Tabs value={tab} onValueChange={value => onTabChange(value as PreviewTab)} className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="mx-3 my-3 grid h-auto shrink-0 grid-cols-4 sm:mx-5">
-              <TabsTrigger value="profile" className="min-h-11 min-w-0 gap-1.5 px-1 text-xs sm:text-sm"><User className="hidden h-4 w-4 sm:block" aria-hidden="true" />Profil</TabsTrigger>
-              <TabsTrigger value="scorecard" className="min-h-11 min-w-0 gap-1.5 px-1 text-xs sm:text-sm"><ClipboardList className="hidden h-4 w-4 sm:block" aria-hidden="true" />Évaluation</TabsTrigger>
-              <TabsTrigger value="assistant" className="min-h-11 min-w-0 gap-1.5 px-1 text-xs sm:text-sm"><Mic className="hidden h-4 w-4 sm:block" aria-hidden="true" />Assistant</TabsTrigger>
-              <TabsTrigger value="meeting" className="min-h-11 min-w-0 gap-1.5 px-1 text-xs sm:text-sm"><Video className="hidden h-4 w-4 sm:block" aria-hidden="true" />Visio</TabsTrigger>
-            </TabsList>
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5 sm:pb-5">
-              <TabsContent value="profile" className="mt-0">
-                <ProfileDetailedTab linkedinProfileData={selected.profile} enrichedProfile={null} />
-              </TabsContent>
-              <TabsContent value="scorecard" className="mt-0">
-                <ScorecardPreview interview={selected} draft={draft} onChange={onDraftChange} />
-              </TabsContent>
-              <TabsContent value="assistant" className="mt-0 space-y-4">
-                {draft.simulation === 'idle' ? <section className={texturedCard('teal', 'space-y-4 rounded-xl p-5')}>
-                  <Mic className="h-6 w-6" aria-hidden="true" />
-                  <div><h3 className="text-md font-semibold">Assistant d’entretien</h3>
-                    <p className="mt-2 text-sm leading-relaxed">Découvrez la transcription, les points à approfondir et le compte rendu à partir d’un échange fictif.</p></div>
-                  <Button variant="primary" onClick={() => onDraftChange({ simulation: 'transcript' })} className="min-h-11"><Play aria-hidden="true" />Lancer la simulation</Button>
-                  <p className="text-xs">Aucun micro, enregistrement ou crédit IA utilisé.</p>
-                </section> : <>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge variant="info"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Extrait simulé</Badge>
-                    <Button variant="ghost" size="sm" className="min-h-11" onClick={() => onDraftChange({ simulation: 'idle' })}>Recommencer</Button>
-                  </div>
-                  {draft.simulation === 'transcript' ? <>
-                    <section className="space-y-3 rounded-xl border border-border bg-card p-4" aria-label="Transcription fictive">
-                      <h3 className="text-sm font-semibold">Transcription</h3>
-                      {selected.transcript.map((line, index) => <p key={index} className="text-sm leading-relaxed text-foreground-secondary"><strong className="font-semibold text-foreground">{line.speaker} : </strong>{line.text}</p>)}
-                    </section>
-                    <section className="space-y-2 rounded-xl border border-info/30 bg-info-muted p-4" aria-label="Conseil fictif de l’assistant">
-                      <h3 className="text-sm font-semibold">À approfondir</h3>
-                      <p className="text-sm text-foreground-secondary">{selected.insight}</p>
-                      <p className="text-sm font-medium">« {selected.followUp} »</p>
-                    </section>
-                    <Button variant="primary" onClick={() => onDraftChange({ simulation: 'report' })} className="min-h-11"><FileText aria-hidden="true" />Voir le compte rendu</Button>
-                  </> : <section className="space-y-4 rounded-xl border border-border bg-card p-4" aria-label="Compte rendu fictif">
-                    <div><h3 className="text-md font-semibold">Compte rendu fictif</h3><p className="mt-1 text-xs text-muted-foreground">Exemple pré-écrit pour explorer le parcours</p></div>
-                    <p className="text-sm leading-relaxed text-foreground-secondary">{selected.report}</p>
-                    <Button variant="outline" onClick={() => onTabChange('scorecard')} className="min-h-11">Compléter ma grille<ArrowRight aria-hidden="true" /></Button>
-                  </section>}
-                </>}
-              </TabsContent>
-              <TabsContent value="meeting" className="mt-0 space-y-4">
-                <section className="flex min-h-56 flex-col items-center justify-center gap-4 rounded-xl border border-border bg-muted p-5 text-center">
-                  <CalendarServiceLogo service={selected.meeting} className="h-10 w-10" />
-                  <Avatar className="h-16 w-16"><AvatarFallback className="text-xl">{selected.initials}</AvatarFallback></Avatar>
-                  <div><h3 className="text-md font-semibold">Aperçu {CALENDAR_DEMO_SERVICE_LABELS[selected.meeting]}</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">Dans un véritable rendez-vous, « Rejoindre » ouvre son lien de visio.</p></div>
-                  <p className="text-xs text-muted-foreground">Aucune réunion ouverte. Caméra et micro désactivés.</p>
-                </section>
-                <Button variant="primary" className="min-h-11" onClick={() => onTabChange('assistant')}><Mic aria-hidden="true" />Essayer l’assistant</Button>
-              </TabsContent>
-            </div>
-          </Tabs>
-        </>
-      </SheetContent>
-    </Sheet>
-  );
+  const [criterionIndex, setCriterionIndex] = useState(0);
+  const profile = useMemo<LinkedInProfile>(() => ({
+    ...selected.profile,
+    id: selected.event.id,
+    name: selected.event.meta?.candidateName,
+    headline: selected.event.meta?.candidateHeadline,
+  }), [selected]);
+  const criteria = useMemo<ScorecardCriterion[]>(() => selected.criteria.map(criterion => ({
+    id: criterion.id,
+    label: criterion.label,
+    description: criterion.description,
+    category: criterion.category,
+    weight: criterion.weight,
+    suggestedQuestions: [criterion.question],
+    ratingRubric: criterion.ratingRubric,
+  })), [selected]);
+  const rated = criteria.filter(criterion => draft.ratings[criterion.id] != null);
+  const weightedScore = rated.length
+    ? rated.reduce((sum, criterion) => sum + draft.ratings[criterion.id] * criterion.weight, 0)
+      / rated.reduce((sum, criterion) => sum + criterion.weight, 0)
+    : null;
+  const assistantOpen = tab === 'assistant' || tab === 'meeting';
+  const assistant = assistantOpen ? <div className="space-y-4">
+    <div className="flex items-center justify-between gap-2">
+      <h3 className="text-sm font-semibold">{tab === 'meeting' ? 'Visioconférence' : 'Assistant d’entretien'}</h3>
+      <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Fermer le panneau d’entretien" onClick={() => onTabChange('scorecard')}><X aria-hidden="true" /></Button>
+    </div>
+    {tab === 'meeting'
+      ? <MeetingPreview interview={selected} onOpenAssistant={() => onTabChange('assistant')} />
+      : <AssistantPreview interview={selected} draft={draft} onChange={onDraftChange} onOpenScorecard={() => onTabChange('scorecard')} />}
+  </div> : undefined;
+  const evaluation = <div className="space-y-4">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5"><CalendarServiceLogo service={selected.calendar} className="h-4 w-4" />{CALENDAR_DEMO_SERVICE_LABELS[selected.calendar]}</span>
+      <span>Grille préparée · {format(parseISO(selected.event.startAt), 'd MMMM à HH:mm', { locale: fr })}</span>
+    </div>
+    <ScorecardEditor
+      value={{
+        criteria, ratings: draft.ratings, comments: draft.comments, overallScore: weightedScore,
+        jobTitle: selected.event.subtitle, interviewStage: 'phone_screen',
+        recommendation: draft.recommendation, summary: draft.notes, followUpNotes: draft.followUpNotes,
+      }}
+      currentCriterionIndex={criterionIndex}
+      onCriterionChange={setCriterionIndex}
+      onRate={(id, rating) => onDraftChange({ ratings: { ...draft.ratings, [id]: rating } })}
+      onComment={(id, comment) => onDraftChange({ comments: { ...draft.comments, [id]: comment } })}
+      onRecommendationChange={recommendation => onDraftChange({ recommendation })}
+      onSummaryChange={notes => onDraftChange({ notes })}
+      onFollowUpNotesChange={followUpNotes => onDraftChange({ followUpNotes })}
+      status={<p role="status" className="text-xs text-muted-foreground">Exemple fictif · Modifications conservées dans cet aperçu</p>}
+      actions={<>
+        <Button variant={tab === 'assistant' ? 'secondary' : 'outline'} size="sm" className="max-md:min-h-11" aria-label={tab === 'assistant' ? "Fermer l'assistant d'entretien" : "Ouvrir l'assistant d'entretien"} onClick={() => onTabChange(tab === 'assistant' ? 'scorecard' : 'assistant')}><Mic aria-hidden="true" />Assistant</Button>
+        <Button variant="outline" size="sm" className="max-md:min-h-11" onClick={() => onTabChange('meeting')}><CalendarServiceLogo service={selected.meeting} className="h-4 w-4" />Rejoindre</Button>
+      </>}
+      assistant={assistant}
+    />
+  </div>;
+
+  return <ProfileDetailSheet
+    profile={profile}
+    open
+    onOpenChange={open => { if (!open) onClose(); }}
+    selectedJob={null}
+    localPreview
+    hideStandardTabs
+    pipelineMeta={{ stage: 'Exemple fictif', stageOptions: [] }}
+    initialTab="evaluation"
+    activeTab={tab === 'profile' ? 'profile' : 'evaluation'}
+    onActiveTabChange={next => onTabChange(next === 'profile' ? 'profile' : 'scorecard')}
+    onCloseAutoFocus={onRestoreFocus}
+    extraTabs={[
+      { key: 'profile', label: 'Profil', icon: User, content: <ProfileDetailedTab linkedinProfileData={selected.profile} enrichedProfile={null} /> },
+      { key: 'evaluation', label: 'Évaluation', icon: ClipboardList, content: evaluation },
+    ]}
+  />;
 }
 
-function ScorecardPreview({ interview, draft, onChange }: {
+function AssistantPreview({ interview, draft, onChange, onOpenScorecard }: {
   interview: CalendarDemoInterview;
   draft: DemoDraft;
   onChange: (update: Partial<DemoDraft>) => void;
+  onOpenScorecard: () => void;
 }) {
-  const rated = Object.values(draft.ratings);
-  const average = rated.length ? (rated.reduce((sum, value) => sum + value, 0) / rated.length).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) : null;
-  return <section className="space-y-4" aria-label="Grille fictive">
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="text-md font-semibold">Grille d’entretien</h3>
-      <p className="text-xs text-muted-foreground" role="status">{rated.length}/{interview.criteria.length} critères notés{average ? ` · Moyenne ${average}/5` : ''}</p>
-    </div>
-    <div className="space-y-1 border-b border-border pb-3">
-      <p className="text-sm font-medium">{interview.event.subtitle}</p>
-      <p className="text-xs text-muted-foreground">Grille préparée · {format(parseISO(interview.event.startAt), 'd MMMM à HH:mm', { locale: fr })}</p>
-      <p className="text-xs text-muted-foreground">Exemple fictif. Vos notes restent dans cet aperçu.</p>
-    </div>
-    {interview.criteria.map(criterion => <fieldset key={criterion.id} className="min-w-0 space-y-3 rounded-xl border border-border bg-card p-3 sm:p-4">
-      <legend className="px-1 text-sm font-semibold">{criterion.label}</legend>
-      <p className="text-sm text-foreground-secondary">{criterion.question}</p>
-      <div role="radiogroup" aria-label={`Note : ${criterion.label}`} className="flex flex-wrap gap-1.5"
-        onKeyDown={event => {
-          if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
-          event.preventDefault();
-          const current = draft.ratings[criterion.id] ?? 1;
-          const value = event.key === 'Home' ? 1 : event.key === 'End' ? 5
-            : ['ArrowLeft', 'ArrowUp'].includes(event.key) ? (current === 1 ? 5 : current - 1) : (current === 5 ? 1 : current + 1);
-          onChange({ ratings: { ...draft.ratings, [criterion.id]: value } });
-          event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[value - 1]?.focus();
-        }}>
-        {[1, 2, 3, 4, 5].map(value => <Button key={value} type="button" role="radio" aria-checked={draft.ratings[criterion.id] === value}
-          tabIndex={(draft.ratings[criterion.id] ?? 1) === value ? 0 : -1}
-          aria-label={`${value} sur 5`} variant={draft.ratings[criterion.id] === value ? 'primary' : 'outline'}
-          className={cn('h-11 min-w-11 px-3', draft.ratings[criterion.id] === value && 'font-semibold')}
-          onClick={() => onChange({ ratings: { ...draft.ratings, [criterion.id]: value } })}>{value}</Button>)}
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={`demo-comment-${criterion.id}`}>Commentaire : {criterion.label}</Label>
-        <Textarea id={`demo-comment-${criterion.id}`} rows={2} value={draft.comments[criterion.id] ?? ''} maxLength={3000}
-          onChange={event => onChange({ comments: { ...draft.comments, [criterion.id]: event.target.value } })} placeholder="Votre observation…" />
-      </div>
-    </fieldset>)}
-    <div className="space-y-2 rounded-xl border border-border bg-card p-3 sm:p-4">
-      <Label htmlFor="demo-interview-notes">Notes de l’entretien</Label>
-      <Textarea id="demo-interview-notes" rows={3} value={draft.notes} maxLength={6000}
-        onChange={event => onChange({ notes: event.target.value })} placeholder="Points forts, questions à creuser, prochaines étapes…" />
-    </div>
+  if (draft.simulation === 'idle') return <section className={texturedCard('teal', 'space-y-4 rounded-xl p-5')}>
+    <Mic className="h-6 w-6" aria-hidden="true" />
+    <p className="text-sm leading-relaxed">Découvrez la transcription, les points à approfondir et le compte rendu à partir d’un échange fictif.</p>
+    <Button variant="primary" onClick={() => onChange({ simulation: 'transcript' })} className="min-h-11"><Play aria-hidden="true" />Lancer la simulation</Button>
+    <p className="text-xs">Aucun micro, enregistrement ou crédit IA utilisé.</p>
   </section>;
+
+  return <>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <Badge variant="info"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Extrait simulé</Badge>
+      <Button variant="ghost" size="sm" className="min-h-11" onClick={() => onChange({ simulation: 'idle' })}>Recommencer</Button>
+    </div>
+    {draft.simulation === 'transcript' ? <>
+      <section className="space-y-3 rounded-xl border border-border bg-card p-4" aria-label="Transcription fictive">
+        <h3 className="text-sm font-semibold">Transcription</h3>
+        {interview.transcript.map((line, index) => <p key={index} className="text-sm leading-relaxed text-foreground-secondary"><strong className="font-semibold text-foreground">{line.speaker} : </strong>{line.text}</p>)}
+      </section>
+      <section className="space-y-2 rounded-xl border border-info/30 bg-info-muted p-4" aria-label="Conseil fictif de l’assistant">
+        <h3 className="text-sm font-semibold">À approfondir</h3>
+        <p className="text-sm text-foreground-secondary">{interview.insight}</p>
+        <p className="text-sm font-medium">« {interview.followUp} »</p>
+      </section>
+      <Button variant="primary" onClick={() => onChange({ simulation: 'report' })} className="min-h-11"><FileText aria-hidden="true" />Voir le compte rendu</Button>
+    </> : <section className="space-y-4 rounded-xl border border-border bg-card p-4" aria-label="Compte rendu fictif">
+      <div><h3 className="text-md font-semibold">Compte rendu fictif</h3><p className="mt-1 text-xs text-muted-foreground">Exemple pré-écrit pour explorer le parcours</p></div>
+      <p className="text-sm leading-relaxed text-foreground-secondary">{interview.report}</p>
+      <Button variant="outline" onClick={onOpenScorecard} className="min-h-11">Compléter ma grille<ArrowRight aria-hidden="true" /></Button>
+    </section>}
+  </>;
+}
+
+function MeetingPreview({ interview, onOpenAssistant }: { interview: CalendarDemoInterview; onOpenAssistant: () => void }) {
+  return <div className="space-y-4">
+    <section className="flex min-h-56 flex-col items-center justify-center gap-4 rounded-xl border border-border bg-muted p-5 text-center">
+      <CalendarServiceLogo service={interview.meeting} className="h-10 w-10" />
+      <Avatar className="h-16 w-16"><AvatarFallback className="text-xl">{interview.initials}</AvatarFallback></Avatar>
+      <div><h3 className="text-md font-semibold">Aperçu {CALENDAR_DEMO_SERVICE_LABELS[interview.meeting]}</h3>
+        <p className="mt-2 text-sm text-muted-foreground">Dans un véritable rendez-vous, « Rejoindre » ouvre son lien de visio.</p></div>
+      <p className="text-xs text-muted-foreground">Aucune réunion ouverte. Caméra et micro désactivés.</p>
+    </section>
+    <Button variant="primary" className="min-h-11" onClick={onOpenAssistant}><Mic aria-hidden="true" />Essayer l’assistant</Button>
+  </div>;
 }

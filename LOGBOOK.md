@@ -32,6 +32,12 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — BUG — Même fiche et scorecard dans l’aperçu des rendez-vous
+
+**Contexte** : le rendez-vous fictif ouvrait une fiche et une grille simplifiées, distinctes des composants habituels du candidat.
+**Fait** : l’aperçu monte la fiche commune et l’éditeur de scorecard extrait de la vue réelle : un critère à la fois, barème, notes, recommandation, résumé et suivi. Les brouillons restent locaux et séparés par rendez-vous ; l’assistant simulé occupe le panneau de la grille. Les lectures distantes, enrichissements, actions métier et micro ne sont pas activés par l’aperçu.
+**Validation** : build, audit design, régressions ciblées et rendu des composants sans accès DB passants ; onze erreurs TypeScript héritées inchangées. Les douze parcours agenda couvrent les quatre personas (navigation et conservation, simplicité, isolation, mobile 320 px/focus) ; exécution navigateur requise en CI avant fusion. Les parcours des vraies grilles restent dans la vérification de régression.
+
 ## 2026-10-13 — BUG — Profil candidat consultable depuis la messagerie
 
 **Contexte** : le panneau Profil de la messagerie pouvait échouer malgré un identifiant LinkedIn utilisable. Le participant, ses alias triés et l’URL publique ne conservaient pas la priorité de l’identité du profil. Le lecteur serveur présentait aussi certaines pannes, limitations ou déconnexions comme un profil introuvable ; une relecture ratée masquait les données déjà affichées.
