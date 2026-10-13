@@ -395,9 +395,10 @@ test('Vue Détaillé : un clic dans la feuille ouverte depuis une carte n\'ouvre
 
   // Un clic sur du texte de la feuille (titre, résumé, nom du candidat) remonte par l'arbre React jusqu'à la carte,
   // qui ouvrirait la fiche : la feuille reste la seule fenêtre ouverte.
-  await sheet(page).getByRole('heading', { name: 'Prise de contact' }).click();
-  await flow(page).getByRole('heading', { name: 'Contacter 1 candidat' }).click();
-  await group(page, 'ready').locator(`[data-contact-row="${lea.id}"]`).getByText(lea.name).click();
+  // Court délai : si la fiche s'ouvre au premier clic, elle recouvre la feuille et les clics suivants échouent vite.
+  await sheet(page).getByRole('heading', { name: 'Prise de contact' }).click({ timeout: 5_000 });
+  await flow(page).getByRole('heading', { name: 'Contacter 1 candidat' }).click({ timeout: 5_000 });
+  await group(page, 'ready').locator(`[data-contact-row="${lea.id}"]`).getByText(lea.name).click({ timeout: 5_000 });
   await expect(page.locator('[role="dialog"]')).toHaveCount(1);
   await expect(sheet(page)).toBeVisible();
   await expect(page.getByRole('dialog', { name: lea.name, exact: true })).toHaveCount(0);
@@ -419,4 +420,81 @@ test('Interrupteur éteint : le menu « Séquence » d\'avant s\'ouvre, pas de f
   await expect(sheet(page)).toHaveCount(0);
   await expect(flow(page)).toHaveCount(0);
   expect(await enrollmentsOf(seq.id)).toHaveLength(0);
+});
+
+
+// ─── 5. Recherche autonome (/sourcing/<id>) ─────────────────────────────────
+
+/** Recherche autonome avec les résultats simulés affichés (nouvelle disposition du Sourcing : liste à trier). */
+async function openStandaloneSearch(browser: Browser, ws: Workspace, candidates: Candidate[]): Promise<Page> {
+  const context = await openContext(browser, ws, candidates);
+  const page = await context.newPage();
+  await page.goto(`/sourcing/${ws.projectId}`, { waitUntil: 'domcontentloaded' });
+  await page.getByText('générer les filtres depuis le poste').click({ timeout: 30_000 });
+  for (const c of candidates) await expect(checkbox(page, c.name)).toBeVisible({ timeout: 30_000 });
+  return page;
+}
+
+/** Coche les candidats de la recherche autonome et clique « Contacter » de la barre de sélection. */
+async function selectAndContactInSearch(page: Page, names: string[]): Promise<void> {
+  for (const name of names) await checkbox(page, name).click();
+  await page.getByRole('button', { name: 'Contacter', exact: true }).click();
+  await expect(sheet(page)).toBeVisible({ timeout: 20_000 });
+  await expect(flow(page)).toBeVisible({ timeout: 20_000 });
+}
+
+test('Recherche autonome : « Contacter » ouvre la feuille, une séquence de l\'organisation se choisit, inscription et Retenu dans la recherche', async ({ browser }) => {
+  test.skip(process.env.E2E_EDGE_FUNCTIONS !== '1', 'draft-sequence (aperçu) absente : E2E_EDGE_FUNCTIONS=1');
+  const ws = await workspace('E2E entrées recherche', 'search');
+  // Séquence de l'organisation, rattachée à aucune mission.
+  const seq = await invitationSequence(ws, null);
+  const alix = candidateOf('A', 'Alix Recherche');
+  const bruno = candidateOf('B', 'Bruno Recherche');
+  const page = await openStandaloneSearch(browser, ws, [alix, bruno]);
+  await selectAndContactInSearch(page, [alix.name, bruno.name]);
+
+  // Une feuille, pas un menu ; aucune séquence de la recherche : rien n'est choisi d'avance, donc rien à inscrire.
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(sheet(page).getByRole('heading', { name: 'Contacter 2 candidats' })).toBeVisible();
+  const picker = page.locator('[data-sequence-picker="ready"]');
+  await expect(picker).toContainText('Choisir une séquence', { timeout: 20_000 });
+  await expect(sheet(page).getByRole('button', { name: /^Inscrire/ })).toHaveCount(0);
+
+  // La séquence de l'organisation se choisit dans le menu.
+  await picker.getByRole('button').click();
+  await page.getByRole('menuitem', { name: new RegExp(seq.name) }).click();
+  await expect(picker).toContainText(seq.name);
+  const enroll = sheet(page).getByRole('button', { name: /^Inscrire 2 candidats$/ });
+  await expect(enroll).toBeEnabled({ timeout: 30_000 });
+  await enroll.click();
+
+  // Deux inscriptions, depuis le compte du bouton.
+  await expect.poll(async () => (await enrollmentsOf(seq.id)).map((e) => e.profile_id).sort(), { timeout: 30_000 })
+    .toEqual([alix.id, bruno.id].sort());
+  expect((await enrollmentsOf(seq.id)).every((e) => e.account_id === ws.accountId)).toBe(true);
+
+  // Retenu à l'inscription, dans la recherche elle-même (poste « project:<recherche> ») et nulle part ailleurs.
+  await expect.poll(async () => (await allRows(ws)).map((r) => `${r.candidate_id}|${r.job_id}|${r.general_stage}`).sort(), { timeout: 20_000 })
+    .toEqual([alix, bruno].map((c) => `${c.id}|project:${ws.projectId}|retained`).sort());
+
+  // La feuille se ferme et la barre de sélection a disparu.
+  await expect(sheet(page)).toHaveCount(0, { timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Contacter', exact: true })).toHaveCount(0);
+});
+
+// La demande attendait, pour une recherche autonome, une feuille « sans « cette mission » dans les textes » (flux hors mission).
+// Observé : la recherche est un projet (sourcing_projects, kind « search ») dont le poste synthétique s'appelle « project:<id> »
+// comme celui d'une mission ; le point d'entrée en tire donc un identifiant de mission (missionIdOf) et le sélecteur de séquence
+// propose « Rédiger une séquence pour cette mission » (SequencePicker, missionId non nul). Le mode « sans mission » du lot
+// (missionId et job nuls) n'est atteint que depuis la messagerie sans mission choisie et la fiche du Pipeline global.
+// Défaut de texte ou choix de conception : à trancher avant de retirer le fixme.
+test.fixme('Recherche autonome : aucun texte « cette mission » dans la feuille', async ({ browser }) => {
+  const ws = await workspace('E2E entrées recherche texte', 'search');
+  await invitationSequence(ws, null);
+  const alix = candidateOf('A', 'Alix Texte');
+  const page = await openStandaloneSearch(browser, ws, [alix]);
+  await selectAndContactInSearch(page, [alix.name]);
+  await sheet(page).locator('[data-sequence-picker="ready"]').getByRole('button').click();
+  await expect(page.getByRole('menu')).not.toContainText('cette mission');
+  await expect(sheet(page)).not.toContainText('cette mission');
 });
