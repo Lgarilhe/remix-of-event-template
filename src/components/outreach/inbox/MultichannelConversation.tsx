@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ChevronLeft, UserRound } from 'lucide-react';
+import { useRef, useState, type MouseEvent } from 'react';
+import { Briefcase, ChevronLeft, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ServiceLogo } from '@/components/ui/ServiceLogo';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
@@ -15,12 +15,21 @@ import { SERVICE_LABELS } from '@/lib/messagingServices';
 import { CandidateActions, CandidateActionHistory } from './CandidateActions';
 import { CandidateInteractionTimeline } from './CandidateInteractionTimeline';
 import { ConversationContext } from './ConversationContext';
+import { LazyInboxCandidateSheet as InboxCandidateSheet } from './LazyInboxCandidateSheet';
 
 /** Un échange enregistré n'est jamais converti en fausse conversation LinkedIn. */
 export function MultichannelConversation({ conversation, onBack, onChanged }: { conversation: Conversation; onBack: () => void; onChanged: () => void }) {
   const { user } = useAuthReady();
   const memberName = useMemberName();
   const [contextOpen, setContextOpen] = useState(false);
+  const [candidateOpen, setCandidateOpen] = useState(false);
+  const candidateOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const contextOpenerRef = useRef<HTMLButtonElement>(null);
+  const openCandidate = (event: MouseEvent<HTMLButtonElement>) => {
+    candidateOpenerRef.current = event.currentTarget.closest('[role="dialog"]') ? contextOpenerRef.current : event.currentTarget;
+    setContextOpen(false);
+    setCandidateOpen(true);
+  };
   const [chosenProject, setChosenProject] = useState<string | null>(conversation.projectId);
   const needsMission = conversation.ambiguousMission && !chosenProject;
   const projectName = conversation.availableProjects.find(project => project.id === chosenProject)?.name || conversation.projectName;
@@ -28,13 +37,14 @@ export function MultichannelConversation({ conversation, onBack, onChanged }: { 
   const actions = useCandidateActions(needsMission ? null : { candidate_id: conversation.candidateId, linkedin_url: conversation.linkedinUrl, project_id: chosenProject, account_id: conversation.ownerUserId === user?.id ? conversation.accountId : null }, onChanged);
   const ledger = [...new Map([...conversation.messages, ...actions.messages].map(row => [`${row.account_id}:${row.provider_message_id}`, row])).values()];
   const events = mergeCandidateActionEvents(activity.events, actions.plans, [], ledger, null, memberName);
-  const context = <ConversationContext name={conversation.candidateName} profileId={conversation.candidateId} profileUrl={conversation.linkedinUrl} profile={conversation.profile} mission={projectName} missionUrl={chosenProject ? `/missions/${chosenProject}` : undefined} events={events} now={Date.now()} readOnly onEnroll={() => {}} onAddToPipeline={() => {}} />;
+  const context = <ConversationContext name={conversation.candidateName} profileId={conversation.candidateId} profileUrl={conversation.linkedinUrl} profile={conversation.profile} mission={projectName} missionUrl={chosenProject ? `/missions/${chosenProject}` : undefined} events={events} now={Date.now()} readOnly onEnroll={() => {}} onAddToPipeline={() => {}} onOpenCandidate={openCandidate} />;
   return <div className="flex h-full min-w-0 overflow-hidden bg-background" data-component="multichannel-conversation">
     <div className="flex h-full min-w-0 flex-1 flex-col">
       <header className="flex shrink-0 items-start gap-2 border-b border-border p-3 md:px-5 md:py-4">
         <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:hidden" aria-label="Retour aux conversations" onClick={onBack}><ChevronLeft aria-hidden="true" /></Button>
-        <div className="min-w-0 flex-1"><h2 className="break-words text-md font-semibold text-foreground">{conversation.candidateName}</h2><p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-foreground-secondary"><ServiceLogo service={conversation.latest.service} decorative />{SERVICE_LABELS[conversation.latest.service]} · {conversation.ownerUserId === user?.id ? 'Votre compte' : memberName(conversation.ownerUserId) || 'Compte de l’équipe'}</p><p className="mt-1 break-words text-xs text-muted-foreground">{projectName || (conversation.ambiguousMission ? 'Plusieurs missions : rattachement à vérifier' : conversation.projectId ? 'Mission rattachée' : 'Mission non identifiée')}</p></div>
-        <Button variant="outline" size="sm" className="min-h-11 shrink-0" onClick={() => setContextOpen(true)}><UserRound aria-hidden="true" /><span className="hidden sm:inline">Fiche candidat</span><span className="sr-only sm:hidden">Fiche candidat</span></Button>
+        <div className="min-w-0 flex-1"><h2><Button type="button" variant="link" className="h-auto min-h-11 max-w-full whitespace-normal p-0 text-left text-md font-semibold text-foreground" aria-label={`Ouvrir la fiche de ${conversation.candidateName}`} onClick={openCandidate}>{conversation.candidateName}</Button></h2><p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-foreground-secondary"><ServiceLogo service={conversation.latest.service} decorative />{SERVICE_LABELS[conversation.latest.service]} · {conversation.ownerUserId === user?.id ? 'Votre compte' : memberName(conversation.ownerUserId) || 'Compte de l’équipe'}</p><p className="mt-1 break-words text-xs text-muted-foreground">{projectName || (conversation.ambiguousMission ? 'Plusieurs missions : rattachement à vérifier' : conversation.projectId ? 'Mission rattachée' : 'Mission non identifiée')}</p></div>
+        <Button variant="outline" size="sm" className="min-h-11 shrink-0" onClick={openCandidate}><UserRound aria-hidden="true" /><span className="hidden sm:inline">Fiche candidat</span><span className="sr-only sm:hidden">Fiche candidat</span></Button>
+        <Button ref={contextOpenerRef} variant="ghost" size="icon" className="h-11 w-11 shrink-0 xl:hidden" aria-label="Afficher le contexte candidat" onClick={() => setContextOpen(true)}><Briefcase aria-hidden="true" /></Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-6">
         <div className="mx-auto max-w-5xl">
@@ -49,5 +59,9 @@ export function MultichannelConversation({ conversation, onBack, onChanged }: { 
     </div>
     <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-border bg-card xl:block" aria-label="Contexte candidat">{context}</aside>
     <Sheet open={contextOpen} onOpenChange={setContextOpen}><SheetContent className="w-full overflow-y-auto p-0 sm:max-w-xl [&>button]:h-11 [&>button]:w-11"><SheetHeader className="border-b border-border px-5 py-4 pr-14 text-left"><SheetTitle>Fiche de {conversation.candidateName}</SheetTitle><SheetDescription>Profil et suivi du candidat.</SheetDescription></SheetHeader>{context}</SheetContent></Sheet>
+    {candidateOpen && <InboxCandidateSheet identity={{ chatId: conversation.key, profileId: conversation.candidateId, candidateId: conversation.candidateId, profileUrl: conversation.linkedinUrl, profileName: conversation.candidateName, name: conversation.candidateName, projectId: chosenProject }} profile={conversation.profile} onClose={() => setCandidateOpen(false)} onChanged={onChanged} onCloseAutoFocus={event => {
+      const opener = candidateOpenerRef.current;
+      if (opener?.isConnected && opener.getClientRects().length) { event.preventDefault(); opener.focus(); }
+    }} />}
   </div>;
 }

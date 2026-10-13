@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { extractLinkedInSlug } from '@/lib/linkedinUtils';
+import { useOrganization } from '@/hooks/useOrganization';
+import { useAuthReady } from '@/hooks/useAuthReady';
 
 export interface CandidateHistoryData {
   candidate: {
@@ -50,7 +52,7 @@ export interface CandidateHistoryData {
   }>;
 }
 
-// Global cache by key (linkedin url or airtable_id)
+// Cache isolated by signed-in user, current organisation and candidate identity.
 const historyCache = new Map<string, CandidateHistoryData | null>();
 const MAX_HISTORY_CACHE = 200;
 
@@ -138,14 +140,17 @@ export function useCandidateHistory(
   }
 
   const { linkedinUrl, airtableId } = resolvedOptions;
-
-  
-
-  const cacheKey = airtableId
-    ? `history:v2:at:${airtableId}`
-    : linkedinUrl
-      ? `history:v2:li:${linkedinUrl.toLowerCase().replace(/\/$/, '')}`
-      : null;
+  const { organizationId } = useOrganization();
+  const { user, isReady } = useAuthReady();
+  const userId = user?.id;
+  const candidateKey = airtableId ? `at:${airtableId}`
+    : linkedinUrl ? `li:${extractLinkedInSlug(linkedinUrl) ?? linkedinUrl.toLowerCase().replace(/\/$/, '')}` : null;
+  const cacheKey = isReady && userId && organizationId && candidateKey
+    ? JSON.stringify([userId, organizationId, candidateKey]) : null;
+  const currentScope = useRef({ key: cacheKey, active: true });
+  if (currentScope.current.key !== cacheKey) currentScope.current = { key: cacheKey, active: true };
+  const scope = currentScope.current;
+  const inFlightScope = useRef<typeof scope | null>(null);
 
   const [data, setData] = useState<CandidateHistoryData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -154,6 +159,12 @@ export function useCandidateHistory(
   const isLoaded = loadedKey === cacheKey;
 
   useEffect(() => {
+    scope.active = true;
+    return () => { scope.active = false; };
+  }, [scope]);
+
+  useLayoutEffect(() => {
+    setLoading(false);
     if (!cacheKey) {
       setData(null);
       setLoadedKey(null);
@@ -172,8 +183,10 @@ export function useCandidateHistory(
   }, [cacheKey]);
 
   const fetchHistory = useCallback(async () => {
-    if ((!linkedinUrl && !airtableId) || isLoaded || loading) return;
-    if (!cacheKey) return;
+    if ((!linkedinUrl && !airtableId) || isLoaded || inFlightScope.current === scope
+      || currentScope.current !== scope || !scope.active) return;
+    if (!cacheKey || !organizationId || !userId || !isReady) return;
+    const isCurrent = () => currentScope.current === scope && scope.active;
 
     const cached = historyCache.get(cacheKey);
     if (cached !== undefined) {
@@ -183,6 +196,7 @@ export function useCandidateHistory(
     }
 
     setLoading(true);
+    inFlightScope.current = scope;
     try {
       let candidateAirtableId = airtableId || null;
 
@@ -200,10 +214,14 @@ export function useCandidateHistory(
         const { data: candidates, error: candError } = await supabase
           .from('airtable_candidates')
           .select('airtable_id, full_name, status, email, phone, source_base, skills, linkedin_url')
-          .ilike('linkedin_url', `%${slug}%`)
-          .limit(1);
+          .eq('organization_id', organizationId)
+          .ilike('linkedin_url', `%/in/${slug.replace(/[\\%_]/g, '\\$&')}%`)
+          .limit(20);
 
-        if (candError || !candidates?.length) {
+        if (!isCurrent()) return;
+        if (candError) throw candError;
+        const candidate = candidates?.find(row => extractLinkedInSlug(row.linkedin_url || '') === slug);
+        if (!candidate) {
           historyCache.set(cacheKey, null);
           setData(null);
           setLoadedKey(cacheKey);
@@ -211,7 +229,7 @@ export function useCandidateHistory(
           return;
         }
 
-        candidateAirtableId = candidates[0].airtable_id;
+        candidateAirtableId = candidate.airtable_id;
       }
 
       if (!candidateAirtableId) {
@@ -224,11 +242,20 @@ export function useCandidateHistory(
 
       // Fetch candidate info (if we don't have it yet from URL lookup)
       let candidateInfo: CandidateHistoryData['candidate'] = null;
-      const { data: candData } = await supabase
+      const { data: candData, error: candidateError } = await supabase
         .from('airtable_candidates')
         .select('airtable_id, full_name, status, email, phone, source_base, skills')
+        .eq('organization_id', organizationId)
         .eq('airtable_id', candidateAirtableId)
         .limit(1);
+      if (!isCurrent()) return;
+      if (candidateError) throw candidateError;
+      if (!candData?.length) {
+        historyCache.set(cacheKey, null);
+        setData(null);
+        setLoadedKey(cacheKey);
+        return;
+      }
 
       if (candData?.length) {
         const c = candData[0];
@@ -248,24 +275,32 @@ export function useCandidateHistory(
         supabase
           .from('airtable_shortlists')
           .select('airtable_id, status, date_added, salary_proposed, job_airtable_id, company_airtable_id, raw_data')
+          .eq('organization_id', organizationId)
           .eq('candidate_airtable_id', candidateAirtableId),
         supabase
           .from('airtable_placements')
           .select('airtable_id, name, status, start_date, salary, contract_type, company_airtable_id, raw_data')
+          .eq('organization_id', organizationId)
           .eq('candidate_airtable_id', candidateAirtableId),
         supabase
           .from('airtable_notes')
           .select('airtable_id, title, detail, note_type, note_date, author, raw_data')
+          .eq('organization_id', organizationId)
           .eq('candidate_airtable_id', candidateAirtableId)
           .order('note_date', { ascending: false })
           .limit(20),
         supabase
           .from('airtable_appointments')
           .select('airtable_id, title, appointment_date, appointment_type, status, notes, raw_data')
+          .eq('organization_id', organizationId)
           .eq('candidate_airtable_id', candidateAirtableId)
           .order('appointment_date', { ascending: false })
           .limit(20),
       ]);
+      if (!isCurrent()) return;
+      for (const response of [shortlistsRes, placementsRes, notesRes, appointmentsRes]) {
+        if (response.error) throw response.error;
+      }
 
       // Resolve company & job names
       const companyIds = new Set<string>();
@@ -281,12 +316,15 @@ export function useCandidateHistory(
 
       const [companiesRes, jobsRes] = await Promise.all([
         companyIds.size > 0
-          ? supabase.from('airtable_companies').select('airtable_id, name').in('airtable_id', [...companyIds])
+          ? supabase.from('airtable_companies').select('airtable_id, name').eq('organization_id', organizationId).in('airtable_id', [...companyIds])
           : Promise.resolve({ data: [] as { airtable_id: string; name: string }[], error: null }),
         jobIds.size > 0
-          ? supabase.from('airtable_jobs').select('airtable_id, title').in('airtable_id', [...jobIds])
+          ? supabase.from('airtable_jobs').select('airtable_id, title').eq('organization_id', organizationId).in('airtable_id', [...jobIds])
           : Promise.resolve({ data: [] as { airtable_id: string; title: string | null }[], error: null }),
       ]);
+      if (!isCurrent()) return;
+      if (companiesRes.error) throw companiesRes.error;
+      if (jobsRes.error) throw jobsRes.error;
 
       const companyMap = new Map((companiesRes.data || []).map(c => [c.airtable_id, c.name]));
       const jobMap = new Map((jobsRes.data || []).map(j => [j.airtable_id, j.title]));
@@ -343,13 +381,14 @@ export function useCandidateHistory(
       setLoadedKey(cacheKey);
     } catch (err) {
       console.error('Error fetching candidate history:', err);
-      historyCache.set(cacheKey, null);
+      if (!isCurrent()) return;
       setData(null);
       setLoadedKey(cacheKey);
     } finally {
-      setLoading(false);
+      if (inFlightScope.current === scope) inFlightScope.current = null;
+      if (isCurrent()) setLoading(false);
     }
-  }, [linkedinUrl, airtableId, cacheKey, isLoaded, loading]);
+  }, [linkedinUrl, airtableId, cacheKey, isLoaded, organizationId, userId, isReady, scope]);
 
   useEffect(() => {
     if ((linkedinUrl || airtableId) && !isLoaded) {
@@ -357,5 +396,5 @@ export function useCandidateHistory(
     }
   }, [linkedinUrl, airtableId, isLoaded, fetchHistory]);
 
-  return { data, loading, loaded: isLoaded, refetch: fetchHistory };
+  return { data: isLoaded ? data : null, loading, loaded: isLoaded, refetch: fetchHistory };
 }

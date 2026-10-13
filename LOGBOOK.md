@@ -32,6 +32,24 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — BUG — Fiche candidat commune depuis la messagerie
+
+**Contexte** : la messagerie ouvrait une mini-fiche LinkedIn distincte du dossier disponible dans le pipeline et les missions.
+**Fait** : le nom et « Fiche candidat » ouvrent désormais `CandidateDetailModal` et `ProfileDetailSheet`, avec leurs onglets métier existants, sans navigation ni perte du brouillon. Le panneau de suivi donne aussi accès à cette fiche. Les candidats sont retrouvés par identifiant ou URL LinkedIn exacte dans l’organisation active ; une candidature ambiguë demande un choix. Un prospect reste hors pipeline, sans création automatique. Les consultations utilisent le compte LinkedIn personnel.
+**Impact** : messagerie LinkedIn et multicanal ; les lecteurs partagés de notes, rappels, parcours et appels suivent l’organisation et ignorent les réponses périmées. Le cache d’historique sépare utilisateur, organisation et candidat. Les données partielles et les limitations LinkedIn restent expliquées dans l’onglet Profil. Les onglets métier sont chargés à la demande.
+**Validation** : build production réussi ; TypeScript conserve les 11 diagnostics hérités, aucun nouveau ; ratchet design et revue indépendante passent. 61 tests ciblés et 77 parcours Chromium (52 de fiche candidat, 13 Agenda, 12 de chargement de la messagerie) passent avec transports simulés, sans appel LinkedIn réel. Les composants visuels et les lecteurs métier de la nouvelle fiche sont réels. Les harnais d’aperçu et de chargement reproduisent le contexte React Query de l’application et vérifient la fiche commune.
+
+| Persona | Parcours | Verdict |
+| --- | --- | --- |
+| Guillaume | Fiche complète, brouillon, note explicite et actualisation en panne | PASS |
+| Claire | Nom cliquable, prospect hors pipeline, profil limité puis détaillé | PASS |
+| Théo | Missions ambiguës, réessai et historiques isolés entre organisations | PASS |
+| Sophie | 320/390 px, thème clair/sombre, clavier et retour au brouillon | PASS |
+
+**Refs** : `e2e/flows/inbox-candidate.spec.ts`, `e2e/flows/inbox-profile.spec.ts`, `tests/ux/inbox-candidate-record.test.mjs`. Aucun changement de schéma ni de fonction serveur.
+
+---
+
 ## 2026-10-13 — BUG — Espace d’entretien prêt depuis le rendez-vous
 
 **Contexte** : le rendez-vous ouvrait encore la scorecard dans la fiche latérale, sans l’espace d’entretien complet ni l’assistant prêt. Le choix audio ne tenait pas compte du service de visioconférence du rendez-vous.

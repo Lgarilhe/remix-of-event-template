@@ -451,7 +451,7 @@ test('0b-2b : les envois du navigateur passent la mission (project_id)', () => {
   assert.match(sheet, /projectId=\{missionIdOfJob\(activeProject\?\.id\)\}/);
   const sheetModal = sheet.slice(sheet.indexOf('<OutreachMessageModal'), sheet.indexOf('/>', sheet.indexOf('<OutreachMessageModal')));
   assert.match(sheetModal, /projectId=\{missionIdOfJob\(activeProject\?\.id\)\}/, 'fenêtre de message : mission de la fiche, pas le poste');
-  assert.match(read('src/components/ats/CandidateDetailModal.tsx'), /projectId=\{missionIdOfJob\(candidate\.jobId\)\}/);
+  assert.match(read('src/components/ats/CandidateDetailModal.tsx'), /projectId=\{candidate\.projectId \|\| missionIdOfJob\(candidate\.jobId\)\}/);
   // InMail groupé : action queue de la file.
   const bulk = read('src/components/outreach/BulkInMailModal.tsx');
   const queue = bulk.slice(bulk.indexOf("action: 'queue'"), bulk.indexOf('});', bulk.indexOf("action: 'queue'")));

@@ -479,10 +479,10 @@ test.describe('Messagerie — contexte du vrai écran inbox @critical', () => {
     });
     await page.goto('/inbox-profile-integration-fixture');
     await page.getByRole('list', { name: 'Conversations', exact: true }).getByText('Camille Durand', { exact: true }).click();
-    const opener = page.getByRole('button', { name: 'Afficher le contexte candidat', exact: true });
+    const opener = page.getByRole('button', { name: 'Fiche candidat', exact: true });
     await opener.click();
-    const dialog = page.getByRole('dialog', { name: 'Contexte candidat', exact: true });
-    await dialog.getByRole('tab', { name: 'Profil', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Camille Durand', exact: true });
+    await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Profil réel de la conversation', { exact: true })).toBeVisible();
     const profileCalls = calls.filter(call => call.action === 'get_profile');
     expect(profileCalls).toHaveLength(1);
