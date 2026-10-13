@@ -21,7 +21,7 @@ async function load(file, stubs = {}) {
 }
 const profile = await load('src/lib/candidateProfile.ts');
 const scopeStubs = {
-  '@tanstack/react-query': 'export const useQuery = options => { globalThis.profileOptions = options; return {}; }; export const useMutation = options => options; export const useQueryClient = () => ({setQueryData(key,data){globalThis.profileCacheWrite={key,data};}});',
+  '@tanstack/react-query': 'export const useQuery = options => { globalThis.profileOptions = options; return {}; }; export const useMutation = options => options; export const useQueryClient = () => ({getQueryData(key){return globalThis.profileCacheRead?.(key);},setQueryData(key,data){globalThis.profileCacheWrite={key,data};}});',
   '@/hooks/useOrganization': 'export const useOrganization = () => ({organizationId:globalThis.profileOrg});',
   '@/hooks/useAuthReady': 'export const useAuthReady = () => ({user:globalThis.profileUser ? {id:globalThis.profileUser} : null,isReady:true});',
   '@/hooks/useMyLinkedInAccountId': 'export const useMyLinkedInAccountId = () => globalThis.profileAccount;',
@@ -277,4 +277,134 @@ test('Une erreur de lecture du profil enregistré sans compte garde sa cause, sa
     assert.match(error.message, /profil enregistré/i);
     return true;
   });
+});
+
+test('Les données détaillées correspondent aux cinq sections affichées, y compris les langues seules', () => {
+  const normalize = value => profile.normalizeCandidateProfile(value, 'candidate');
+  for (const value of [
+    { summary: 'Présentation professionnelle' },
+    { work_experience: [{ position: 'Ingénieure', company: 'Entreprise' }] },
+    { education: [{ school: 'Université' }] },
+    { skills: ['Python'] },
+    { languages: ['Français'] },
+  ]) assert.equal(profile.hasCandidateProfileDetails(normalize(value)), true);
+  for (const value of [
+    { name: 'Camille', headline: 'Ingénieure', profile_picture_url: 'photo.svg' },
+    { summary: '   ', work_experience: [], education: [], skills: [], languages: [] },
+    { certifications: [{ name: 'Certificat' }], projects: [{ name: 'Projet' }] },
+  ]) assert.equal(profile.hasCandidateProfileDetails(normalize(value)), false);
+});
+
+test('Un instantané de recherche léger ne remplace pas la consultation détaillée quand le compte personnel est connecté', async () => {
+  storedRead({ data: [{ candidate_id: 'candidate', linkedin_profile_url: 'https://linkedin.com/in/camille', linkedin_profile_data: { name: 'Camille', headline: 'Snapshot', profile_picture_url: 'photo.svg' } }], error: null });
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { httpStatus: 200, data: { success: true, profile: { headline: 'Titre à jour', work_experience: [{ company: 'Entreprise', position: 'Ingénieure' }] } } };
+  };
+  const result = await profiles.fetchInboxCandidateProfile('org', ['candidate'], 'https://linkedin.com/in/camille', 'Camille', 'mine');
+  assert.equal(result.headline, 'Titre à jour');
+  assert.equal(result.work_experience[0].role, 'Ingénieure');
+  assert.deepEqual(requests, [{ action: 'get_profile', organization_id: 'org', account_id: 'mine', profile_id: 'candidate', profile_url: 'https://linkedin.com/in/camille', include_details: true }]);
+});
+
+test('Sans compte connecté, les données légères enregistrées restent accessibles sans consultation externe', async () => {
+  storedRead({ data: [{ candidate_id: 'candidate', linkedin_profile_url: null, linkedin_profile_data: { name: 'Camille', headline: 'Ingénieure' } }], error: null });
+  globalThis.profileInvoke = () => { throw new Error('Aucune consultation sans compte connecté'); };
+  const result = await profiles.fetchInboxCandidateProfile('org', ['candidate'], null, 'Camille', null);
+  assert.equal(result.name, 'Camille');
+  assert.equal(result.headline, 'Ingénieure');
+  assert.equal(profile.hasCandidateProfileDetails(result), false);
+});
+
+test('Un profil détaillé déjà enregistré suffit, même avec un compte LinkedIn connecté', async () => {
+  storedRead({ data: [{ candidate_id: 'candidate', linkedin_profile_url: null, linkedin_profile_data: { name: 'Camille', languages: ['Français'] } }], error: null });
+  globalThis.profileInvoke = () => { throw new Error('Le profil enregistré doit éviter une nouvelle consultation'); };
+  const result = await profiles.fetchInboxCandidateProfile('org', ['candidate'], null, 'Camille', 'mine');
+  assert.deepEqual(result.languages, [{ name: 'Français', proficiency: undefined }]);
+  assert.equal(profile.hasCandidateProfileDetails(result), true);
+});
+
+test('La reprise autorisée par URL demande également les sections détaillées', async () => {
+  storedRead();
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return requests.length === 1
+      ? { httpStatus: 404, data: { success: false, errorType: 'PROFILE_NOT_FOUND' } }
+      : { httpStatus: 200, data: { success: true, profile: { education: [{ school: 'Université' }] } } };
+  };
+  const result = await profiles.fetchInboxCandidateProfile('org', ['ACo-missing'], 'https://linkedin.com/in/camille', 'Camille', 'mine');
+  assert.equal(result.education[0].school, 'Université');
+  assert.deepEqual(requests.map(body => [body.profile_id, body.include_details]), [['ACo-missing', true], ['camille', true]]);
+});
+
+test('Les sections temporairement limitées par LinkedIn restent identifiées dans le profil normalisé', async () => {
+  storedRead();
+  globalThis.profileInvoke = async () => ({ httpStatus: 200, data: { success: true, profile: { provider_id: 'candidate', summary: 'Présentation disponible', work_experience: [], skills: [], throttled_sections: ['experience', 'skills'] } } });
+  const result = await profiles.fetchInboxCandidateProfile('org', ['candidate'], null, 'Camille', 'mine');
+  assert.equal(result.summary, 'Présentation disponible');
+  assert.deepEqual(result.throttled_sections, ['experience', 'skills']);
+  assert.deepEqual(profile.normalizeCandidateProfile(result, 'candidate').throttled_sections, ['experience', 'skills']);
+});
+
+test('Une actualisation partielle conserve le parcours connu et actualise les sections effectivement reçues', async context => {
+  globalThis.profileUser = 'user-a'; globalThis.profileOrg = 'org-a'; globalThis.profileAccount = 'mine';
+  const previous = profile.normalizeCandidateProfile({
+    name: 'Camille', headline: 'Ancien titre', summary: 'Ancienne présentation',
+    work_experience: [{ company: 'Entreprise', position: 'Ingénieure', start: { year: 2019 } }],
+    education: [{ school: 'Université', degree: 'Master' }], skills: ['Python'], languages: ['Français'],
+  }, 'candidate');
+  const cached = new Map();
+  globalThis.profileCacheRead = key => cached.get(JSON.stringify(key));
+  context.after(() => { globalThis.profileCacheRead = undefined; });
+  const hook = profiles.useInboxCandidateProfile({ profileId: 'candidate', profileUrl: 'https://linkedin.com/in/camille' });
+  cached.set(JSON.stringify(globalThis.profileOptions.queryKey), previous);
+  const requests = [];
+  globalThis.profileInvoke = async body => {
+    requests.push(body);
+    return { httpStatus: 200, data: { success: true, profile: { headline: 'Nouveau titre', summary: 'Présentation à jour', work_experience: [], skills: ['Go'], languages: [], throttled_sections: ['experience', 'education', 'languages'] } } };
+  };
+  const result = await hook.refresh.mutationFn();
+  assert.equal(result.profile.headline, 'Nouveau titre');
+  assert.equal(result.profile.summary, 'Présentation à jour');
+  assert.deepEqual(result.profile.work_experience, previous.work_experience);
+  assert.deepEqual(result.profile.education, previous.education);
+  assert.deepEqual(result.profile.languages, previous.languages);
+  assert.deepEqual(result.profile.skills, [{ name: 'Go' }]);
+  assert.deepEqual(result.profile.throttled_sections, ['experience', 'education', 'languages']);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].include_details, true);
+  hook.refresh.onSuccess(result);
+  assert.deepEqual(globalThis.profileCacheWrite.data, result.profile);
+});
+
+test('Une actualisation vide conserve les sections de son cache initial après un changement d’organisation', async context => {
+  globalThis.profileUser = 'user-a'; globalThis.profileOrg = 'org-a'; globalThis.profileAccount = 'mine';
+  const cached = new Map();
+  const readKeys = [];
+  globalThis.profileCacheRead = key => { readKeys.push(key); return cached.get(JSON.stringify(key)); };
+  context.after(() => { globalThis.profileCacheRead = undefined; });
+  const original = profiles.useInboxCandidateProfile({ profileId: 'candidate' });
+  const originalKey = globalThis.profileOptions.queryKey;
+  const initial = profile.normalizeCandidateProfile({ summary: 'Organisation A', work_experience: [{ company: 'Entreprise A', position: 'Ingénieure' }], education: [{ school: 'Université A' }], skills: ['Python'], languages: ['Français'] }, 'candidate');
+  cached.set(JSON.stringify(originalKey), initial);
+  let resolve;
+  globalThis.profileInvoke = () => new Promise(done => { resolve = done; });
+  const pending = original.refresh.mutationFn();
+  globalThis.profileOrg = 'org-b';
+  const latest = profiles.useInboxCandidateProfile({ profileId: 'candidate' });
+  cached.set(JSON.stringify(globalThis.profileOptions.queryKey), profile.normalizeCandidateProfile({ summary: 'Organisation B', work_experience: [{ company: 'Entreprise B', position: 'Autre profil' }] }, 'candidate'));
+  resolve({ httpStatus: 200, data: { success: true, profile: { provider_id: 'candidate', summary: '', work_experience: [], education: [], skills: [], languages: [], throttled_sections: ['experience', 'education', 'skills', 'languages'] } } });
+  const result = await pending;
+  latest.refresh.onSuccess(result);
+  assert.equal(result.profile.summary, 'Organisation A');
+  assert.deepEqual(result.profile.work_experience, initial.work_experience);
+  assert.deepEqual(result.profile.education, initial.education);
+  assert.deepEqual(result.profile.skills, initial.skills);
+  assert.deepEqual(result.profile.languages, initial.languages);
+  assert.ok(readKeys.length > 0);
+  assert.ok(readKeys.every(key => key[2] === 'org-a'));
+  assert.deepEqual(globalThis.profileCacheWrite.key, originalKey);
+  assert.equal(globalThis.profileCacheWrite.data.summary, 'Organisation A');
 });

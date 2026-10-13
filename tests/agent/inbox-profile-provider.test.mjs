@@ -24,7 +24,8 @@ function harness(status = 200, body = {}) {
     createClient() { throw new Error('Database access forbidden in profile handler test'); },
     fetch: async (url, options) => {
       calls.push({ url, options });
-      return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
+      const providerBody = typeof body === 'function' ? body(new URL(url)) : body;
+      return new Response(typeof providerBody === 'string' ? providerBody : JSON.stringify(providerBody), { status });
     },
   };
   vm.runInNewContext(compiled.outputText, context, { filename: path });
@@ -148,11 +149,74 @@ test('a URL-only profile lookup preserves the public-slug request', async () => 
   assert.equal(h.calls[0].url, 'https://linkedin.local.test/api/v1/users/alice-martin?account_id=account-a');
 });
 
+test('explicit detailed lookup retrieves the five profile sections without notifying the candidate', async () => {
+  const identity = { provider_id: 'candidate-a', first_name: 'Alice', last_name: 'Martin' };
+  const sections = ['about', 'experience', 'education', 'skills', 'languages'];
+  const h = harness(200, url => {
+    // Reproduce the documented provider contract: an identity-only request
+    // cannot return any of these details, even when the profile has them.
+    if (!sections.every(section => url.searchParams.getAll('linkedin_sections').includes(section))) return identity;
+    return { ...identity, summary: 'Cloud engineer',
+      work_experience: [{ position: 'Engineer', start: '2020-09', end: null }],
+      education: [{ school: 'École', start: '2015', end: '2018' }],
+      skills: ['Python'], languages: [{ name: 'French', proficiency: 'Native' }] };
+  });
+  const basic = await h.get({ profile_id: 'candidate-a' });
+  assert.deepEqual(basic.data.profile, identity);
+  const detailed = await h.get({ profile_id: 'candidate-a', include_details: true });
+  assert.equal(detailed.status, 200);
+  assert.equal(detailed.data.success, true);
+  assert.equal(detailed.data.profile.summary, 'Cloud engineer');
+  assert.equal(detailed.data.profile.work_experience[0].role, 'Engineer');
+  assert.deepEqual(detailed.data.profile.work_experience[0].start, { year: 2020, month: 9 });
+  assert.equal(detailed.data.profile.education[0].school, 'École');
+  assert.deepEqual(detailed.data.profile.skills, ['Python']);
+  assert.deepEqual(detailed.data.profile.languages, [{ name: 'French', proficiency: 'Native' }]);
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.calls[0].url, 'https://linkedin.local.test/api/v1/users/candidate-a?account_id=account-a');
+  const query = new URL(h.calls[1].url).searchParams;
+  assert.deepEqual([...query.entries()], [
+    ['account_id', 'account-a'], ...sections.map(section => ['linkedin_sections', section]), ['notify', 'false'],
+  ]);
+});
+
+test('only boolean true opts into detail sections; legacy and malformed flags keep the identity-only request', async () => {
+  for (const include_details of [undefined, null, false, 'true', 'all', 1, [], {}]) {
+    const h = harness(200, url => url.searchParams.has('linkedin_sections')
+      ? { first_name: 'Alice', summary: 'Unexpected detail request' } : { first_name: 'Alice' });
+    const result = await h.get({ profile_id: 'candidate-a', include_details });
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.data.profile, { first_name: 'Alice' });
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].url, 'https://linkedin.local.test/api/v1/users/candidate-a?account_id=account-a');
+  }
+});
+
+test('a detailed response with throttled sections preserves available details and the provider limitation', async () => {
+  const h = harness(200, url => {
+    assert.deepEqual(url.searchParams.getAll('linkedin_sections'), ['about', 'experience', 'education', 'skills', 'languages']);
+    return { provider_id: 'candidate-a', summary: 'Cloud engineer',
+      work_experience: [{ position: 'Engineer', start: '2020-09', end: null }],
+      throttled_sections: ['skills', 'languages'] };
+  });
+  const result = await h.get({ profile_id: 'candidate-a', include_details: true });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.success, true);
+  assert.equal(result.data.profile.summary, 'Cloud engineer');
+  assert.equal(result.data.profile.work_experience[0].role, 'Engineer');
+  assert.deepEqual(result.data.profile.throttled_sections, ['skills', 'languages']);
+  assert.equal(result.data.profile.skills, undefined);
+  assert.equal(result.data.profile.languages, undefined);
+  assert.equal(h.calls.length, 1, 'partial sections do not cause an automatic provider retry');
+});
+
 test('the continuous-sourcing provider guard blocks before any HTTP request', async () => {
-  const h = harness();
-  const quota = new Error('continuous sourcing guard denied');
-  await assert.rejects(h.get({ profile_id: 'candidate-a' }, async () => { throw quota; }), error => error === quota);
-  assert.equal(h.calls.length, 0);
+  for (const include_details of [undefined, true]) {
+    const h = harness();
+    const quota = new Error('continuous sourcing guard denied');
+    await assert.rejects(h.get({ profile_id: 'candidate-a', include_details }, async () => { throw quota; }), error => error === quota);
+    assert.equal(h.calls.length, 0);
+  }
 });
 
 test('missing profile identity is rejected before the provider guard or network', async () => {
