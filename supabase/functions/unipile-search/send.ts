@@ -77,7 +77,7 @@ async function linkedChatCandidate(
   const row = (data ?? [])[0] as { candidate_id: string | null; candidate_ids: string[] | null; candidate_slug: string | null } | undefined;
   if (!row) return null;
   const ref = candidateRef({ ids: [row.candidate_id, ...(row.candidate_ids ?? [])], slug: row.candidate_slug });
-  return ref.ids.length > 0 ? ref : null;
+  return ref.ids.length > 0 || ref.slug ? ref : null;
 }
 
 /**
@@ -96,7 +96,8 @@ export async function fetchChatCandidate(accountId: string, chatId: string): Pro
       profileUrl: sendText(user?.profile_url),
       name: sendText(user?.display_name),
     });
-    return ref.ids.length > 0 ? ref : null;
+    // Un interlocuteur connu par son seul nom public ou son adresse est jugé par cette identité (le chat v2 n'a pas toujours user_id).
+    return ref.ids.length > 0 || ref.slug || ref.profile_url ? ref : null;
   } catch (e) {
     console.warn('[unipile-search] send_message: lecture de la conversation impossible:', e instanceof UnipileError ? e.kind : e instanceof Error ? e.message : e);
     return null;
@@ -151,20 +152,25 @@ export async function checkSendRecipient(
       ?? (await fetchChatCandidate(accountId, chatId))
       ?? candidate;
   }
-  if (candidate.ids.length === 0) {
+  if (candidate.ids.length === 0 && !candidate.slug && !candidate.profile_url) {
     console.warn('[unipile-search] send_message: candidat inconnu, aucun lien ni étape');
     return null;
   }
 
-  let erased: boolean;
+  // Le registre juge une adresse à la fois : le nom public de recipient_id et l'adresse de recipient_profile_url
+  // peuvent désigner deux personnes, et l'envoi suit le nom public (userRef) ; chaque forme est donc jugée.
+  const urls = [...new Set([
+    candidate.profile_url,
+    candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null,
+  ].filter((url): url is string => !!url))];
+  let erased = false;
   try {
-    // Client esm.sh, type attendu npm : même API.
-    // deno-lint-ignore no-explicit-any
-    erased = await isCandidateErasedForOrg(admin as any, {
-      organizationId: ctx.organizationId,
-      linkedinIds: candidate.ids,
-      linkedinUrl: candidate.profile_url ?? (candidate.slug ? `https://www.linkedin.com/in/${candidate.slug}` : null),
-    });
+    for (const linkedinUrl of urls.length > 0 ? urls : [null]) {
+      // Client esm.sh, type attendu npm : même API.
+      // deno-lint-ignore no-explicit-any
+      erased = await isCandidateErasedForOrg(admin as any, { organizationId: ctx.organizationId, linkedinIds: candidate.ids, linkedinUrl });
+      if (erased) break;
+    }
   } catch (e) {
     console.warn('[unipile-search] send_message: registre d\'effacement illisible, envoi refusé:', e instanceof Error ? e.message : e);
     throw new UnipileInputError(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED');
@@ -199,6 +205,8 @@ export async function prepareManualSend(
   recipient: SendRecipient | null,
 ): Promise<ManualSendTarget | null> {
   if (!recipient) return null;
+  // Candidat jugé par son nom public ou son adresse seulement (conversation sans identifiant) : rien à enregistrer.
+  if (recipient.candidate.ids.length === 0) return null;
   try {
     const rawProjectId = params.project_id;
     const projectId = missionIdFrom(rawProjectId);

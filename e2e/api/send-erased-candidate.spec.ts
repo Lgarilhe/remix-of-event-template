@@ -177,6 +177,9 @@ test.describe('Envoi à un candidat effacé ou au registre illisible (correctif 
       { label: 'nom court', body: { recipient_id: slug } },
       { label: 'adresse de profil', body: { recipient_id: url } },
       { label: 'adresse de profil à part', body: { recipient_id: newProfileId(), recipient_profile_url: url } },
+      // L'envoi suit le nom public de recipient_id : l'adresse d'un autre profil, non effacé, ne doit pas masquer ce candidat.
+      { label: 'nom court avec l\'adresse d\'un autre profil', body: { recipient_id: slug, recipient_profile_url: `https://www.linkedin.com/in/personne-non-effacee-${rand()}` } },
+      { label: 'adresse de profil avec l\'adresse d\'un autre profil', body: { recipient_id: url, recipient_profile_url: `https://www.linkedin.com/in/personne-non-effacee-${rand()}` } },
     ];
     for (const variant of variants) {
       const res = await sendMessage(token, org, accountId, { project_id: `project:${missionId}`, text: `Bonjour ${rand()}`, ...variant.body });

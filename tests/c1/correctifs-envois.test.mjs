@@ -90,6 +90,11 @@ test('correctif 4 : send_message refuse un candidat effacé avant le plafond, le
   assert.doesNotMatch(body, /candidate\.ids\.length === 0 && chatId/, 'la conversation n\'est plus lue seulement sans recipient_id');
   const erasedAt = body.indexOf('erased = await isCandidateErasedForOrg(');
   assert.ok(erasedAt > 0, 'effacement lu par l\'aide partagée (marqueur de l\'organisation et registre)');
+  // Chaque forme d'identité est jugée : l'adresse de recipient_profile_url et le nom public de recipient_id (que suit l'envoi)
+  // peuvent désigner deux personnes ; un interlocuteur sans identifiant mais connu par son nom public ou son adresse est jugé aussi.
+  assert.match(body, /const urls = \[\.\.\.new Set\(\[\s*candidate\.profile_url,\s*candidate\.slug \? `https:\/\/www\.linkedin\.com\/in\/\$\{candidate\.slug\}` : null,/, 'adresse et nom public jugés tous deux');
+  assert.match(body, /for \(const linkedinUrl of urls\.length > 0 \? urls : \[null\]\) \{\s*(?:\/\/[^\n]*\s*)*erased = await isCandidateErasedForOrg\([^;]*\);\s*if \(erased\) break;/, 'chaque adresse passe par le registre');
+  assert.match(body, /if \(candidate\.ids\.length === 0 && !candidate\.slug && !candidate\.profile_url\) \{/, 'inconnu seulement sans identifiant, nom public ni adresse');
   // Registre ou lecture illisible : refus (échec fermé), jamais « non effacé ».
   assert.match(body, /\} catch \(e\) \{[^}]*throw new UnipileInputError\(SEND_GDPR_UNVERIFIED_MESSAGE, 503, 'GDPR_UNVERIFIED'\);\s*\}/);
   assert.match(body, /if \(erased\) \{[^}]*throw new UnipileInputError\(SEND_ERASED_MESSAGE, 403, 'CANDIDATE_ERASED'\);\s*\}/);
@@ -114,6 +119,7 @@ test('correctif 4 : send_message refuse un candidat effacé avant le plafond, le
   const prepare = topLevelBody(send, 'export async function prepareManualSend(');
   assert.match(prepare, /recipient: SendRecipient \| null,\s*\): Promise<ManualSendTarget \| null> \{\s*if \(!recipient\) return null;/);
   assert.doesNotMatch(prepare, /isCandidateErasedForOrg/, 'plus de saut silencieux de l\'écriture pour un candidat effacé');
+  assert.match(prepare, /if \(recipient\.candidate\.ids\.length === 0\) return null;/, 'sans identifiant, rien à enregistrer (jugé par nom public ou adresse)');
 });
 
 test('correctif 4 : messages de refus lisibles après humanizeError (français, sans nombre ni mot anglais)', () => {

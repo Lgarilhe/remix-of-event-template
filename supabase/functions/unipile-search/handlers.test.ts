@@ -1156,6 +1156,53 @@ Deno.test('send_message : un recipient_id donné par nom court ou adresse de pro
   });
 });
 
+Deno.test('send_message : un nom public effacé ne passe pas avec l\'adresse d\'un autre profil dans recipient_profile_url', async () => {
+  reset();
+  const pipeline = [{ candidate_id: 'ACoAAerased', linkedin_profile_url: 'https://www.linkedin.com/in/ada-erased' }];
+  // L'envoi suit le nom public de recipient_id (userRef) : l'adresse d'un profil non effacé ne doit pas masquer ce candidat.
+  for (const recipient_id of ['ada-erased', 'https://www.linkedin.com/in/ada-erased']) {
+    const admin = fakeAdmin({ erased: ['ACoAAerased'], pipeline });
+    await withMockTransport(router({ [`POST /${ACC}/chats/send`]: { body: STARTED } }), async (mock) => {
+      const refused = await refusedSend(() => handleSendMessage(ACC, { recipient_id, recipient_profile_url: 'https://www.linkedin.com/in/grace-fine', text: 'Bonjour' }, sendContext(admin)));
+      strictEqual(refused.code, 'CANDIDATE_ERASED', recipient_id);
+      ok(!mock.calls.some((c) => c.method === 'POST'), 'aucun envoi');
+    });
+    strictEqual(admin.rpcCalls.length, 0, 'aucun marqueur');
+  }
+});
+
+Deno.test('send_message : un interlocuteur connu par son seul nom public ou son adresse est jugé par cette identité', async () => {
+  reset();
+  const pipeline = [{ candidate_id: 'ACoAAerased', linkedin_profile_url: 'https://www.linkedin.com/in/ada-erased' }];
+  const bare = (user: Record<string, unknown>) => ({
+    [`GET /${ACC}/chats/c1`]: { body: { object: 'Chat', id: 'c1', type: '1to1', is_1to1: true, last_message_timestamp: '2026-10-01T10:00:00Z', user } },
+    [`POST /${ACC}/chats/c1/messages/send`]: { body: SENT },
+  });
+  // Pas de user_id : le nom public ou l'adresse désigne un candidat effacé, l'envoi est refusé.
+  for (const user of [{ public_identifier: 'ada-erased' }, { profile_url: 'https://www.linkedin.com/in/ada-erased' }]) {
+    const admin = fakeAdmin({ erased: ['ACoAAerased'], pipeline });
+    await withMockTransport(router(bare(user)), async (mock) => {
+      const refused = await refusedSend(() => handleSendMessage(ACC, { chat_id: 'c1', text: 'Bonjour' }, sendContext(admin)));
+      strictEqual(refused.code, 'CANDIDATE_ERASED', JSON.stringify(user));
+      ok(!mock.calls.some((c) => c.method === 'POST'), 'aucun envoi');
+    });
+    strictEqual(admin.rpcCalls.length, 0);
+  }
+  // Lien de mission avec le seul nom public : même jugement, sans lire la conversation.
+  const linked = fakeAdmin({ erased: ['ACoAAerased'], pipeline, link: { candidate_id: null, candidate_ids: [], candidate_slug: 'ada-erased' } });
+  await withMockTransport(router(bare({ public_identifier: 'grace-fine' })), async (mock) => {
+    const refused = await refusedSend(() => handleSendMessage(ACC, { chat_id: 'c1', text: 'Bonjour' }, sendContext(linked)));
+    strictEqual(refused.code, 'CANDIDATE_ERASED');
+    strictEqual(mock.calls.length, 0);
+  });
+  // Un profil connu de même façon qui n'est pas au registre part, sans enregistrement faute d'identifiant.
+  const fine = fakeAdmin({ erased: ['ACoAAerased'], pipeline });
+  await withMockTransport(router(bare({ public_identifier: 'grace-fine' })), async () => {
+    strictEqual((await call(await handleSendMessage(ACC, { chat_id: 'c1', text: 'Bonjour' }, sendContext(fine)))).body.success, true);
+  });
+  strictEqual(fine.rpcCalls.length, 0, 'rien à enregistrer sans identifiant');
+});
+
 Deno.test('send_message : un candidat non effacé part et s\'enregistre comme avant', async () => {
   reset();
   const timeline: string[] = [];
