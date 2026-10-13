@@ -300,11 +300,11 @@ test('0b-2a (S14, S15) : envois manuels, assistant et file InMail enregistrés a
   assert.match(before, /const projectId = missionIdFrom\(rawProjectId\);/);
   assert.match(before, /source: ctx\.isInternal && params\.source === 'assistant' \? 'assistant' : 'manual',/);
   assert.match(before, /createdBy: ctx\.isInternal\s*\?/, 'created_by lu seulement sur un appel interne');
-  // Candidat effacé (RGPD) ou registre illisible : rien n'est enregistré.
-  const erased = before.indexOf('await isCandidateErasedForOrg(');
-  const pendingAt = before.indexOf('pending: true,');
-  assert.ok(erased > 0 && pendingAt > erased, 'effacement contrôlé avant le marqueur');
-  assert.match(before, /\} catch \(e\) \{[^}]*registre d\\'effacement illisible[^}]*\s*return null;/);
+  // Correctif 4 : candidat effacé (RGPD) ou registre illisible refusés avant le
+  // plafond et le marqueur (checkSendRecipient, tests/c1/correctifs-envois.test.mjs) ;
+  // ici, destinataire déjà contrôlé, inconnu : rien n'est enregistré.
+  assert.match(before, /if \(!recipient\) return null;/);
+  assert.doesNotMatch(before, /isCandidateErasedForOrg/);
   const manual = topLevelBody(search, 'async function recordManualSend(');
   assert.match(manual, /messageId: sent\.messageId,/);
   assert.doesNotMatch(manual, /pending: true/);

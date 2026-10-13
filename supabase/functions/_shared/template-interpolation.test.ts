@@ -1,6 +1,6 @@
 // deno test --no-check supabase/functions/_shared/template-interpolation.test.ts
 import { deepStrictEqual as assertEquals, ok as assert } from "node:assert";
-import { buildSequenceContext, interpolateAndStrip, isLikelyRealFirstName } from "./template-interpolation.ts";
+import { ANONYMIZED_CLIENT_FALLBACK, buildSequenceContext, interpolateAndStrip, isLikelyRealFirstName } from "./template-interpolation.ts";
 import { clearSenderCache } from "./sequence-sender.ts";
 
 type Query = { table: string; cols: string; filters: Record<string, unknown> };
@@ -95,6 +95,58 @@ Deno.test("SEQ-099 : prénom non fiable = salutation neutre, sans espace avant l
   assertEquals(interpolateAndStrip("Salut {{prenom}} ! Ça va ?", {}).result, "Salut ! Ça va ?");
   for (const ok of ["Driss", "Drew", "Devon", "Łukasz", "Ştefan", "N’Golo", "Jean-Pierre", "Marie"]) assert(isLikelyRealFirstName(ok), ok);
   for (const ko of ["Dr.", "Dr", "Hiring", "OPEN", "Mme", "🚀", "J4ne", "Lead"]) assert(!isLikelyRealFirstName(ko), ko);
+});
+
+// ─── Client anonymisé (correctif 1 du plan du lot 5) ──────────────────────
+
+/** Contexte d'une inscription sur une mission dont la ligne sourcing_projects est `project`. */
+async function contextForProject(project: Record<string, unknown>) {
+  clearSenderCache();
+  const client = fakeClient({ profiles, sourcing_projects: () => ({ data: project, error: null }) });
+  return buildSequenceContext(client as never, {
+    enrollment: { profile_name: "Marie Curie", job_id: "p1", organization_id: "org1", created_by: "u-laurent", account_id: "ACC_A" },
+    senderUserId: "u-laurent",
+  });
+}
+
+Deno.test("correctif 1 : client anonymisé, {{client}} rend l'alias et jamais le nom réel, sous aucun de ses trois noms", async () => {
+  const template = "Nous accompagnons {{client}} sur un poste de {{poste_recherche}}. {{client | upper}} ?";
+  const anonymized = { recruitment_mode: "client", anonymize_client: true, anonymized_alias: "  un groupe industriel  " };
+  for (const [label, project] of [
+    ["colonne client_name", { name: "Lead Dev Go", job_details: { title: "Lead Dev Go", outreach_config: anonymized }, client_name: "Doctolib" }],
+    ["client.name du Cadrage", { name: "Lead Dev Go", job_details: { title: "Lead Dev Go", client: { name: "Doctolib" }, outreach_config: anonymized }, client_name: null }],
+    ["ancien job_details.client_name", { name: "Lead Dev Go", job_details: { title: "Lead Dev Go", client_name: "Doctolib", outreach_config: anonymized }, client_name: null }],
+  ] as const) {
+    const ctx = await contextForProject(project);
+    assertEquals(ctx.client, "un groupe industriel", label);
+    const text = interpolateAndStrip(template, ctx).result;
+    assertEquals(text, "Nous accompagnons un groupe industriel sur un poste de Lead Dev Go. UN GROUPE INDUSTRIEL ?", label);
+    assert(!/doctolib/i.test(JSON.stringify(ctx)), `${label} : le nom réel n'est dans aucune variable`);
+  }
+});
+
+Deno.test("correctif 1 : client anonymisé sans alias, repli neutre « notre client », secours du modèle ignoré", async () => {
+  const ctx = await contextForProject({
+    name: "Lead Dev Go",
+    job_details: { title: "Lead Dev Go", client: { name: "Doctolib" }, outreach_config: { anonymize_client: true, anonymized_alias: "   " } },
+    client_name: "Doctolib",
+  });
+  assertEquals(ANONYMIZED_CLIENT_FALLBACK, "notre client");
+  assertEquals(ctx.client, ANONYMIZED_CLIENT_FALLBACK);
+  assertEquals(interpolateAndStrip('Un poste chez {{client | fallback:"une PME"}}.', ctx).result, "Un poste chez notre client.");
+  assert(!/doctolib/i.test(JSON.stringify(ctx)));
+});
+
+Deno.test("correctif 1 : sans anonymisation, {{client}} garde le nom ; anonymisé sans aucun nom ni alias, la variable reste vide", async () => {
+  const named = await contextForProject({
+    name: "Lead Dev Go",
+    job_details: { title: "Lead Dev Go", outreach_config: { anonymize_client: false, anonymized_alias: "un groupe industriel" } },
+    client_name: "Doctolib",
+  });
+  assertEquals(named.client, "Doctolib");
+  const nothing = await contextForProject({ name: "Lead Dev Go", job_details: { outreach_config: { anonymize_client: true } }, client_name: null });
+  assertEquals(nothing.client, undefined, "rien à cacher : le texte de secours du modèle s'applique comme avant");
+  assertEquals(interpolateAndStrip('Chez {{client | fallback:"une PME"}}.', nothing).result, "Chez une PME.");
 });
 
 // ─── Relevé de la construction (aperçu, lot 5d-1) ─────────────────────────

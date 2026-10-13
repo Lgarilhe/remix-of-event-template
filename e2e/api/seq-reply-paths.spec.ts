@@ -39,6 +39,7 @@ import {
   admin,
   createOrg,
   deleteOrg,
+  insertLegacyCandidateRows,
   seedLinkedInAccount,
   seedMission,
   seedSequence,
@@ -173,12 +174,12 @@ async function seedJcs(
   orgId: string, createdBy: string, jobId: string, candidateId: string,
   status = 'messaged', pipelineStage: string | null = null, candidateName = 'Camille Martin',
 ): Promise<string> {
-  const { data, error } = await admin().from('job_candidate_status').insert({
+  // Écrit sans jeton : la garde (refus depuis le lot 0b-5) refuse ce couple par la clé de service.
+  const [row] = insertLegacyCandidateRows([{
     organization_id: orgId, created_by: createdBy, job_id: jobId, candidate_id: candidateId,
     status, pipeline_stage: pipelineStage, candidate_name: candidateName,
-  }).select('id').single();
-  if (error || !data) throw new Error(`job_candidate_status: ${error?.message}`);
-  return data.id as string;
+  }]);
+  return row.id;
 }
 
 /**
@@ -749,6 +750,8 @@ test.describe('Webhook de réponse : pipeline borné à la mission de l’inscri
       email_account_id: mailbox, email_address: 'recruteur@e2e.konekt.test', provider: 'GOOGLE',
     });
     if (mbErr) throw new Error(`member_email_accounts: ${mbErr.message}`);
+    // Le webhook lit l'e-mail reçu chez le prestataire : le faux prestataire l'adresse à cette boîte.
+    await setMockMode(mailbox, { email_address: 'recruteur@e2e.konekt.test' });
     const profileId = `ACoAAE2ERE${rand()}${rand()}`;
     const email = `cand-${rand()}@e2e.konekt.test`;
     const m1 = await seedMission(org.orgId, org.owner.userId);

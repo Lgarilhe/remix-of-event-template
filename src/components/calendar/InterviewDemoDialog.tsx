@@ -1,13 +1,14 @@
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { ArrowRight, CheckCircle2, ClipboardList, FileText, Mic, Play, Video } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ClipboardList, FileText, Mic, Play, User, Video, X } from 'lucide-react';
+import { ProfileDetailedTab } from '@/components/ats/candidate-detail/ProfileDetailedTab';
 import { CalendarServiceLogo } from '@/components/calendar/CalendarServiceLogo';
 import type { DemoDraft, PreviewTab } from '@/components/calendar/CalendarDemoProvider';
 import { texturedCard } from '@/components/layout';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,25 +25,35 @@ interface InterviewDemoDialogProps {
   onRestoreFocus: (event: Event) => void;
 }
 
-/** Aperçu local partagé entre la barre latérale et l’agenda. */
+/** Fiche d'exemple : mêmes contenus de profil, brouillons entièrement locaux. */
 export default function InterviewDemoDialog({ selected, tab, draft, onClose, onTabChange, onDraftChange, onRestoreFocus }: InterviewDemoDialogProps) {
   return (
-    <Dialog open onOpenChange={value => { if (!value) onClose(); }}>
-      <DialogContent className="flex max-h-[90dvh] w-[calc(100%-1.5rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0"
+    <Sheet open onOpenChange={value => { if (!value) onClose(); }}>
+      <SheetContent side="right" hideClose className="flex !w-full !max-w-[100vw] min-w-0 flex-col gap-0 overflow-hidden p-0 sm:!w-[95vw] sm:!max-w-[720px]"
         onCloseAutoFocus={onRestoreFocus}>
         <>
-          <DialogHeader className="shrink-0 border-b border-border p-4 pr-14 text-left sm:p-5 sm:pr-14">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Données fictives · Aucune connexion ni capture audio</p>
-            <DialogTitle>{selected.event.meta?.candidateName}</DialogTitle>
-            <DialogDescription className="break-words">{selected.event.subtitle} · {format(parseISO(selected.event.startAt), 'd MMMM à HH:mm', { locale: fr })}</DialogDescription>
-          </DialogHeader>
+          <SheetHeader className="shrink-0 border-b border-border p-4 pr-14 text-left sm:p-5 sm:pr-14">
+            <div className="flex min-w-0 items-start gap-3">
+              <Avatar className="h-12 w-12 shrink-0"><AvatarFallback>{selected.initials}</AvatarFallback></Avatar>
+              <div className="min-w-0 space-y-1">
+                <p className="text-xs text-muted-foreground">Fiche candidat · Exemple</p>
+                <SheetTitle className="break-words text-lg">{selected.event.meta?.candidateName}</SheetTitle>
+                <SheetDescription className="break-words">{selected.event.meta?.candidateHeadline}</SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+          <SheetClose asChild><Button variant="ghost" size="icon" className="absolute right-2 top-3 h-11 w-11" aria-label="Fermer"><X aria-hidden="true" /></Button></SheetClose>
           <Tabs value={tab} onValueChange={value => onTabChange(value as PreviewTab)} className="flex min-h-0 flex-1 flex-col">
-            <TabsList className="mx-3 my-3 grid h-auto shrink-0 grid-cols-3 sm:mx-5">
-              <TabsTrigger value="scorecard" className="min-h-11 gap-1.5 px-2"><ClipboardList className="hidden h-4 w-4 sm:block" aria-hidden="true" />Grille</TabsTrigger>
-              <TabsTrigger value="assistant" className="min-h-11 gap-1.5 px-2"><Mic className="hidden h-4 w-4 sm:block" aria-hidden="true" />Assistant</TabsTrigger>
-              <TabsTrigger value="meeting" className="min-h-11 gap-1.5 px-2"><Video className="hidden h-4 w-4 sm:block" aria-hidden="true" />Visio</TabsTrigger>
+            <TabsList className="mx-3 my-3 grid h-auto shrink-0 grid-cols-4 sm:mx-5">
+              <TabsTrigger value="profile" className="min-h-11 min-w-0 gap-1.5 px-1 text-xs sm:text-sm"><User className="hidden h-4 w-4 sm:block" aria-hidden="true" />Profil</TabsTrigger>
+              <TabsTrigger value="scorecard" className="min-h-11 min-w-0 gap-1.5 px-1 text-xs sm:text-sm"><ClipboardList className="hidden h-4 w-4 sm:block" aria-hidden="true" />Évaluation</TabsTrigger>
+              <TabsTrigger value="assistant" className="min-h-11 min-w-0 gap-1.5 px-1 text-xs sm:text-sm"><Mic className="hidden h-4 w-4 sm:block" aria-hidden="true" />Assistant</TabsTrigger>
+              <TabsTrigger value="meeting" className="min-h-11 min-w-0 gap-1.5 px-1 text-xs sm:text-sm"><Video className="hidden h-4 w-4 sm:block" aria-hidden="true" />Visio</TabsTrigger>
             </TabsList>
             <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 sm:px-5 sm:pb-5">
+              <TabsContent value="profile" className="mt-0">
+                <ProfileDetailedTab linkedinProfileData={selected.profile} enrichedProfile={null} />
+              </TabsContent>
               <TabsContent value="scorecard" className="mt-0">
                 <ScorecardPreview interview={selected} draft={draft} onChange={onDraftChange} />
               </TabsContent>
@@ -89,8 +100,8 @@ export default function InterviewDemoDialog({ selected, tab, draft, onClose, onT
             </div>
           </Tabs>
         </>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -106,7 +117,11 @@ function ScorecardPreview({ interview, draft, onChange }: {
       <h3 className="text-md font-semibold">Grille d’entretien</h3>
       <p className="text-xs text-muted-foreground" role="status">{rated.length}/{interview.criteria.length} critères notés{average ? ` · Moyenne ${average}/5` : ''}</p>
     </div>
-    <p className="text-sm text-muted-foreground">Essayez une note et un commentaire. Vos modifications restent dans cette démo.</p>
+    <div className="space-y-1 border-b border-border pb-3">
+      <p className="text-sm font-medium">{interview.event.subtitle}</p>
+      <p className="text-xs text-muted-foreground">Grille préparée · {format(parseISO(interview.event.startAt), 'd MMMM à HH:mm', { locale: fr })}</p>
+      <p className="text-xs text-muted-foreground">Exemple fictif. Vos notes restent dans cet aperçu.</p>
+    </div>
     {interview.criteria.map(criterion => <fieldset key={criterion.id} className="min-w-0 space-y-3 rounded-xl border border-border bg-card p-3 sm:p-4">
       <legend className="px-1 text-sm font-semibold">{criterion.label}</legend>
       <p className="text-sm text-foreground-secondary">{criterion.question}</p>

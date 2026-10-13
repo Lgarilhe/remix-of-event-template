@@ -332,7 +332,7 @@ test('S-11 : un seul bouton plein, boutons discrets, puces sans cadre, zéro non
   const results = code(`${V3_DIR}/SourcingResultsV3.tsx`);
   const top = code(`${V3_DIR}/SourcingTopBar.tsx`);
   // Branche des résultats : après l'écran de chargement et l'écran « aucun profil » (qui ont leurs propres boutons).
-  const resultsBranch = results.slice(results.indexOf('const canLoadMore'));
+  const resultsBranch = results.slice(results.indexOf('const allToSortSelected'));
   // Liste de résultats : « Noter » est le seul bouton plein, son coût écrit à côté (lu par aria-describedby).
   assert.equal((resultsBranch.match(/variant="primary"/g) || []).length, 1, 'un seul bouton plein dans les résultats');
   assert.match(resultsBranch, /variant="primary"[\s\S]{0,200}aria-describedby="sourcing-cout-notation"/);
@@ -370,7 +370,7 @@ test('S-11 : un seul bouton plein, boutons discrets, puces sans cadre, zéro non
   assert.match(results, /aria-label="Groupes de résultats"/);
   // Une seule phrase de pied de liste, qui ne répète pas ce que dit « Noter ».
   assert.doesNotMatch(results, /pas encore notés/i);
-  assert.match(results, /Tous les profils de cette recherche sont chargés\. Élargissez vos filtres pour en trouver d'autres\./);
+  assert.match(results, /Fin des résultats disponibles pour cette recherche\. Élargissez vos filtres pour en trouver d'autres\./);
 });
 
 test('S-11b : cibles de 44 px sur téléphone et nom accessible des boutons gardé', () => {
@@ -590,7 +590,9 @@ test('S-13d : écran de départ, bouton plein monochrome, consigne lisible ; « 
   assert.match(results, /aria-disabled=\{loadingMore \|\| undefined\}/);
   assert.match(results, /disabled=\{loading && !loadingMore\}/);
   assert.doesNotMatch(results, /loadingMore \? \(\s*<span aria-hidden="true" className="inline-flex items-center gap-1\.5 px-2">/);
-  assert.match(results, /<span role="status" className="sr-only">\{loadAnnouncement\}<\/span>/);
+  assert.match(results, /loadingMore=\{loadingMore\}/);
+  const feedback = code(`${V3_DIR}/SourcingSearchFeedback.tsx`);
+  assert.match(feedback, /role="status" aria-label="État de la recherche" aria-live="polite" aria-atomic="true"/);
 });
 
 test('S-13e : liste Tri, la ligne du nom ne se coupe plus, titre sous le nom jusqu\'à xl, action de retour en icône sur téléphone', () => {

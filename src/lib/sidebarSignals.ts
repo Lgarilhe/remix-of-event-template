@@ -393,7 +393,7 @@ export interface InterviewLinks {
   qualification: string;
   /** Fiche du candidat dans le pipeline ; null si l'entretien n'est pas rattaché à un candidat. */
   candidate: string | null;
-  /** Grille d'entretien en plein écran. */
+  /** Fiche du candidat ouverte sur sa grille d'entretien. */
   scorecard: string | null;
   /** Grille avec l'assistant d'entretien ouvert (enregistrement, transcription, coaching). */
   coaching: string | null;
@@ -415,10 +415,10 @@ export function interviewLinks(row: {
   const id = encodeURIComponent(candidateId);
   const mission = row.project_id ? `mission=${encodeURIComponent(row.project_id)}` : '';
   const params = [mission, `session=${encodeURIComponent(row.id)}`].filter(Boolean).join('&');
-  const scorecard = `/pipeline/scorecard/${id}?${params}`;
+  const scorecard = `/pipeline?candidate=${id}&tab=evaluation&prepareInterview=1&${params}`;
   return {
     qualification,
-    candidate: `/pipeline?candidate=${id}`,
+    candidate: scorecard,
     scorecard,
     coaching: `${scorecard}&coaching=1`,
   };

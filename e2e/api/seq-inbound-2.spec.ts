@@ -526,6 +526,9 @@ test.describe('Réponse par e-mail', () => {
       provider: 'GOOGLE', account_status: 'OK', linked_by: org.owner.userId,
     });
     if (mbxErr) throw new Error(mbxErr.message);
+    // Le webhook lit l'e-mail reçu chez le prestataire : le faux prestataire l'adresse à cette boîte.
+    await setMockMode(mailbox, { email_address: `recruteur.${r}@e2e.konekt.test` });
+    cleanups.push(() => setMockMode(mailbox, {}));
     const domain = `e2e-mail-${r}.test`;
     const addrA1 = `C_1.${r}@${domain.toUpperCase()}`;
     const replyFromOther = `autre.${r}@${domain}`;

@@ -1147,7 +1147,17 @@ export function useMessagesInbox({ selectedAccount, onUnreadCountChange, initial
         },
       });
 
-      if (!data?.success) throw new Error(data?.error as string);
+      if (!data?.success) {
+        // Correctif 4 : candidat effacé (CANDIDATE_ERASED) ou effacement non
+        // vérifié (GDPR_UNVERIFIED), la phrase du serveur dit pourquoi ; aucun
+        // nouvel essai, le texte reste dans le champ.
+        const refusal = data?.error_code === 'CANDIDATE_ERASED' || data?.error_code === 'GDPR_UNVERIFIED' ? data.error : undefined;
+        if (refusal) {
+          toast.error(refusal);
+          return;
+        }
+        throw new Error(data?.error as string);
+      }
 
       const sentMessage: Message = {
         id: Date.now().toString(),

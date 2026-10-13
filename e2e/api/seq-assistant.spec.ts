@@ -1,6 +1,6 @@
 /**
  * Lot « assistant » du module séquences : outils de l'assistant IA qui lisent
- * la prospection (get_sequences_status, get_candidate_outreach), créent une
+ * la prospection (get_sequences_status, get_candidate_outreach, get_org_analytics), créent une
  * séquence (create_sequence), inscrivent (enroll_in_sequence) ou écrivent un
  * message LinkedIn ponctuel (send_linkedin_message).
  *
@@ -45,6 +45,7 @@ import {
   admin,
   createOrg,
   deleteOrg,
+  seedCandidateRow,
   seedLinkedInAccount,
   seedMission,
   seedSequence,
@@ -766,6 +767,107 @@ test.describe('Assistant : get_sequences_status', () => {
       expect(byName.status).toBe('failed');
       expect(String(byName.result.error)).toMatch(/introuvable/);
       expect(byName.result.data).toBeUndefined();
+    });
+  });
+
+  test.describe('gss-formes-identifiant-mission', () => {
+    test.describe.configure({ mode: 'serial' });
+    // gss-formes-identifiant-mission
+    test('compte les inscriptions de la mission sous ses trois formes d’identifiant (id, « project:<id> », job rattaché), pas celles d’une autre mission', async () => {
+      const org = await createOrg('agency', 'E2E GSS formes');
+      track(org);
+      const linkedJob = `job_${rand()}`;
+      const mission = await seedMission(org.orgId, org.owner.userId, { job_id: linkedJob });
+      const other = await seedMission(org.orgId, org.owner.userId);
+      await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: mission });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, {
+        job_id: `project:${mission}`, status: 'replied', replied_at: new Date().toISOString(),
+      });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: linkedJob });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: `project:${other}` });
+
+      const r = await readTool(org.orgId, org.owner.userId, 'get_sequences_status', { mission_id: mission });
+      expect(r.status, JSON.stringify(r.result)).toBe('executed');
+      // DÉFAUT gss-forme-project-ignoree : le filtre .eq('job_id', id) laissait de côté « project:<id> » et le job rattaché.
+      expect(r.result.data?.total_enrolled, JSON.stringify(r.result.data)).toBe(3);
+      expect(r.result.data?.by_status).toEqual({ active: 2, replied: 1 });
+      expect(r.result.data?.replied).toBe(1);
+      expect(r.result.data?.to_follow_up).toBe(2);
+    });
+  });
+});
+
+// ═══ get_org_analytics ═══════════════════════════════════════════════════════
+
+test.describe('Assistant : get_org_analytics', () => {
+  test.describe('goa-pipeline-etape-generale', () => {
+    test.describe.configure({ mode: 'serial' });
+    // goa-pipeline-etape-generale
+    test('pipeline compté par étape générale : un candidat par mission, profils jamais ouverts exclus, libellés de l’interface', async () => {
+      const org = await createOrg('agency', 'E2E GOA étapes');
+      track(org);
+      const mission = await seedMission(org.orgId, org.owner.userId);
+      // En entretien, avec le libellé précis « Pré-qualif » dans l'ancienne colonne pipeline_stage.
+      await seedCandidateRow({
+        orgId: org.orgId, createdBy: org.owner.userId, candidateId: newProfileId(), missionId: mission,
+        stage: 'interviewing', legacyStage: 'Pré-qualif',
+      });
+      // À trier, en double : la même personne sous les deux formes de job_id de la mission.
+      const duplicate = newProfileId();
+      for (const jobId of [`project:${mission}`, mission]) {
+        const { error } = await admin().from('job_candidate_status').insert({
+          organization_id: org.orgId, created_by: org.owner.userId, candidate_id: duplicate,
+          candidate_name: 'Camille Martin', job_id: jobId, project_id: mission, status: 'new', pipeline_stage: 'Nouveau',
+        });
+        if (error) throw new Error(`doublon: ${error.message}`);
+      }
+      // Jamais ouvert : trouvé par une recherche, ni noté, ni trié, ni contacté.
+      const { error: unopenedError } = await admin().from('job_candidate_status').insert({
+        organization_id: org.orgId, created_by: org.owner.userId, candidate_id: newProfileId(),
+        candidate_name: 'Alex Durand', job_id: `project:${mission}`, project_id: mission, status: 'discovered',
+      });
+      if (unopenedError) throw new Error(`jamais ouvert: ${unopenedError.message}`);
+
+      const r = await readTool(org.orgId, org.owner.userId, 'get_org_analytics', {});
+      expect(r.status, JSON.stringify(r.result)).toBe('executed');
+      const pipeline = r.result.data?.pipeline as { total_candidates?: number; by_stage?: Record<string, number> } | undefined;
+      // DÉFAUT goa-ancienne-colonne : l'agrégat lisait pipeline_stage ligne à ligne (doublons et jamais ouverts compris).
+      expect(pipeline?.total_candidates, JSON.stringify(pipeline)).toBe(2);
+      expect(pipeline?.by_stage).toEqual({
+        'À trier': 1, Retenu: 0, Contacté: 0, 'A répondu': 0, 'En entretien': 1, Embauché: 0, Écarté: 0,
+      });
+    });
+  });
+
+  test.describe('goa-collaborateur-formes-identifiant-mission', () => {
+    test.describe.configure({ mode: 'serial' });
+    // goa-collaborateur-formes-identifiant-mission
+    test('collaborateur : inscriptions de ses missions comptées sous leurs trois formes d’identifiant (id, « project:<id> », job rattaché), pas celles d’une autre mission', async () => {
+      const org = await createOrg('agency', 'E2E GOA collaborateur');
+      const collab = await addMember(org.orgId, 'collaborator', 'collab');
+      track(org, collab);
+      const linkedJob = `job_${rand()}`;
+      const own = await seedMission(org.orgId, collab.userId, { job_id: linkedJob });
+      const joined = await seedMission(org.orgId, org.owner.userId);
+      const foreign = await seedMission(org.orgId, org.owner.userId);
+      const { error } = await admin().from('mission_team').insert({ project_id: joined, user_id: collab.userId, role: 'sourcer' });
+      if (error) throw new Error(`mission_team: ${error.message}`);
+      await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: own });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, {
+        job_id: `project:${own}`, status: 'replied', replied_at: new Date().toISOString(),
+      });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: linkedJob });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: `project:${joined}` });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: foreign });
+      await seedEnrollmentRow(org.orgId, org.owner.userId, { job_id: `project:${foreign}` });
+
+      const r = await readTool(org.orgId, collab.userId, 'get_org_analytics', {});
+      expect(r.status, JSON.stringify(r.result)).toBe('executed');
+      expect(r.result.data?.role).toBe('collaborator');
+      // DÉFAUT goa-collaborateur-forme-project-ignoree : .in('job_id', missionIds) ne gardait que les UUID des missions.
+      expect(r.result.data?.outreach_period, JSON.stringify(r.result.data)).toMatchObject({
+        sequences_created: 4, sequences_active: 3, replies: 1,
+      });
     });
   });
 });

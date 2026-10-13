@@ -2143,6 +2143,11 @@ export type Database = {
         Row: {
           project_id: string | null
           process_step_id: string | null
+          qualification_session_id: string | null
+          preparation_status: string | null
+          preparation_started_at: string | null
+          preparation_token: string | null
+          preparation_error: string | null
           ai_generated: boolean
           candidate_id: string
           comments: Json
@@ -2164,6 +2169,11 @@ export type Database = {
         Insert: {
           project_id?: string | null
           process_step_id?: string | null
+          qualification_session_id?: string | null
+          preparation_status?: string | null
+          preparation_started_at?: string | null
+          preparation_token?: string | null
+          preparation_error?: string | null
           ai_generated?: boolean
           candidate_id: string
           comments?: Json
@@ -2185,6 +2195,11 @@ export type Database = {
         Update: {
           project_id?: string | null
           process_step_id?: string | null
+          qualification_session_id?: string | null
+          preparation_status?: string | null
+          preparation_started_at?: string | null
+          preparation_token?: string | null
+          preparation_error?: string | null
           ai_generated?: boolean
           candidate_id?: string
           comments?: Json
@@ -2204,6 +2219,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "candidate_evaluations_qualification_session_id_fkey"
+            columns: ["qualification_session_id"]
+            isOneToOne: false
+            referencedRelation: "qualification_sessions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "candidate_evaluations_organization_id_fkey"
             columns: ["organization_id"]

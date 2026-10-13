@@ -7,6 +7,12 @@ import ts from 'typescript';
 const root = new URL('../../', import.meta.url);
 const plain = value => JSON.parse(JSON.stringify(value));
 const tick = () => new Promise(resolve => setImmediate(resolve));
+async function waitFor(condition) {
+  for (let attempt = 0; attempt < 100 && !condition(); attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+  assert.ok(condition(), 'expected asynchronous search state did not arrive');
+}
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -24,10 +30,10 @@ function scheduler() {
     if (!slots[i]) slots[i] = { value: typeof initial === 'function' ? initial() : initial };
     return [slots[i].value, value => { slots[i].value = typeof value === 'function' ? value(slots[i].value) : value; dirty = true; }];
   };
-  const effect = (fn, deps) => {
+  const effect = (fn, deps, phase) => {
     const i = index++;
     if (!slots[i]) slots[i] = {};
-    if (changed(slots[i].deps, deps)) scheduled.push({ slot: slots[i], fn, deps });
+    if (changed(slots[i].deps, deps)) scheduled.push({ slot: slots[i], fn, deps, phase });
   };
   const hooks = {
     useRef: value => { const i = index++; return slots[i] ??= { current: value }; },
@@ -43,8 +49,8 @@ function scheduler() {
       if (!slots[i]) slots[i] = action => set(previous => reducer(previous, action));
       return [value, slots[i]];
     },
-    useEffect: effect,
-    useLayoutEffect: effect,
+    useEffect: (fn, deps) => effect(fn, deps, 'passive'),
+    useLayoutEffect: (fn, deps) => effect(fn, deps, 'layout'),
   };
   return {
     hooks,
@@ -55,8 +61,12 @@ function scheduler() {
         assert.ok(++rounds < 50, 'hook scheduler did not settle');
         dirty = false; index = 0; render();
         const effects = scheduled.splice(0);
-        for (const { slot } of effects) slot.cleanup?.();
-        for (const { slot, fn, deps } of effects) { slot.deps = deps; slot.cleanup = fn(); }
+        // Cache restoration uses layout effects; mount effects must run after it.
+        for (const phase of ['layout', 'passive']) {
+          const current = effects.filter(effect => effect.phase === phase);
+          for (const { slot } of current) slot.cleanup?.();
+          for (const { slot, fn, deps } of current) { slot.deps = deps; slot.cleanup = fn(); }
+        }
       } while (dirty);
     },
     flush() { this.render(render); },
@@ -84,7 +94,7 @@ function modules(overrides = {}, globals = {}) {
 }
 
 function searchHarness() {
-  const react = scheduler(), pending = [], requests = [], discovered = [], messages = [], quotas = [], invalidations = [];
+  const react = scheduler(), pending = [], requests = [], discovered = [], messages = [], quotas = [], invalidations = [], newSearchResults = [], completedScopes = [];
   const fetch = options => {
     const task = deferred(); pending.push(task); requests.push(plain(options.body)); return task.promise;
   };
@@ -107,6 +117,10 @@ function searchHarness() {
   const setters = Object.fromEntries(Object.keys(state).map(key => ['set' + key[0].toUpperCase() + key.slice(1), value => {
     state[key] = typeof value === 'function' ? value(state[key]) : value;
   }]));
+  setters.onNewSearchResults = scopeKey => {
+    newSearchResults.push(plain(state.results));
+    completedScopes.push(scopeKey);
+  };
   const filters = { ...plain(INITIAL_FILTERS), api: 'recruiter', keywords: 'Python' };
   const filtersRef = { current: filters };
   let context = { organizationId: 'org-a', userId: 'user-a', selectedAccount: 'account-a',
@@ -121,7 +135,7 @@ function searchHarness() {
   const render = () => { actions = useLinkedInSearchActions({ ...context, ...state }, setters); };
   const refresh = () => react.render(render);
   refresh();
-  return { state, requests, pending, messages, discovered, quotas, invalidations, buildSearchParams,
+  return { state, requests, pending, messages, discovered, quotas, invalidations, newSearchResults, completedScopes, buildSearchParams,
     get actions() { return actions; },
     refresh,
     change(patch) {
@@ -149,12 +163,14 @@ test('late search A cannot replace B results, cursor, total, discoveries or load
   assert.equal(h.state.loading, true);
   assert.equal(h.state.results.length, 0);
   assert.equal(h.discovered.length, 0);
+  assert.equal(h.newSearchResults.length, 0);
   h.pending[1].resolve(page('new', 'new-cursor'));
   await b;
   assert.equal(h.state.loading, false);
   assert.equal(h.state.cursor, 'new-cursor');
   assert.ok(h.state.results.every(profile => profile.id.startsWith('new')));
   assert.equal(h.discovered.length, 1);
+  assert.equal(h.newSearchResults.length, 1);
   assert.equal(h.quotas.length, 2, 'served stale pages still count toward LinkedIn limits');
 });
 
@@ -189,6 +205,7 @@ for (const [label, patch] of [
   assert.equal(h.state.cursor, null);
   assert.equal(h.discovered.length, 0);
   assert.equal(h.state.loading, false);
+  assert.equal(h.newSearchResults.length, 0);
 });
 
 test('unmount ignores response and performs no discoveries', async () => {
@@ -198,6 +215,7 @@ test('unmount ignores response and performs no discoveries', async () => {
   await request;
   assert.equal(h.state.results.length, 0);
   assert.equal(h.discovered.length, 0);
+  assert.equal(h.newSearchResults.length, 0);
 });
 
 test('double first-page click and double next-page click each invoke only once', async () => {
@@ -211,6 +229,7 @@ test('double first-page click and double next-page click each invoke only once',
   assert.equal(h.requests.length, 2);
   h.pending[1].resolve(page('next')); await next;
   assert.equal(h.state.results.length, 50);
+  assert.equal(h.newSearchResults.length, 1, 'only the first page resets the result group');
 });
 
 test('edited draft blocks pagination; reverting to the executed draft preserves its exact cursor', async () => {
@@ -246,17 +265,84 @@ test('next-page error preserves existing profiles and permits the same cursor re
 test('partial first-page success retains the next successful cursor after a later round fails', async () => {
   const h = searchHarness();
   const first = h.actions.handleSearch(); h.pending[0].resolve(page('first', 'cursor-one', 1));
-  await new Promise(resolve => setTimeout(resolve, 5));
+  await waitFor(() => h.requests.length === 2);
   assert.equal(h.requests.length, 2);
   h.pending[1].reject(new Error('Temporary failure')); await first; h.refresh();
   assert.equal(h.state.results.length, 1);
   assert.equal(h.state.cursor, 'cursor-one');
   assert.equal(h.state.hasSearched, true);
   assert.equal(h.state.hasMoreResults, true);
+  assert.equal(h.newSearchResults.length, 1, 'a served partial new search opens its results');
   const retry = h.actions.handleSearch(true);
   assert.equal(h.requests[2].cursor, 'cursor-one');
   h.pending[2].resolve(page('next')); await retry;
   assert.equal(h.state.results.length, 26);
+  assert.equal(h.newSearchResults.length, 1, 'a pagination retry preserves the chosen group');
+});
+
+test('an accepted empty search notifies its result group, while validation and failed searches do not', async () => {
+  const h = searchHarness();
+  h.change({ selectedAccount: null });
+  await h.actions.handleSearch();
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.newSearchResults.length, 0);
+  h.change({ selectedAccount: 'account-a' });
+  const failed = h.actions.handleSearch();
+  h.pending[0].reject(new Error('Search unavailable'));
+  await failed;
+  assert.equal(h.newSearchResults.length, 0);
+  const empty = h.actions.handleSearch();
+  h.pending[1].resolve(page('empty', null, 0));
+  await empty;
+  assert.equal(h.newSearchResults.length, 1);
+  assert.deepEqual(h.newSearchResults[0], []);
+});
+
+test('new-search completions identify their exact account, source and brief, including a repeated search', async () => {
+  const h = searchHarness();
+  for (const patch of [{}, {}, { selectedAccount: 'account-b' }, { searchSource: 'database' }, {
+    selectedJob: { id: 'job-a', title: 'Data Engineer', skills: ['SQL'] },
+  }]) {
+    h.change(patch);
+    const expectedScope = h.actions.searchScopeKey;
+    const pending = h.actions.handleSearch();
+    h.pending.at(-1).resolve(page('accepted'));
+    await pending;
+    assert.equal(h.completedScopes.at(-1), expectedScope);
+    assert.equal(h.state.executedSearch.scopeKey, expectedScope);
+  }
+  assert.equal(h.completedScopes.length, 5);
+  assert.equal(h.completedScopes[0], h.completedScopes[1], 'a same-context relaunch emits a new completion');
+  assert.equal(new Set(h.completedScopes).size, 4);
+});
+
+test('a next-page click explains a reached LinkedIn quota without losing profiles or its cursor', async () => {
+  const h = searchHarness();
+  const first = h.actions.handleSearch();
+  h.pending[0].resolve(page('first', 'cursor-one'));
+  await first;
+  h.change({ quota: { canPerformAction: () => false, recordAction() {}, isNearLimit: () => false } });
+  h.actions.handleLoadMore();
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.state.results.length, 25);
+  assert.equal(h.state.cursor, 'cursor-one');
+  assert.ok(h.messages.some(message => message.kind === 'error' && /Quota de recherche journalier atteint/.test(message.message)));
+});
+
+test('database next-page clicks remain exempt from the LinkedIn quota', async () => {
+  const h = searchHarness();
+  h.change({ searchSource: 'database', quota: { canPerformAction: () => false, recordAction() {}, isNearLimit: () => false } });
+  const first = h.actions.handleSearch();
+  h.pending[0].resolve(page('first', 'cursor-one'));
+  await first;
+  h.refresh();
+  h.actions.handleLoadMore();
+  assert.equal(h.requests.length, 2);
+  assert.equal(h.requests[1].cursor, 'cursor-one');
+  h.pending[1].resolve(page('next'));
+  await waitFor(() => h.state.results.length === 50);
+  assert.equal(h.state.results.length, 50);
+  assert.equal(h.messages.length, 0);
 });
 
 test('native geography keeps relocation-eligible and excluded-location results without substring filtering', async () => {
@@ -271,7 +357,7 @@ test('native geography keeps relocation-eligible and excluded-location results w
   assert.deepEqual(h.requests[0].location, plain(h.filters.location));
 });
 
-function persistenceHarness() {
+function persistenceHarness({ cachedView } = {}) {
   const react = scheduler(), writes = [], timers = new Map();
   let id = 0;
   const competitors = [];
@@ -295,7 +381,14 @@ function persistenceHarness() {
     filters_snapshot: { keywords: 'Python', last_manual_edit: '2026-10-01', suggestions: { alt_skills: ['Go'] } } };
   const { useLinkedInSearch } = load('@/hooks/useLinkedInSearch');
   let hook;
-  const render = () => { hook = useLinkedInSearch({ organizationId: 'org', userId: 'user', selectedAccount: null, activeProject: project }); };
+  const render = () => {
+    hook = useLinkedInSearch({ organizationId: 'org', userId: 'user', selectedAccount: null, activeProject: project });
+    react.hooks.useLayoutEffect(() => {
+      if (!cachedView) return;
+      hook.setStatusFilter(cachedView.statusFilter);
+      hook.setShowDismissed(cachedView.showDismissed);
+    }, []);
+  };
   react.render(render);
   return { writes, timers, get hook() { return hook; },
     refresh: () => react.render(render),
@@ -311,6 +404,41 @@ test('initial snapshot hydration is never rewritten as an edit', async () => {
   assert.equal(h.timers.size, 0);
   await tick();
   assert.equal(h.writes.length, 0);
+});
+
+test('a cached mission display filter survives mount and synthetic-job hydration', () => {
+  for (const statusFilter of ['dismissed', 'shortlisted']) {
+    const h = persistenceHarness({ cachedView: { statusFilter, showDismissed: true } });
+    assert.equal(h.hook.selectedJob.id, 'project:persistence-a');
+    assert.equal(h.hook.statusFilter, statusFilter);
+    assert.equal(h.hook.showDismissed, true);
+    h.refresh();
+    assert.equal(h.hook.statusFilter, statusFilter);
+    assert.equal(h.hook.showDismissed, true);
+    h.unmount();
+  }
+});
+
+test('an actual mission scope change resets display defaults before cache restoration', () => {
+  const h = persistenceHarness({ cachedView: { statusFilter: 'dismissed', showDismissed: true } });
+  h.changeProject({ id: 'display-next', name: 'Next Mission', job_details: { title: 'Data Engineer' }, filters_snapshot: {} });
+  assert.equal(h.hook.statusFilter, 'all');
+  assert.equal(h.hook.showDismissed, false);
+  h.unmount();
+});
+
+test('standalone display defaults reset only for a different selected job', () => {
+  const h = persistenceHarness();
+  h.changeProject(null);
+  h.hook.setSelectedJob({ id: 'standalone-a', title: 'First Job' }); h.refresh();
+  h.hook.setStatusFilter('dismissed'); h.hook.setShowDismissed(true); h.refresh();
+  h.hook.setSelectedJob({ id: 'standalone-a', title: 'First Job Updated' }); h.refresh();
+  assert.equal(h.hook.statusFilter, 'dismissed');
+  assert.equal(h.hook.showDismissed, true);
+  h.hook.setSelectedJob({ id: 'standalone-b', title: 'Second Job' }); h.refresh();
+  assert.equal(h.hook.statusFilter, 'all');
+  assert.equal(h.hook.showDismissed, false);
+  h.unmount();
 });
 
 test('functional edits update the request ref synchronously before React render', () => {

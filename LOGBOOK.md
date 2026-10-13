@@ -138,6 +138,91 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 - [ ] Défaut connu : une étape de visite de profil consomme deux places du plafond de vues (`process-sequences/index.ts`, branche v2 de `profile_visit`).
 - [ ] Tests Deno du client et de `unipile-migration` hors CI ; suppression des colonnes `organization_integrations.unipile_*`.
 **Refs** : commits `7c1e042`, `1cbb8ec`, `1bcdac6`, `67c8953`, `9c1f537` ; ancienne référence `61049f0` ; `AUDITS/UNIPILE_V2_MIGRATION_PLAN.md`.
+## 2026-10-13 — BUG — Recherche visible pendant l’attente et à réception des résultats
+
+**Contexte** : relancer une recherche conservait les anciens profils sans indication assez claire de l’attente ni de l’arrivée d’une nouvelle réponse. Le compteur ne distinguait pas une actualisation des résultats d’une reprise du cache.
+**Fait** : feedback V3 stable pendant le premier chargement, la relance et un résultat vide. Un rail indéterminé annonce « Recherche en cours » et identifie les anciens profils encore affichés. Chaque première page réellement acceptée fournit un signal lié au contexte complet ; à réception, « Résultats mis à jour » accompagne un compteur animé pendant 500 ms. Une valeur inconnue reste non communiquée et zéro reste zéro. La pagination possède son annonce propre ; les retours depuis le cache et les changements A→B→A ne rejouent pas de réussite. Les anciennes valeurs restent conservées quand la recherche n’est pas actualisée. Une annonce accessible utilise les valeurs finales, sans suivre chaque image de l’animation ; le mouvement réduit affiche ces valeurs immédiatement.
+**Focus** : la fermeture des filtres après une relance pouvait perdre sa cible parce que « Nouvelle recherche » devenait désactivé. Ce bouton conserve désormais le focus avec `aria-disabled` pendant l’attente ; son activation est bloquée tant que la recherche est en cours.
+**Validation** : build final réussi ; onze diagnostics TypeScript hérités exactement identiques au socle, lint sans aggravation et quinze compteurs design inchangés. Trente et un fichiers de tests agents passent, dont 39 cas de cycle de recherche et de provenance des réponses. Gardes UX concernés réussis. Couverture locale de 42 parcours : 40 réussis avant le dernier correctif de focus, puis quatre parcours mobiles rejoués sur le code final, dont les deux nouveaux qui échouaient sur le focus. La suite complète est prévue dans la CI de publication.
+
+| Persona | Parcours | Verdict |
+|---|---|---|
+| Guillaume | Trente notes, sélection et groupes conservés ; relance identique, suite distincte et retour au cache | PASS |
+| Claire | Activité visible immédiatement, nouveau total 75→128, zéro résultat explicite | PASS |
+| Théo | Réponse en échec ou partielle, total inconnu, réessai et provenance mission/compte/source/contexte | PASS |
+| Sophie | 320/390 px, mouvement réduit, focus pendant et après attente, activation bloquée, aucun débordement ni violation axe | PASS |
+
+**Limites** : transports et modèle simulés ; aucun sourcing réel, contact candidat ou écriture en production pour les tests. Changements de présentation et signal de réponse acceptée seulement ; taille des lots, scores et contrats serveur conservés.
+**Refs** : branche `codex/sourcing-search-feedback-20261013` ; `SourcingSearchFeedback.tsx`, `e2e/flows/sourcing-return.spec.ts`, `tests/agent/sourcing-search-lifecycle.test.mjs`.
+
+---
+
+## 2026-10-13 — BUG — Accès visible à la suite des résultats de sourcing
+
+**Contexte** : « Voir la suite » était placé au bas du défilement et seulement dans À trier. Une page entièrement retirée par les filtres locaux masquait l’action malgré un curseur restant ; une nouvelle recherche pouvait garder Retenus ou Écartés. Le contrôle préalable du quota ignorait aussi le clic sans message. Cinq parcours sur le code initial reproduisent les défauts de visibilité et de groupe ; le test du quota échoue également avant correction.
+**Fait** : un seul compteur des profils chargés et une action pour la suite, près des groupes et hors du défilement. L’action reste accessible avec un lot localement vide et depuis Retenus ou Écartés ; elle ouvre À trier. Une nouvelle recherche ouvre ce groupe uniquement quand ses résultats sont appliqués, y compris après une réussite partielle. Les retours depuis le cache, les lots suivants et les erreurs sans résultat conservent le groupe choisi. Le total annoncé est distinct des profils chargés ; la fin des lots ne promet pas l’exhaustivité du marché. Le clic passe par le contrôle de quota qui affiche le motif, avec exemption LinkedIn conservée pour la Base Konekt.
+**Validation** : build réussi ; onze diagnostics TypeScript exactement identiques au socle, lint sans aggravation. Quatorze compteurs design inchangés et un bouton brut en moins. Trente parcours navigateur validés sur onze sources applicatives dont les SHA256 correspondent au worktree : 29 réussis dans le passage complet, puis le parcours de modification des filtres réussi avec l’action réellement affichée. Trente et un fichiers de tests agents passent, dont 38 cas comportementaux de cycle de recherche ; gardes UX ciblés réussis. Les attentes asynchrones des tests suivent maintenant l’état réel plutôt qu’un délai fixe de 5 ms.
+
+| Persona | Parcours | Verdict |
+|---|---|---|
+| Guillaume | Trente notes et sélection conservées ; suite depuis chaque groupe ; nouveau résultat et retour au sourcing | PASS |
+| Claire | Action visible sans défilement, 25 puis 50 puis 75 profils, total annoncé et fin des lots distincts | PASS |
+| Théo | Lot filtré vide, curseurs exacts, double clic, réessai après erreur, quota, résultats partiels et relance après modification | PASS |
+| Sophie | 320/390 px, cible de 44 px, focus pendant et après chargement, aucun débordement ni violation axe | PASS |
+
+**Limites** : services simulés ; aucune recherche réelle, aucun modèle réel ni contact candidat ou écriture en production pour les tests. Aucune modification de la taille des lots, du scoring, du serveur ou du schéma. La visibilité corrigée concerne la présentation V3 ; la vue historique reste couverte par ses régressions.
+**Refs** : branche `codex/fix-sourcing-pagination-20261013` ; `e2e/flows/sourcing-return.spec.ts`, `tests/agent/sourcing-search-lifecycle.test.mjs`, `tests/ux/lot12-sourcing.test.mjs`.
+
+---
+
+## 2026-10-12 — BUG — Retour au sourcing sans perdre l’écran configuré
+
+**Contexte** : quitter le sourcing puis revenir pouvait afficher l’accueil malgré les filtres préparés. Le compte LinkedIn revenait au compte présélectionné, et les groupes ou filtres d’affichage pouvaient être remplacés à la restauration. Le parcours de préparation a été reproduit en échec sur les composants initiaux.
+**Fait** : écran stable, filtres modifiés, fenêtre de configuration et groupe de résultats repris dans le cache de recherche. Hydratation après résolution du compte et des mémoires ; aucun écran de chargement interrompu restauré. Le choix du compte reste isolé par utilisateur, organisation et recherche, et revalidé parmi les comptes autorisés. Le nettoyage du défilement ne réécrit plus un ancien état de recherche. Les filtres d’affichage explicites ne sont plus remplacés par l’arrivée des profils ; les vrais changements de contexte ou de poste autonome réinitialisent leur état. Fermeture des filtres : focus rendu au contrôle disponible qui les a ouverts.
+**Impact** : sourcing des missions et recherches autonomes, vues actuelle et ancienne. Interfaces de filtres existantes ; aucun changement de schéma, de score ou d’appel serveur ajouté.
+**Validation** : build réussi ; onze diagnostics TypeScript hérités inchangés, lint sans aggravation et quinze compteurs design inchangés. Seize parcours navigateur sur les composants et hooks réels passent avec transports simulés ; comparaison des dix sources testées par SHA256. Trente profils notés en lots de 20 puis 10 : notes individuelles et sélection conservées après deux retours, sans nouvelle recherche ni notation. Tests comportementaux du choix de compte et de la restauration du hook réussis ; les régressions de préparation et d’affichage échouent sur le code initial.
+
+| Persona | Parcours de retour | Verdict |
+|---|---|---|
+| Guillaume | Trente notes, sélection, compte choisi, Retenus/Écartés, Shortlist et lot suivant repris sans nouvelle recherche | PASS |
+| Claire | Préparation avant première recherche et retour pendant le chargement des mémoires | PASS |
+| Théo | Sauvegarde lente, changement de mission/organisation/utilisateur, compte retiré et vraie révision de critères | PASS |
+| Sophie | 320/390 px, filtres conservés, ouverture/fermeture au clavier et focus rendu ; axe sans violation | PASS |
+
+**Limites** : reprise dans la session du navigateur, aucun sourcing ou modèle réel ni écriture en production. Les tentatives d’images externes du harnais sont interceptées et bloquées.
+**Refs** : branche `codex/fix-sourcing-return-20261012` ; `e2e/flows/sourcing-return.spec.ts`, `tests/agent/sourcing-account-selection.test.mjs`, `tests/agent/sourcing-search-lifecycle.test.mjs`.
+
+---
+
+## 2026-10-11 — SPEC — Rendez-vous : fiche candidat et grille préparée à la planification
+
+**Décision** : Laurent demande que le clic sur un rendez-vous ouvre la fiche candidat sur Évaluation, avec la grille préparée dès la planification et les crédits IA habituels. Les exemples reprennent le panneau candidat et le contenu de profil existant.
+**Fait** : la grille est rattachée à l'entretien et à son intervenant. Planification dans l'agenda, via l'assistant ou Calendly : préparation en arrière-plan, persistée avant facturation. Réouverture gratuite, reprise explicite après échec, protection contre les appels concurrents et les réaffectations. Les candidats hors pipeline gardent une fiche consultable sans mission inventée. Aucun microphone ni message n'est déclenché à l'ouverture.
+**QA** : build réussi ; TypeScript reste aux 11 erreurs connues ; contrôles design et régressions ciblées passants ; 15 scénarios serveur simulés passants. Les scénarios navigateur couvrent Guillaume (bonne mission et grille prête), Claire (entrée directe et candidat hors pipeline), Théo (mauvais entretien, droits, réponse tardive) et Sophie (fiche et saisie mobile). Exécution navigateur et audit SQL réel requis en CI avant fusion, Chromium et Docker locaux indisponibles.
+**Impact** : agenda, barre latérale, fiche candidat, scorecard, génération et liens de planification ; migration additive de rattachement et audit SQL.
+
+## 2026-10-11 — BUG — Tests API du webhook : le faux prestataire ne servait pas la lecture d'un message
+
+**Contexte** : depuis le 08/10 (#314, actions candidat), `unipile-webhook` appelle `captureCandidateActionIncoming` avant `handleNewMessage` / `handleNewMail`. Cette capture lit le message reçu chez le prestataire (`GET /messages/<id>`, puis la conversation, ou `GET /emails/<id>`). Le faux prestataire des tests ne servait pas ces lectures : il renvoyait une réponse vide, la capture levait « Incoming message without valid timestamp » et le webhook répondait 500. Les specs des séquences sont ignorées par la CI (sans edge functions locales), la dérive n'a donc rien fait échouer. Mesure du 11/10 sur la pile locale : 67 échecs sur 13 fichiers, identiques en `observe` et en `refuse`.
+**Fait** : `e2e/local-stack/vendor-mock.mjs` sert par défaut la lecture d'un message daté (interlocuteur, `is_sender` 0), d'une conversation et d'un e-mail (adressé à la boîte déclarée par `setMockMode(<boîte>, { email_address })`), pour les trois formes d'identifiants (chemin direct, `unipile.mock?account_id=X&e2e=`, préfixe `unipile.mock/e2e-…`). Les routes scriptées passent avant ces défauts. Les deux scripts « participants » de `seq-inbound-1` et `seq-decisions-reply` visent `url: '/attendees'` au lieu de toute lecture à la racine. Les quatre tests de réponse par e-mail déclarent l'adresse de leur boîte.
+**Validation** : les 13 fichiers repris passent en `refuse` (212 réussis, 1 ignoré, 0 échec). Suite d'API complète rejouée en `refuse` sur une base reconstruite : 581 réussis, 1 ignoré, 0 échec (avant : 458 réussis, 67 échecs, 46 non exécutés). Les specs des séquences restent hors de la CI de PR, faute d'edge functions locales.
+**Correction préparée (production, non poussée à la rédaction)** : la capture était attendue sans filet avant le traitement de la réponse. Une erreur de lecture chez le prestataire (délai de 4 s, 5xx, conversation introuvable) ou d'identité de la boîte (alias, copie cachée) faisait répondre 500 au webhook et retardait la clôture de l'inscription et l'arrêt des relances jusqu'à un rejeu réussi. `captureCandidateActionIncomingBestEffort` (`incoming.ts`) journalise l'erreur, rend `failed` et laisse le traitement suivre ; `unipile-webhook` l'appelle pour `new_message`, `message_received` et `mail_received`. Restent des 500 : une panne de la base à la résolution du compte (rejeu) et un compte WhatsApp (ses messages ne passent jamais par le traitement LinkedIn). Choix à valider : sur un e-mail dont la capture échoue, l'audience (candidat ou équipe) est inconnue et le traitement se fait comme avant le 08/10, au lieu de refuser ; un échange entre collègues n'a ni l'adresse d'un candidat inscrit ni la référence d'un e-mail de séquence, le risque est faible. L'historique manquant se complète à l'ouverture du contexte du candidat. Pire cas de latence avant le traitement : quatre lectures de 4 s.
+**Validation de la correction** : test API `seq-inbound-1` (lecture du message en 503 : 200, inscription « répondu », relance annulée, aucun envoi) rouge sans la correction (500 « Incoming provider message could not be read »), vert avec ; quatre tests Deno ajoutés, 21 réussis ; suite d'API complète : 582 réussis, 1 ignoré, 0 échec ; 110 tests statiques voisins verts.
+**Refs** : `e2e/local-stack/vendor-mock.mjs` ; `supabase/functions/unipile-webhook/index.ts` (cas `new_message`, `message_received`, `mail_received`) ; `supabase/functions/_shared/candidate-actions/incoming.ts`.
+
+---
+
+## 2026-10-11 — SHIP — Refonte mission, lot 0b-5 : la garde des étapes passe en refus
+
+**Contexte** : la garde `stage_write_guard` journalisait les écritures directes de l'étape depuis le 28/09. Lecture en prod le 11/10 : `jcs_direct_write_log` à 0 ligne au total, donc aucune écriture directe pendant les 5 jours ouvrés qui suivent les lots 0c-3 et 0c-4 (04/10) ; déclencheur actif (`tgenabled = O`) ; aucune ligne dont l'étape stockée diffère de l'étape dérivée de son couple.
+**Fait** : migration `20261011103640_refonte_mission_lot0b5_garde_refuse.sql`, qui redéfinit seulement `jcs_stage_write_mode()` en `refuse` (signature et droits de 0b-1). Une écriture directe qui change l'étape lève 42501, HINT `STAGE_DIRECT_WRITE`. Runbook d'arrêt d'urgence dans l'en-tête de la migration et dans CLAUDE.md. Le contrôle S8 de `candidate_stage_writers_audit.sql` exige désormais `refuse`. Amorçage des tests e2e réécrit par `insertLegacyCandidateRows` (`e2e/helpers/supabase-admin.ts`, écriture sans jeton par psql) : `seedJcs` de `e2e/api/seq-reply-paths.spec.ts` et six sites de `e2e/flows` (`seq-ui-2`, `seq-reply-paths`, `seq-decisions-ui`).
+**Validation** : base reconstruite depuis les migrations, mode `refuse` ; les 33 audits SQL de la CI passent ; S8 échoue si le mode revient à `observe`. Recherche des écrivains sur 5 angles (fonctions edge, navigateur, SQL, e2e et tests, autres dossiers) avec vérification contradictoire : aucun écrivain de production refusé, sept sites de tests. Rejeu des specs e2e API en `refuse` : 15 échecs dus au refus, tous dans `seq-reply-paths` (amorçage `seedJcs`), corrigés ; après correction le fichier donne les mêmes résultats en `refuse` et en `observe`.
+**Impact** : les écrivains passent tous par `set_candidate_stage` (lot 0b-4), rien ne change pour l'utilisateur. En refus le journal n'enregistre plus rien (l'écriture est annulée) : un écrivain oublié se lit dans l'erreur et les journaux de l'API.
+**Reste à faire** :
+- [x] Fusion sur `main` le 11/10/2026 (`7cc0d5d`, avance rapide) ; workflow des migrations vert ; en prod `jcs_stage_write_mode()` rend `refuse`, déclencheur actif, migration suivie.
+- [ ] Première semaine : chercher `STAGE_DIRECT_WRITE` dans les journaux de l'API (la lecture des journaux a demandé une approbation et n'a pas été faite le 11/10).
+- [x] Les 67 échecs e2e API « Incoming message without valid timestamp » (webhook) sont repris dans l'entrée suivante.
+**Refs** : `docs/refonte-mission/conception.md` section 13 ; entrée du 04/10 (fenêtre du lot 0b-5).
 
 ---
 

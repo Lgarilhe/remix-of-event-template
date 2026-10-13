@@ -24,6 +24,13 @@
  *   ajoute une rémunération refusée (422), jetons débités ; proposition qui
  *   tutoie un texte qui vouvoyait refusée (422) ; mission d'une autre
  *   organisation : 404.
+ * - text-action hors séquence (messagerie, correctifs du 11/10/2026) : ton
+ *   « casual » vouvoyé (consigne au vouvoiement en tête) ; réponse qui tutoie
+ *   corrigée une fois, un seul débit ; reformulation : variantes qui tutoient
+ *   retirées, aucune restante : 422 PROPOSAL_NOT_COMPLIANT, jetons débités ;
+ *   traduction vers le français contrôlée de même (vers l'anglais : non) ;
+ *   faux tutoiements rendus sans correction (prénom composé sans le nom de
+ *   famille, réponse en anglais « a ton of », adresse e-mail, lien « www. »).
  *
  * Le faux modèle (e2e/local-stack/vendor-mock.mjs) répond par marqueur : celui
  * de la rédaction est placé dans le contexte IA de l'organisation, lu par la
@@ -521,5 +528,153 @@ test.describe('text-action : « Demander à l’IA » sur une étape de séquenc
     });
     expect(res.body.text).toBeUndefined();
     expect(await aiCallsWith(marker)).toHaveLength(1);
+  });
+});
+
+// ─── text-action hors séquence : messages au candidat (correctifs du 11/10/2026) ─
+
+test.describe('text-action : réponse et reformulation de la messagerie au vouvoiement (correctifs)', () => {
+  const TUTOIEMENT_REFUSED = "Proposition retirée : le texte tutoie le candidat ; les messages vouvoient. Votre texte n'a pas changé.";
+  /** Conversation dont le dernier message, celui du candidat, tutoie et porte le marqueur du test. */
+  const ctaBody = (orgId: string, marker: string, extra: Json = {}) => ({
+    action: 'cta_reply', organization_id: orgId, cta_type: 'call', candidate_name: 'Minh Tu', recruiter_name: 'Laurent',
+    chat_history: [
+      { text: 'Bonjour, je vous contacte au sujet d’un poste de directeur financier à Lyon.', is_sender: true },
+      { text: `Salut, oui ça m’intéresse, tu peux m’en dire plus ? ${marker}`, is_sender: false },
+    ],
+    ...extra,
+  });
+
+  test('ton « casual » vouvoyé : consigne au vouvoiement en tête, réponse rendue, un appel et un débit', async () => {
+    const { org, token } = await newOrg('cabinet', 60);
+    const marker = `Messagerie${rand()}`;
+    // « Minh Tu » : nom du candidat, masqué avant le contrôle (pas un tutoiement).
+    const reply = 'Merci Minh Tu, seriez-vous disponible jeudi pour un appel de quinze minutes ?';
+    await scriptModel(marker, JSON.stringify({ message: reply, cta_used: 'call', reason: 'Le candidat est intéressé.' }));
+
+    const res = await textAction(token, ctaBody(org.orgId, marker, { tone: 'casual' }));
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ success: true, message: reply, cta_used: 'call' });
+
+    const calls = await aiCallsWith(marker);
+    expect(calls, 'aucune correction').toHaveLength(1);
+    const system = String((calls[0].body as Json).system ?? '');
+    expect(system).toMatch(/^OBLIGATION : vouvoyez le candidat/);
+    expect(system).toContain('TON: Chaleureux, au vouvoiement');
+    expect(system).toContain('- Vouvoyez le candidat dans chaque texte');
+    expect(system).toContain('- Vouvoiement obligatoire, même si le candidat tutoie');
+    expect(system).not.toContain('Décontracté');
+    expect(system).not.toContain('continuer en tutoiement');
+    expect(await debits(org.orgId, 'cta_reply')).toHaveLength(1);
+  });
+
+  test('réponse qui tutoie : une correction demandée, la version vouvoyée rendue, un seul débit', async () => {
+    const { org, token } = await newOrg('cabinet', 60);
+    const marker = `Messagerie${rand()}`;
+    const fixMarker = `Correction${rand()}`;
+    const fixed = 'Merci pour votre retour. Seriez-vous disponible jeudi pour un appel ?';
+    // Marqueur de la correction posé d'abord : il l'emporte quand les deux
+    // figurent dans la demande (la première réponse, qui le porte, y est reprise).
+    await scriptModel(fixMarker, JSON.stringify({ message: fixed, cta_used: 'call', reason: 'Le candidat est intéressé.' }));
+    await scriptModel(marker, JSON.stringify({ message: `Top, tu es dispo jeudi pour un call ? ${fixMarker}`, cta_used: 'call', reason: 'Le candidat est intéressé.' }));
+
+    const res = await textAction(token, ctaBody(org.orgId, marker));
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({ success: true, message: fixed, cta_used: 'call' });
+
+    const calls = await aiCallsWith(marker);
+    expect(calls).toHaveLength(2);
+    expect(JSON.stringify(calls[1].body)).toContain('Votre réponse tutoie le candidat. Réécrivez le message au vouvoiement');
+    expect(await debits(org.orgId, 'cta_reply'), 'un débit pour les deux appels').toHaveLength(1);
+  });
+
+  test('reformulation : variantes qui tutoient retirées après la correction ; aucune restante : 422, jetons débités', async () => {
+    const { org, token } = await newOrg('cabinet', 60);
+    const mixed = `Mixte${rand()}`;
+    const allTu = `Tutoie${rand()}`;
+    const vous = { label: 'Standard', text: 'Seriez-vous disponible cette semaine pour en parler ?' };
+    await scriptModel(mixed, JSON.stringify({ variants: [{ label: 'Court', text: 'Tu es dispo cette semaine ?' }, vous] }));
+    await scriptModel(allTu, JSON.stringify({ variants: [{ label: 'Court', text: 'Tu es dispo ?' }, { label: 'Standard', text: 'Ton profil me plaît, on en parle ?' }] }));
+    const body = (marker: string) => ({
+      action: 'rewrite', organization_id: org.orgId, tone: 'casual',
+      text: `Bonjour, votre profil m’intéresse pour un poste de directeur financier à Lyon. ${marker}`,
+    });
+
+    const kept = await textAction(token, body(mixed));
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+    expect(kept.body.variants).toEqual([vous]);
+    expect(await aiCallsWith(mixed), 'une correction').toHaveLength(2);
+
+    const refused = await textAction(token, body(allTu));
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body).toMatchObject({ success: false, error: TUTOIEMENT_REFUSED, error_code: 'PROPOSAL_NOT_COMPLIANT' });
+    expect(refused.body.variants).toBeUndefined();
+    expect(Number(refused.body.credits_used)).toBeGreaterThan(0);
+    expect(await aiCallsWith(allTu), 'une seule correction').toHaveLength(2);
+    expect(await debits(org.orgId, 'rewrite_text'), 'un débit par demande').toHaveLength(2);
+  });
+
+  test('traduction vers le français qui tutoie : corrigée une fois, sinon 422 avec débit ; vers l’anglais : non contrôlée', async () => {
+    const { org, token } = await newOrg('cabinet', 60);
+    const toFix = `Traduire${rand()}`;
+    const fixMarker = `Correction${rand()}`;
+    const allTu = `TraduireTu${rand()}`;
+    const toEnglish = `Anglais${rand()}`;
+    const fixed = 'Merci pour votre retour. Seriez-vous disponible jeudi pour un appel ?';
+    // Marqueur de la correction posé d'abord : il l'emporte dans la seconde demande, qui reprend la première réponse.
+    await scriptModel(fixMarker, fixed);
+    await scriptModel(toFix, `Merci pour ton retour, tu es dispo jeudi pour un appel ? ${fixMarker}`);
+    await scriptModel(allTu, 'Merci pour ton retour, tu es dispo jeudi ?');
+    // Vers l'anglais : « Tu » (nom d'école) serait pris pour un tutoiement s'il était contrôlé.
+    await scriptModel(toEnglish, 'Tu Delft graduates are welcome.');
+    const body = (marker: string, target: 'fr' | 'en') => ({
+      action: 'translate', organization_id: org.orgId, target_language: target,
+      text: `Thanks for your reply, are you available on Thursday for a call? ${marker}`,
+    });
+
+    const corrected = await textAction(token, body(toFix, 'fr'));
+    expect(corrected.status, JSON.stringify(corrected.body)).toBe(200);
+    expect(corrected.body).toMatchObject({ success: true, translated: fixed });
+    const fixCalls = await aiCallsWith(toFix);
+    expect(fixCalls, 'une correction').toHaveLength(2);
+    expect(String((fixCalls[0].body as Json).system ?? '')).toMatch(/^OBLIGATION : vouvoyez le candidat/);
+    expect(String((fixCalls[0].body as Json).system ?? '')).toContain('Vers le français : vouvoiement obligatoire, jamais de tutoiement.');
+    expect(JSON.stringify(fixCalls[1].body)).toContain('Votre traduction tutoie le candidat. Réécrivez-la au vouvoiement');
+
+    const refused = await textAction(token, body(allTu, 'fr'));
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(refused.body).toMatchObject({ success: false, error: TUTOIEMENT_REFUSED, error_code: 'PROPOSAL_NOT_COMPLIANT' });
+    expect(refused.body.translated).toBeUndefined();
+    expect(Number(refused.body.credits_used)).toBeGreaterThan(0);
+    expect(await aiCallsWith(allTu), 'une seule correction').toHaveLength(2);
+
+    const english = await textAction(token, body(toEnglish, 'en'));
+    expect(english.status, JSON.stringify(english.body)).toBe(200);
+    expect(english.body).toMatchObject({ success: true, translated: 'Tu Delft graduates are welcome.' });
+    const enCalls = await aiCallsWith(toEnglish);
+    expect(enCalls, 'aucune correction').toHaveLength(1);
+    expect(String((enCalls[0].body as Json).system ?? '')).not.toContain('OBLIGATION : vouvoyez');
+    expect(await debits(org.orgId, 'translate_text'), 'un débit par demande').toHaveLength(3);
+  });
+
+  test('faux tutoiements : prénom composé sans le nom de famille, réponse en anglais, adresses web et e-mail : rendus sans correction', async () => {
+    const { org, token } = await newOrg('cabinet', 60);
+    const cases = [
+      // « Minh Tu » d'un candidat « Minh Tu Nguyen » : suite du nom, masquée.
+      { marker: `Prenom${rand()}`, name: 'Minh Tu Nguyen', message: 'Merci Minh Tu, seriez-vous disponible jeudi pour un appel de quinze minutes ?' },
+      // Réponse en anglais (le candidat écrit en anglais) : « a ton of » n'est pas le possessif.
+      { marker: `Anglais${rand()}`, name: 'Alex Martin', message: 'Thanks for your reply. We have a ton of exciting projects, would you be available Thursday for a quick call?' },
+      // Adresse e-mail et lien sans protocole : ils ne s'adressent à personne.
+      { marker: `Adresses${rand()}`, name: 'Alex Martin', message: 'Merci, je vous envoie la fiche. Écrivez à recrutement@tu-berlin.de ou réservez un créneau : www.calendly.com/jd?first_name=Tu' },
+    ];
+    for (const c of cases) await scriptModel(c.marker, JSON.stringify({ message: c.message, cta_used: 'call', reason: 'Le candidat est intéressé.' }));
+
+    for (const c of cases) {
+      const res = await textAction(token, ctaBody(org.orgId, c.marker, { candidate_name: c.name }));
+      expect(res.status, `${c.name} : ${JSON.stringify(res.body)}`).toBe(200);
+      expect(res.body).toMatchObject({ success: true, message: c.message, cta_used: 'call' });
+      expect(await aiCallsWith(c.marker), `aucune correction : ${c.message}`).toHaveLength(1);
+    }
+    expect(await debits(org.orgId, 'cta_reply'), 'un débit par demande').toHaveLength(cases.length);
   });
 });

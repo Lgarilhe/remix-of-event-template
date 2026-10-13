@@ -46,6 +46,8 @@ jobs:
       # d'organisation, portail client, rôle Collaborateur).
       - name: C1 regression tests (fonctions)
         run: node --test tests/c1/c1-fonctions.test.mjs
+      - name: Préparation des grilles planifiées
+        run: node tests/c1/scheduled-scorecard.test.mjs
       # Refonte mission, lot 0b : écrivains de l'étape candidat (notation,
       # événements serveur, gestes des utilisateurs), un bloc par sous-lot.
       - name: Lot 0b regression tests (écrivains)
@@ -87,6 +89,13 @@ jobs:
       # ai-config, aucun nom de modèle dans les textes, vouvoiement imposé).
       - name: Lot 5e-2 regression tests (style et niveau de l'IA)
         run: node --test tests/c1/lot5e2-style-niveau.test.mjs
+      # Correctifs des séquences (11/10/2026) : réponses proposées aux
+      # candidats au vouvoiement, lectures de l'assistant sur les trois formes
+      # de job_id et l'étape générale, envoi refusé à un candidat effacé avant
+      # tout appel au prestataire, séance d'agenda sans effet sur les séquences ;
+      # messages au candidat de text-action hors séquence au vouvoiement.
+      - name: Correctifs des séquences (textes, assistant, envois)
+        run: node --test tests/c1/correctifs-textes-assistant.test.mjs tests/c1/correctifs-envois.test.mjs tests/c1/correctifs-text-action.test.mjs
       # Photos des candidats : la notation garde la photo LinkedIn enregistrée,
       # le rafraîchissement des adresses est branché (tests sans dépendance).
       - name: Photos des candidats (notation)
@@ -334,6 +343,12 @@ jobs:
         env:
           TZ: Europe/Paris
         run: node --test tests/ux/messagerie-onglets.test.mjs
+      # Correctif 4 des séquences : la messagerie, le fil de la fiche et la
+      # fenêtre de message montrent la phrase du serveur quand l'envoi est
+      # refusé (candidat effacé, effacement non vérifié). Empaquette
+      # invokeUnipile avec esbuild.
+      - name: Envois manuels, refus d'un candidat effacé (correctif 4)
+        run: node --test tests/ux/correctif4-ecrans.test.mjs
       - name: Agent de sourcing, contrôles et changements de contexte
         run: node --test tests/ux/continuous-sourcing-agent.test.mjs tests/ux/sourcing-agents-hub.test.mjs tests/ux/contraste-ecrans.test.mjs tests/ux/contraste-icones.test.mjs
       # Marque : le nom du prestataire LinkedIn n'apparaît dans aucune chaîne ni

@@ -37,11 +37,26 @@
 //   reviennent dans warnings. Aucune nouvelle tentative du modèle (60 s). Modèle indisponible ou réponse
 //   illisible : 503 PROPOSAL_UNAVAILABLE. Mission d'une autre organisation : 404.
 //
+// Messages au candidat hors séquence (cta_reply, rewrite et translate vers le
+// français, de la messagerie ; correctifs du 11/10/2026) : vouvoiement imposé,
+// comme les rédacteurs de prise de contact. La consigne commence par cette
+// obligation, l'ancien ton « Décontracté » (casual) est chaleureux au
+// vouvoiement (styleFromLegacyTone), un ancien réglage « Tutoiement » des
+// consignes est lu comme vouvoiement. Le texte produit passe par hasTutoiement
+// (adresses web et e-mail retirées, noms connus masqués, texte manifestement
+// anglais non jugé) : s'il tutoie, une seule correction est demandée au modèle
+// s'il reste 30 s sur les 60 de la fonction ; rewrite garde les variantes qui
+// vouvoient ; sinon 422 PROPOSAL_NOT_COMPLIANT, jetons débités (correction
+// comprise) comme en contexte séquence. Les autres actions hors séquence ne
+// rédigent pas de message au candidat (summarize) ou n'ont pas d'appelant hors
+// séquence (shorten, hook, proofread) ; restyle est refusé hors séquence.
+//
 // Pourquoi 1 seule function : économise les cold starts + cohérence du
 // settle-credits + permet de réutiliser le warmup.
 
-import { callClaudeCompat } from "../_shared/call-claude.ts";
+import { callClaudeCompat, type OpenAIMessage } from "../_shared/call-claude.ts";
 import { extractAIParams, settleCredits } from "../_shared/settle-credits.ts";
+import { hasTimeForAiCorrection } from "../_shared/sequence-send-rules.ts";
 import { requireAuth, verifyOrgMembership } from "../_shared/require-auth.ts";
 import { assertCredits, creditGateResponse } from "../_shared/credit-guard.ts";
 import { loadAndBuildAiContext } from "../_shared/ai-context.ts";
@@ -49,7 +64,9 @@ import { getAnthropicModelId } from "../_shared/ai-config.ts";
 import { loadWritingSettings } from "../_shared/writing-settings.ts";
 import {
   AI_LEVEL_LABELS,
+  DEFAULT_WRITING_STYLE,
   buildStyleInstructions,
+  hasTutoiement,
   mergeStyle,
   modelForLevel,
   parseStyleOverrides,
@@ -93,6 +110,138 @@ const PROPOSAL_UNAVAILABLE_MESSAGE = "Proposition indisponible pour l'instant. V
 const SEQUENCE_TONE_REFUSED_MESSAGE = "Le tutoiement n'est pas proposé : les messages de séquence vouvoient toujours le candidat.";
 const SEQUENCE_ACTION_UNSUPPORTED_MESSAGE = "Cette action n'est pas proposée pour un message de séquence.";
 const SETTINGS_UNAVAILABLE_MESSAGE = "Vos réglages de rédaction n'ont pas pu être lus. Réessayez dans un instant.";
+
+// ─── Messages au candidat hors séquence (cta_reply, rewrite, translate) ─────
+
+/**
+ * Actions hors séquence qui rédigent un message au candidat : vouvoiement
+ * imposé, contrôlé à la sortie. translate : seulement vers le français (sa
+ * traduction remplace le message en cours de rédaction, MessageComposer).
+ */
+const CANDIDATE_MESSAGE_ACTIONS = new Set<Action>(['cta_reply', 'rewrite', 'translate']);
+/** Première ligne de la consigne de ces actions (même règle que les rédacteurs de prise de contact, lot 5e-2). */
+const VOUVOIEMENT_RULE =
+  "OBLIGATION : vouvoyez le candidat dans le texte produit, quel que soit le ton demandé, même si le candidat ou le texte d'origine tutoie. Les exemples qui tutoient se transposent au vouvoiement.";
+/** Seconde demande au modèle quand sa réponse tutoie (une seule). */
+const VOUVOIEMENT_CORRECTION: Readonly<Record<'cta_reply' | 'rewrite' | 'translate', string>> = {
+  cta_reply: "Votre réponse tutoie le candidat. Réécrivez le message au vouvoiement, sans rien changer d'autre, et rendez uniquement le même objet JSON.",
+  rewrite: "Votre réponse tutoie le candidat. Réécrivez chaque variante au vouvoiement, sans rien changer d'autre, et rendez uniquement le même objet JSON.",
+  translate: "Votre traduction tutoie le candidat. Réécrivez-la au vouvoiement, sans rien changer d'autre, et rendez uniquement la traduction.",
+};
+/** Refus d'une proposition qui tutoie encore (même phrase qu'en contexte séquence, sans nombre ni mot anglais). */
+const CANDIDATE_TUTOIEMENT_MESSAGE =
+  "Proposition retirée : le texte tutoie le candidat ; les messages vouvoient. Votre texte n'a pas changé.";
+/** Durée d'exécution de la fonction : l'appel et sa correction doivent y tenir. */
+const FUNCTION_BUDGET_MS = 60_000;
+/** Délai d'un appel au modèle (convention : 30 s pour un appel LLM). */
+const MODEL_TIMEOUT_MS = 30_000;
+/** Marge gardée pour le débit et la réponse. */
+const RESPONSE_MARGIN_MS = 5_000;
+
+/**
+ * Adresses qui ne s'adressent à personne, retirées avant le contrôle : lien
+ * avec ou sans protocole (« www. », « calendly.com/… » : un lien de rendez-vous
+ * porte des paramètres comme « first_name=Tu ») et adresse e-mail
+ * (« recrutement@tu-berlin.de »).
+ */
+const WEB_ADDRESS_RE = /(?:https?:\/\/|www\.)\S+|[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+|[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+\/\S*/giu;
+/** Mots-outils propres à l'anglais. */
+const ENGLISH_WORDS_RE = /(?<![\p{L}\p{N}'’])(?:the|and|you|your|we|our|for|with|to|of|is|are|be|would|could|will|can|have|has|this|that|it|in|at|i|thanks|thank|hi|hello|please)(?![\p{L}\p{N}])/giu;
+/** Mots-outils et élisions propres au français, formes du tutoiement comprises. */
+const FRENCH_WORDS_RE = /(?<![\p{L}\p{N}'’])(?:(?:le|la|les|un|une|des|du|de|et|est|que|qui|pour|avec|sur|dans|vous|votre|vos|nous|je|ce|cette|pas|merci|bonjour|au|aux|en|mais|ou|ne|tu|te|ton|ta|tes|toi|es|suis)(?![\p{L}\p{N}])|(?:j|t|l|d|c|qu|n|s|m)['’](?=\p{L}))/giu;
+
+/**
+ * Texte manifestement anglais (cta_reply et rewrite gardent la langue du
+ * candidat ou du texte d'origine) : au moins trois mots-outils anglais, et plus
+ * de trois fois les mots-outils français. Le tutoiement n'y a pas de sens, et le
+ * contrôle prendrait « a ton of » pour le possessif « ton ». Un texte français,
+ * même court ou mêlé d'anglais (« tu es open to work ? »), reste contrôlé.
+ */
+function isClearlyEnglish(text: string): boolean {
+  const english = text.match(ENGLISH_WORDS_RE)?.length ?? 0;
+  const french = text.match(FRENCH_WORDS_RE)?.length ?? 0;
+  return english >= 3 && english > 3 * french;
+}
+
+/**
+ * Texte qui tutoie le candidat. Noms propres connus masqués (« Bonjour Minh
+ * Tu », « la TU Munich ») ; adresses web et e-mail retirées avant le contrôle ;
+ * texte manifestement anglais jamais jugé.
+ */
+function tutoie(text: unknown, knownNames: string[]): boolean {
+  const cleaned = String(text ?? '').replace(WEB_ADDRESS_RE, ' ');
+  if (isClearlyEnglish(cleaned)) return false;
+  return hasTutoiement(cleaned, knownNames);
+}
+
+/** Formes du tutoiement qui peuvent aussi être un mot d'un nom (même liste que writing-style.ts). */
+const PRONOUN_FORMS = new Set(['tu', 'te', 'ta', 'tes', 'ton', 'toi']);
+
+/**
+ * Formes d'un nom à masquer avant le contrôle : le nom entier, son premier mot,
+ * et chaque suite d'au moins deux mots consécutifs (« Minh Tu » et « Tu Nguyen »
+ * pour « Minh Tu Nguyen ») : un prénom composé écrit sans le nom de famille
+ * n'est pas pris pour un tutoiement. hasTutoiement masque ces suites sans tenir
+ * compte de la casse ; une suite faite seulement de formes du tutoiement
+ * (« Tu Te ») n'est pas ajoutée, elle cacherait « tu te ».
+ */
+function nameForms(name: unknown): string[] {
+  const full = String(name ?? '').replace(/\s+/g, ' ').trim();
+  if (!full) return [];
+  const words = full.split(' ').slice(0, 8);
+  const forms = new Set<string>([full, words[0]]);
+  for (let i = 0; i < words.length; i++) {
+    for (let j = i + 2; j <= words.length; j++) {
+      const part = words.slice(i, j);
+      if (part.every((w) => PRONOUN_FORMS.has(w.toLowerCase()))) continue;
+      forms.add(part.join(' '));
+    }
+  }
+  return [...forms];
+}
+
+/** Objet JSON rendu par le modèle (bloc ```json retiré), null s'il est illisible. */
+function parseModelObject(content: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(content.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, ''));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Réponse du modèle lue : translate rend du texte brut ({ translated }), les autres un objet JSON. */
+function readCandidateReply(action: Action, content: string): Record<string, unknown> | null {
+  if (action === 'translate') {
+    const translated = content.trim();
+    return translated ? { translated } : null;
+  }
+  return parseModelObject(content);
+}
+
+/** Textes destinés au candidat : le message (cta_reply), la traduction (translate) ou chaque variante (rewrite). */
+function candidateTexts(action: Action, parsed: Record<string, unknown>): string[] {
+  if (action === 'cta_reply') return typeof parsed.message === 'string' ? [parsed.message] : [];
+  if (action === 'translate') return typeof parsed.translated === 'string' ? [parsed.translated] : [];
+  if (!Array.isArray(parsed.variants)) return [];
+  return parsed.variants
+    .map((v) => (v && typeof v === 'object' ? (v as { text?: unknown }).text : null))
+    .filter((t): t is string => typeof t === 'string');
+}
+
+/**
+ * Réponse au vouvoiement, ou null. rewrite : les variantes qui tutoient sont
+ * retirées, null s'il n'en reste aucune ; cta_reply et translate : null si le
+ * texte tutoie.
+ */
+function keepVouvoiement(action: Action, parsed: Record<string, unknown>, knownNames: string[]): Record<string, unknown> | null {
+  if (action === 'rewrite') {
+    const variants = Array.isArray(parsed.variants) ? parsed.variants : [];
+    const kept = variants.filter((v) => !tutoie(v && typeof v === 'object' ? (v as { text?: unknown }).text : null, knownNames));
+    return kept.length > 0 ? { ...parsed, variants: kept } : null;
+  }
+  return candidateTexts(action, parsed).some((t) => tutoie(t, knownNames)) ? null : parsed;
+}
 
 /** Types de CTA supportés. "auto" = l'IA choisit. */
 export type CtaType =
@@ -154,6 +303,8 @@ interface ReqBody {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+  // Échéance de la fonction : une correction du vouvoiement n'est demandée que s'il reste 30 s.
+  const deadline = Date.now() + FUNCTION_BUDGET_MS;
 
   try {
     const body = await req.json() as ReqBody;
@@ -250,6 +401,8 @@ Deno.serve(async (req) => {
     // Build prompt selon l'action
     let systemPrompt = '';
     let userPrompt = '';
+    // translate : langue de la traduction (le français pour toute cible autre que 'en').
+    let translateToFrench = false;
 
     if (sequenceContext) {
       // Consigne du contexte séquence construite plus bas, une fois le style
@@ -273,7 +426,9 @@ Format : {"text": "..."}`;
     else if (action === 'rewrite') {
       const variants = Math.max(2, Math.min(5, body.variants || 3));
       const toneInstruction = body.tone ? toneToInstruction(body.tone) : '';
-      systemPrompt = `Tu es un expert en rédaction de messages professionnels (LinkedIn, email).
+      systemPrompt = `${VOUVOIEMENT_RULE}
+
+Tu es un expert en rédaction de messages professionnels (LinkedIn, email).
 Tu réponds UNIQUEMENT en JSON valide, sans markdown.
 
 Tu reformules un message en proposant ${variants} variantes :
@@ -283,7 +438,7 @@ Tu reformules un message en proposant ${variants} variantes :
 
 ${toneInstruction}
 
-Conserve la langue d'origine et l'intent du message.
+Conserve la langue d'origine et l'intent du message. Vouvoiement obligatoire dans chaque variante, jamais de tutoiement.
 
 Format : {"variants": [{"label": "Court", "text": "..."}, ...]}`;
       userPrompt = `Texte à reformuler :\n\n"${text.trim()}"\n\nRetourne le JSON.`;
@@ -293,8 +448,10 @@ Format : {"variants": [{"label": "Court", "text": "..."}, ...]}`;
       const hasFrenchMarkers = /[éèêëàâäîïôöùûüçœæ]|(?:\b(?:le|la|les|un|une|des|de|du|et|est|que|qui|pour|avec|sur|dans|merci|bonjour)\b)/i.test(text);
       const targetLang = body.target_language || (hasFrenchMarkers ? 'en' : 'fr');
       const targetLangFull = targetLang === 'en' ? 'English' : 'French';
+      translateToFrench = targetLangFull === 'French';
 
-      systemPrompt = `Tu traduis des messages professionnels (LinkedIn, email) en conservant le ton, le style, et les nuances. Garde les emojis et la mise en forme.
+      // Vers le français : la traduction remplace le message au candidat, vouvoiement imposé.
+      systemPrompt = `${translateToFrench ? `${VOUVOIEMENT_RULE}\n\n` : ''}Tu traduis des messages professionnels (LinkedIn, email) en conservant le ton, le style, et les nuances. Garde les emojis et la mise en forme.${translateToFrench ? '\nVers le français : vouvoiement obligatoire, jamais de tutoiement.' : ''}
 Réponds UNIQUEMENT avec la traduction, sans préfixe, sans guillemets, sans explication.`;
       userPrompt = `Traduis ce message en ${targetLangFull} :\n\n${text.trim()}`;
     }
@@ -416,12 +573,14 @@ Ne réponds JAMAIS à tes propres messages précédents : tu réponds UNIQUEMENT
       // on demande explicitement d'intégrer un maximum d'infos du brief.
       const lengthRule = ctaType === 'job_details'
         ? `- 5-10 phrases (le candidat veut des infos détaillées)
-- Structure le message : intro courte → infos clés du poste (mission, lieu/remote, compétences, salaire/avantages) → CTA final pour la prochaine étape (ex: "tu veux qu'on en discute en call ?")
+- Structure le message : intro courte → infos clés du poste (mission, lieu/remote, compétences, salaire/avantages) → CTA final pour la prochaine étape (ex: "Seriez-vous disponible pour en parler lors d'un appel ?")
 - Inclus TOUTES les infos importantes disponibles dans DÉTAILS DU POSTE — ne demande pas au candidat de te recontacter pour les avoir
 - Tu peux utiliser des sauts de ligne pour aérer la lecture, mais pas de markdown (LinkedIn ne le rend pas)`
         : `- 2-4 phrases max (LinkedIn = court et direct)`;
 
-      systemPrompt = `Tu es un recruteur expérimenté qui rédige des messages LinkedIn naturels et engageants.
+      systemPrompt = `${VOUVOIEMENT_RULE}
+
+Tu es un recruteur expérimenté qui rédige des messages LinkedIn naturels et engageants.
 Tu réponds UNIQUEMENT en JSON valide, sans markdown.
 
 ${flowContext}
@@ -441,7 +600,7 @@ ${calendlyLink ? `- Lien Calendly disponible : ${calendlyLink}` : '- Pas de lien
 RÈGLES DE RÉDACTION :
 ${lengthRule}
 - Ne JAMAIS commencer par "Bonjour" ou se re-présenter (c'est une réponse, la conv est déjà ouverte)
-- Si tutoiement dans le dernier message du candidat → continuer en tutoiement (idem vouvoiement)
+- Vouvoiement obligatoire, même si le candidat tutoie ou si un autre ton est indiqué plus haut : jamais de tutoiement
 - Conserve la langue du dernier message du candidat (FR ou EN)
 - Le CTA doit être intégré naturellement, pas plaqué à la fin comme un template
 - Si le CTA est "rdv" et qu'un lien Calendly est fourni → inclus le lien dans le message
@@ -470,6 +629,11 @@ Génère maintenant la réponse JSON.`;
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Message au candidat hors séquence (cta_reply, rewrite, translate vers le
+    // français) : vouvoiement imposé et contrôlé à la sortie.
+    const candidateMessage = !sequenceContext && CANDIDATE_MESSAGE_ACTIONS.has(action)
+      && (action !== 'translate' || translateToFrench);
 
     // Call Claude
     const aiAction =
@@ -600,6 +764,12 @@ Génère maintenant la réponse JSON.`;
       // Contexte séquence : vouvoiement et style de la rédaction, sans « Ton imposé ».
       omitTone: sequenceContext,
     });
+    // Message au candidat hors séquence : un ancien réglage « Tutoiement » est lu
+    // comme vouvoiement (il contredirait le vouvoiement imposé) ; les autres tons
+    // des consignes s'appliquent toujours (ligne écrite par formatScope de _shared/ai-context.ts).
+    if (candidateMessage) {
+      aiContext = aiContext.replace(/- Ton imposé : tutoiement/g, '- Ton imposé : vouvoiement');
+    }
 
     // Mémoires confirmées : lecture sous le JWT utilisateur, avec la mission
     // de la séquence lorsqu'elle est connue. Un échec ne doit pas ignorer ses contraintes.
@@ -624,22 +794,28 @@ Génère maintenant la réponse JSON.`;
       }
     }
 
-    const callModel = () => callClaudeCompat({
+    const baseMessages: OpenAIMessage[] = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ];
+    // Sans argument : premier appel. Correction du vouvoiement (message au
+    // candidat hors séquence) : conversation prolongée, délai borné par
+    // l'échéance de la fonction, aucune nouvelle tentative.
+    const callModel = (correction?: { messages: OpenAIMessage[]; timeoutMs: number }) => callClaudeCompat({
       // Contexte séquence : modèle du niveau (lot 5e-2), celui que le garde des
       // crédits a estimé. Les autres actions gardent le modèle rapide par
       // défaut de call-claude.ts.
       model: sequenceContext ? getAnthropicModelId(modelId) : undefined,
       max_tokens: action === 'summarize' ? 1024 : action === 'cta_reply' ? 1200 : 1500,
       temperature: action === 'cta_reply' ? 0.55 : 0.4, // un peu plus de créa pour les CTA
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      timeoutMs: 30000,
+      messages: correction?.messages ?? baseMessages,
+      timeoutMs: correction?.timeoutMs ?? MODEL_TIMEOUT_MS,
       // Contexte séquence : aucune nouvelle tentative, trois essais de 30 s
       // dépasseraient les 60 s de la fonction et PROPOSAL_UNAVAILABLE ne serait
       // jamais rendu. Les autres actions gardent le défaut de call-claude.ts.
       ...(sequenceContext ? { maxRetries: 0 } : {}),
+      // Correction du vouvoiement : une seule demande, bornée par l'échéance.
+      ...(correction ? { maxRetries: 0 } : {}),
       aiContext,
     });
     let result: Awaited<ReturnType<typeof callClaudeCompat>>;
@@ -655,6 +831,50 @@ Génère maintenant la réponse JSON.`;
       result = await callModel();
     }
 
+    // Message au candidat hors séquence (cta_reply, rewrite, translate vers le
+    // français) : vouvoiement contrôlé avant le débit, qui compte aussi les
+    // jetons de la correction.
+    let tokensInput = result.usage.input_tokens;
+    let tokensOutput = result.usage.output_tokens;
+    let candidateReply: Record<string, unknown> | null = null;
+    let candidateRefused = false;
+    if (candidateMessage) {
+      const clientName = body.job_brief?.client_name;
+      // Noms propres connus, masqués avant le contrôle (prénom « Tu », « Minh Tu »
+      // d'un « Minh Tu Nguyen », école « TU Munich »…).
+      const knownNames = [
+        ...nameForms(body.candidate_name),
+        ...nameForms(body.recruiter_name),
+        typeof clientName === 'string' ? clientName : '',
+      ];
+      const first = readCandidateReply(action, result.content);
+      if (first && candidateTexts(action, first).some((t) => tutoie(t, knownNames))) {
+        let corrected: Record<string, unknown> | null = null;
+        // Une seule correction, et seulement s'il reste 30 s sur les 60.
+        if (hasTimeForAiCorrection(deadline, Date.now())) {
+          try {
+            const second = await callModel({
+              messages: [
+                ...baseMessages,
+                { role: 'assistant', content: result.content },
+                { role: 'user', content: VOUVOIEMENT_CORRECTION[action as 'cta_reply' | 'rewrite' | 'translate'] },
+              ],
+              timeoutMs: Math.min(MODEL_TIMEOUT_MS, deadline - Date.now() - RESPONSE_MARGIN_MS),
+            });
+            tokensInput += second.usage.input_tokens;
+            tokensOutput += second.usage.output_tokens;
+            corrected = readCandidateReply(action, second.content);
+          } catch (e) {
+            // La première proposition reste, filtrée ou refusée plus bas.
+            console.warn('[text-action] correction du vouvoiement:', e instanceof Error ? e.message : e);
+          }
+        }
+        candidateReply = (corrected && keepVouvoiement(action, corrected, knownNames)) ?? keepVouvoiement(action, first, knownNames);
+        candidateRefused = candidateReply === null;
+        if (candidateRefused) console.warn(`[text-action] proposition au tutoiement retirée (${action})`);
+      }
+    }
+
     // Settle credits (best-effort)
     let creditsUsed: number | null = null;
     if (body.organization_id) {
@@ -664,8 +884,8 @@ Génère maintenant la réponse JSON.`;
           userId,
           aiAction,
           modelId: result.model || modelId,
-          tokensInput: result.usage.input_tokens,
-          tokensOutput: result.usage.output_tokens,
+          tokensInput,
+          tokensOutput,
           description: `Action IA: ${action}`,
         });
         creditsUsed = settled.charged;
@@ -714,9 +934,23 @@ Génère maintenant la réponse JSON.`;
       return json({ success: true, text: proposal, warnings: review.warnings, credits_used: creditsUsed, ...applied });
     }
 
+    // Message au candidat qui tutoie encore après la correction (ou sans temps
+    // pour la demander) : refusé, jetons débités comme en contexte séquence.
+    if (candidateRefused) {
+      return json({
+        success: false,
+        error: CANDIDATE_TUTOIEMENT_MESSAGE,
+        error_code: 'PROPOSAL_NOT_COMPLIANT',
+        credits_used: creditsUsed,
+      }, 422);
+    }
+
     // Parse response selon l'action
     let payload: Record<string, unknown> = { success: true };
-    if (action === 'translate') {
+    if (candidateReply) {
+      // Réponse déjà lue et contrôlée : corrigée, ou variantes qui vouvoient.
+      payload = { success: true, ...candidateReply };
+    } else if (action === 'translate') {
       payload.translated = result.content.trim();
     } else {
       // rewrite, summarize, cta_reply, shorten, hook, proofread : JSON attendu
@@ -752,7 +986,10 @@ Génère maintenant la réponse JSON.`;
 function toneToInstruction(tone: string): string {
   switch (tone) {
     case 'formal': return 'TON: Formel et professionnel (vouvoiement, structure claire).';
-    case 'casual': return 'TON: Décontracté et friendly (tutoiement, style conversationnel).';
+    // Ancien « Décontracté » : chaleureux au vouvoiement, comme
+    // styleFromLegacyTone (writing-style.ts), jamais le tutoiement.
+    case 'casual':
+      return `TON: Chaleureux, au vouvoiement\n${toneLines(mergeStyle({ ...DEFAULT_WRITING_STYLE }, styleFromLegacyTone('casual'))).map((l) => `- ${l}`).join('\n')}`;
     case 'direct': return 'TON: Direct et efficace (phrases courtes, droit au but).';
     case 'empathetic': return 'TON: Empathique et chaleureux (intérêt humain).';
     default: return '';

@@ -2215,8 +2215,12 @@ async function handleProcess(supabase: any, force = false) {
             .map((d) => (typeof d === 'string' ? new Date(d).getTime() : NaN))
             .filter((t) => Number.isFinite(t))
             .reduce((a, b) => Math.max(a, b), -Infinity);
+          // Agenda Outlook (lot I3) : une séance lue dans un agenda relié
+          // (source 'agenda') peut être n'importe quelle réunion, elle n'arrête
+          // jamais une séquence. Les autres origines (saisie, invitation,
+          // réservation Calendly) l'arrêtent comme avant.
           const meetingBase = (columns = 'id', limit = 1) => {
-            let q = supabase.from('qualification_sessions').select(columns).limit(limit);
+            let q = supabase.from('qualification_sessions').select(columns).neq('source', 'agenda').limit(limit);
             if (meetingOrgId) q = q.eq('organization_id', meetingOrgId);
             if (Number.isFinite(meetingSince)) q = q.gt('created_at', new Date(meetingSince).toISOString());
             return q;

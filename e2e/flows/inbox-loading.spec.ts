@@ -20,6 +20,8 @@ test.describe('Messagerie — chargement et interactions @critical', () => {
         light?: boolean;
         pages?: boolean;
         pendingChats?: boolean;
+        /** Refus de send_message par le serveur (correctif 4). */
+        refuse?: { error_code: string; error: string };
     } = {}) {
         const calls: Array<{
             name: string;
@@ -62,8 +64,11 @@ test.describe('Messagerie — chargement et interactions @critical', () => {
                 data = { success: true, messages: [{ id: 'message-0', text: 'Bonjour, je suis disponible vendredi.', timestamp: '2026-10-09T09:00:00Z', is_sender: false }], cursor: null };
             if (body.action === 'get_profile')
                 data = { success: true, profile: { id: 'ACo_fixture_camille', provider_id: 'ACo_fixture_camille', name: 'Camille Durand' } };
+            // Refus : en production, un 403 ou un 503 dont invokeUnipile relit le
+            // corps (tests/ux/correctif4-ecrans.test.mjs) ; le transport du harnais
+            // ne transmet pas le corps d'une réponse en erreur, d'où le statut 200.
             if (body.action === 'send_message')
-                data = { success: true, message: { id: 'sent-fixture' } };
+                data = options.refuse ? { success: false, ...options.refuse } : { success: true, message: { id: 'sent-fixture' } };
             await route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
         });
         await page.goto(`/inbox-loading-fixture${options.thread ? '?thread=1' : ''}`);
@@ -149,6 +154,40 @@ test.describe('Messagerie — chargement et interactions @critical', () => {
             await test.info().attach(`mobile-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
             expect(api.errors).toEqual([]);
         });
+    // Correctif 4 : candidat effacé ou effacement non vérifié, la phrase du
+    // serveur remplace l'échec générique ; un seul envoi, texte gardé.
+    const refusals = [
+        { error_code: 'CANDIDATE_ERASED', error: "Ce candidat a demandé l'effacement de ses données : aucun message ne peut lui être envoyé." },
+        { error_code: 'GDPR_UNVERIFIED', error: "L'effacement éventuel des données de ce candidat n'a pas pu être vérifié : le message n'est pas parti. Réessayez dans un instant." },
+    ];
+    for (const refuse of refusals) {
+        test(`Théo — messagerie, refus ${refuse.error_code} : phrase du serveur, texte gardé, aucun nouvel envoi`, async ({ page }) => {
+            const api = await open(page, { refuse });
+            await list(page).getByText('Camille Durand').click();
+            const composer = page.locator('[data-component="message-composer"]');
+            const box = composer.getByRole('textbox', { name: 'Message', exact: true });
+            await box.fill('Merci Camille, à vendredi.');
+            await composer.getByRole('button', { name: 'Envoyer le message', exact: true }).click();
+            await expect(page.getByText(refuse.error, { exact: true })).toBeVisible();
+            await expect(page.getByText(/Vérifiez votre connexion/)).toHaveCount(0);
+            await expect(box).toHaveValue('Merci Camille, à vendredi.');
+            await expect(composer.getByRole('button', { name: 'Envoyer le message', exact: true })).toBeEnabled();
+            expect(api.calls.filter(call => call.body.action === 'send_message')).toHaveLength(1);
+            expect(api.errors).toEqual([]);
+        });
+        test(`Claire — fiche, refus ${refuse.error_code} : phrase du serveur, texte gardé, aucun nouvel envoi`, async ({ page }) => {
+            const api = await open(page, { thread: true, refuse });
+            const box = page.getByRole('textbox', { name: 'Répondre à Camille Durand sur LinkedIn', exact: true });
+            await box.fill('Bonjour Camille, êtes-vous disponible vendredi ?');
+            await page.getByRole('button', { name: 'Envoyer le message LinkedIn', exact: true }).click();
+            await expect(page.getByText(refuse.error, { exact: true })).toBeVisible();
+            await expect(page.getByText("Erreur lors de l'envoi du message", { exact: true })).toHaveCount(0);
+            await expect(box).toHaveValue('Bonjour Camille, êtes-vous disponible vendredi ?');
+            await expect(page.getByRole('button', { name: 'Envoyer le message LinkedIn', exact: true })).toBeEnabled();
+            expect(api.calls.filter(call => call.body.action === 'send_message')).toHaveLength(1);
+            expect(api.errors).toEqual([]);
+        });
+    }
     test('Claire — candidat jamais contacté : état vide confirmé, sans erreur LinkedIn', async ({ page }) => {
         const api = await open(page, { thread: true, empty: true });
         await expect(page.getByText('Aucune interaction enregistrée avec ce candidat.', { exact: true })).toBeVisible();

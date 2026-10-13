@@ -494,7 +494,7 @@ test.describe('D. Envois', () => {
     expect(foreignLinks ?? []).toEqual([]);
   });
 
-  test('candidat effacé (RGPD) : le message part, rien n’est enregistré (ni marqueur, ni lien, ni étape)', async () => {
+  test('candidat effacé (RGPD) : l’envoi est refusé (correctif 4), rien n’est enregistré (ni marqueur, ni lien, ni étape)', async () => {
     const { org, accountId } = await trackedSendingOrg('E2E 0b D effacé');
     const m1 = await seedMission(org.orgId, org.owner.userId);
     const p = newProfileId();
@@ -505,9 +505,12 @@ test.describe('D. Envois', () => {
     if (error) throw new Error(`gdpr_erasures: ${error.message}`);
     cleanups.push(() => admin().from('gdpr_erasures').delete().eq('id', (erasure as { id: string }).id));
     const before = await candidateRowState(r1);
+    // Correctif 4 du plan du lot 5 : refus avant le plafond, le marqueur et l'envoi
+    // (le journal du faux LinkedIn est contrôlé par seq-correctifs-envois.spec.ts).
     const res = await sendMessage(await ownerToken(org), org, accountId, { recipient_id: p, project_id: m1 });
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(res.body.success, 'le message part').toBe(true);
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect(res.body.success, 'le message ne part pas').toBe(false);
+    expect(res.body.error_code).toBe('CANDIDATE_ERASED');
     expect(await linksOf(org.orgId, p)).toEqual([]);
     expect(await candidateRowState(r1)).toEqual(before);
   });

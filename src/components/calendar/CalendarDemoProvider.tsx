@@ -5,7 +5,7 @@ import { createCalendarDemo, type CalendarDemoInterview } from '@/lib/calendarDe
 
 const InterviewDemoDialog = lazy(() => import('@/components/calendar/InterviewDemoDialog'));
 
-export type PreviewTab = 'scorecard' | 'assistant' | 'meeting';
+export type PreviewTab = 'profile' | 'scorecard' | 'assistant' | 'meeting';
 export interface DemoDraft {
   ratings: Record<string, number>;
   comments: Record<string, string>;

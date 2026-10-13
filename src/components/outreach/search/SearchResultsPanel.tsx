@@ -36,7 +36,7 @@ import {
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ModelPicker } from '@/components/ai/ModelPicker';
-import { SourcingResultsV3, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
+import { SourcingResultsV3, type SourcingResultGroup, type SourcingView } from '@/components/missions/v3/sourcing/SourcingResultsV3';
 import { retainedStageLabel, sourcingGroupOf, sourcingProfilesOf } from '@/components/missions/v3/sourcing/sourcingGroups';
 import { useSourcingPanelSlot } from '@/components/missions/v3/shell/sourcingPanelContext';
 
@@ -146,6 +146,10 @@ interface SearchResultsPanelProps {
   // Nouvelle page mission (Sourcing, trois groupes) : rendu propre, passé
   // seulement par SourcingScreen. Défaut : le rendu actuel, inchangé.
   layout?: 'default' | 'mission-v3';
+  group?: SourcingResultGroup;
+  onGroupChange?: (group: SourcingResultGroup) => void;
+  searchScopeKey?: string;
+  searchSuccessKey?: number;
   chipsDirty?: boolean;
   onRerun?: () => void;
   onSetSelection?: (ids: string[]) => void;
@@ -230,6 +234,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
   openToWorkSupported = false,
   onToggleOpenToWork,
   layout = 'default',
+  group,
+  onGroupChange,
+  searchScopeKey,
+  searchSuccessKey,
   chipsDirty = false,
   onRerun,
   onSetSelection,
@@ -592,6 +600,10 @@ export const SearchResultsPanel: React.FC<SearchResultsPanelProps> = ({
           onSequenceEnrollSuccess={onSequenceEnrollSuccess}
           view={v3View}
           onViewChange={setV3View}
+          group={group}
+          onGroupChange={onGroupChange}
+          searchScopeKey={searchScopeKey}
+          searchSuccessKey={searchSuccessKey}
           renderCompact={({ profiles, allSelected, onToggleSelectAll }) => (
             <CompactResultsTable
               profiles={profiles}
