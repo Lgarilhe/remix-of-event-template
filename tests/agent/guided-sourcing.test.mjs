@@ -38,14 +38,15 @@ test('inverted ranges and invalid manually edited percentages cannot launch; zer
   assert.doesNotMatch(contract.nextBriefQuestion({ title: 'React', location: 'Lyon', experience_min: 0, skills_must_have: ['React'] }), /niveau d’expérience/);
 });
 
-async function endpoint({ member = true, credits = true, authMethod = 'jwt', turn = { reply: 'Quel budget ?', patch: { title: 'React' } }, turns, body = {}, callModel, modelIds = ['claude-haiku-4-5-20251001'] } = {}) {
+async function endpoint({ member = true, credits = true, authMethod = 'jwt', turn = { reply: 'Quel budget ?', patch: { title: 'React' } }, turns, body = {}, callModel, modelIds = ['claude-haiku-4-5-20251001'], signal, onCreditGate } = {}) {
   let handle, modelCalls = 0, gateCalls = 0; const events = [], settlements = [], requests = [], logs = [];
   const admin = { rpc: async () => ({ data: true, error: null }) };
   moduleAt('supabase/functions/sourcing-interview/index.ts', {
     'https://esm.sh/@supabase/supabase-js@2.75.1?target=deno&no-check': { createClient: () => admin },
     '../_shared/require-auth.ts': { requireAuth: async () => ({ userId: 'fixture-user', method: authMethod }), verifyOrgMembership: async () => member },
     '../_shared/credit-guard.ts': { assertCredits: async () => {
-      events.push('gate'); return { ok: Array.isArray(credits) ? credits[Math.min(gateCalls++, credits.length - 1)] : credits };
+      events.push('gate'); await onCreditGate?.(events.filter(event => event === 'gate').length);
+      return { ok: Array.isArray(credits) ? credits[Math.min(gateCalls++, credits.length - 1)] : credits };
     }, creditGateResponse: () => new Response('{}', { status: 402 }) },
     '../_shared/call-claude.ts': { callClaudeCompat: async options => {
       events.push('model'); requests.push(options);
@@ -57,7 +58,7 @@ async function endpoint({ member = true, credits = true, authMethod = 'jwt', tur
     '../_shared/settle-usage.ts': { settleClaudeUsage: async usage => { events.push('settle'); settlements.push(plain(usage)); } },
     './contract.ts': contract,
   }, { Response, console: { error: (...items) => logs.push(items), warn: (...items) => logs.push(items) }, Deno: { env: { get: () => 'fixture-only' }, serve: fn => { handle = fn; } } });
-  const response = await handle(new Request('http://fixture.test', { method: 'POST', body: JSON.stringify({ organization_id: 'org-a', message: 'React à Lyon', brief: {}, ...body }) }));
+  const response = await handle(new Request('http://fixture.test', { method: 'POST', signal, body: JSON.stringify({ organization_id: 'org-a', message: 'React à Lyon', brief: {}, ...body }) }));
   return { response, events, settlements, requests, logs };
 }
 test('edge rejects service credentials, foreign org and insufficient credits before any model call', async () => {
@@ -124,6 +125,34 @@ test('settlement uses the provider model and never aggregates different models a
   assert.equal(changed.response.status, 502);
   assert.equal(changed.settlements.length, 0);
   assert.equal(changed.logs.at(-1)[1].code, 'inconsistent_models');
+});
+
+test('real handler cancellation stops new model calls and never settles a discarded valid response', async () => {
+  for (const phase of ['before request', 'first credit gate', 'during model', 'correction credit gate']) {
+    const controller = new AbortController();
+    if (phase === 'before request') controller.abort();
+    let modelCalls = 0;
+    const result = await endpoint({ signal: controller.signal,
+      onCreditGate: count => {
+        if (phase === 'first credit gate' && count === 1 || phase === 'correction credit gate' && count === 2) controller.abort();
+      },
+      callModel: async () => {
+        modelCalls++;
+        if (phase === 'during model') controller.abort();
+        return { model: 'claude-haiku-4-5-20251001', usage: { input_tokens: 1208, output_tokens: 98 },
+          stop_reason: 'tool_use', content: '', toolCall: { name: contract.SOURCING_INTERVIEW_TOOL,
+            input: phase === 'correction credit gate'
+              ? { reply: 'Invalide', patch: { experience_min: -1 } }
+              : { reply: 'Quel budget ?', patch: { title: 'React' } } },
+        };
+      },
+    });
+    assert.equal(result.response.status, 499, phase);
+    assert.equal((await result.response.json()).error_code, 'ABORTED');
+    assert.equal(result.settlements.length, 0, phase);
+    assert.equal(modelCalls, ['during model', 'correction credit gate'].includes(phase) ? 1 : 0, phase);
+    assert.equal(result.logs.some(([, diagnostic]) => diagnostic.phase === 'model'), false, 'cancellation is not a provider failure');
+  }
 });
 
 const capturedBriefShape = {

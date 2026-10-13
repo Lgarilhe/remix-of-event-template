@@ -34,6 +34,10 @@ import {
 
 interface SkalrThreadProps {
   contextMode?: string | null;
+  /** Le même assistant, avec messages et composer sur toute la largeur disponible. */
+  fullWidth?: boolean;
+  /** Les pièces jointes restent proposées uniquement aux adaptateurs qui les traitent. */
+  attachmentsEnabled?: boolean;
   /** Notion-style: model selector rendered inside the composer toolbar */
   modelSlot?: React.ReactNode;
   /** Menu + : fichiers joints et connecteurs disponibles pour le chat. */
@@ -697,18 +701,20 @@ const UserMessage = () => (
   </UserMessageLayout>
 );
 
-export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot, toolsSlot, filesBridge }) => {
+export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot, toolsSlot, filesBridge, fullWidth = false, attachmentsEnabled = true }) => {
   const w = WELCOME[(contextMode as string) || 'free'] ?? WELCOME.free;
   const [files, setFiles] = useState<File[]>([]);
 
-  const addFiles = (added: File[]) =>
+  const addFiles = (added: File[]) => {
+    if (!attachmentsEnabled) return;
     setFiles((prev) => [...prev, ...added].slice(0, 5));
+  };
   const removeFile = (idx: number) =>
     setFiles((prev) => prev.filter((_, i) => i !== idx));
 
   // Publie l'état courant vers le pont — lu par l'adaptateur à l'envoi.
   if (filesBridge) {
-    filesBridge.current.files = files;
+    filesBridge.current.files = attachmentsEnabled ? files : [];
     filesBridge.current.clear = () => setFiles([]);
   }
 
@@ -716,7 +722,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
     <ThreadPrimitive.Root className="flex flex-col h-full bg-background">
       {/* Messages area */}
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="mx-auto w-full max-w-2xl space-y-5">
+        <div className={cn('mx-auto w-full', !fullWidth && 'max-w-2xl', 'space-y-5')}>
           {/* Notion-style welcome — only on an empty thread */}
           <ThreadPrimitive.Empty>
             <div className="flex flex-col items-center text-center pt-10 pb-7">
@@ -754,12 +760,12 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
       {/* Marge basse = max(0.75rem, safe-area) : évite que la barre de saisie
           soit rognée par la barre de navigation système sur mobile. */}
       <div className="shrink-0 px-3 pb-3 pt-1" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-        <div className="mx-auto w-full max-w-2xl">
+        <div className={cn('mx-auto w-full', !fullWidth && 'max-w-2xl')}>
           {/* Formats alignés sur ingest-user-file (PDF, Word .docx, images, texte). */}
-          <FileUpload onFilesAdded={addFiles} multiple accept=".pdf,.docx,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
+          <FileUpload onFilesAdded={addFiles} multiple disabled={!attachmentsEnabled} accept=".pdf,.docx,.txt,.md,.csv,image/png,image/jpeg,image/webp,image/gif">
             <ComposerPrimitive.Root className={ASSISTANT_COMPOSER_CLASS}>
               {/* Attached files */}
-              {files.length > 0 && (
+              {attachmentsEnabled && files.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pt-1.5 pb-1">
                   {files.map((f, i) => (
                     <span
@@ -800,7 +806,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
 
               {/* Toolbar */}
               <div className={ASSISTANT_COMPOSER_TOOLBAR_CLASS}>
-                {toolsSlot ?? (
+                {toolsSlot ?? (attachmentsEnabled && (
                   <Tooltip>
                     {/* FileUploadTrigger ne transmet pas de ref : l'infobulle s'ancre sur le bouton. */}
                     <FileUploadTrigger asChild>
@@ -818,7 +824,7 @@ export const SkalrThread: React.FC<SkalrThreadProps> = ({ contextMode, modelSlot
                     </FileUploadTrigger>
                     <TooltipContent side="top">Joindre un fichier</TooltipContent>
                   </Tooltip>
-                )}
+                ))}
 
                 {modelSlot}
 

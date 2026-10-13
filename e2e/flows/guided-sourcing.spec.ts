@@ -17,7 +17,7 @@ const draft = { title: 'Développeur React', location: 'Lyon', skills_must_have:
 const project = { id: 'mission-a', name: 'Mission React', kind: 'mission', status: 'active', organization_id: 'org-a', created_by: 'user-a', updated_at: '2026-10-13T09:00:00Z', job_details: draft, filters_snapshot: {} };
 let html: string;
 test.beforeAll(async () => { html = await sourcingReturnHarnessHtml('guided.tsx'); });
-async function open(page: Page, options: { linked?: boolean; base?: boolean; plan?: boolean; mission?: boolean; failedTurn?: boolean; delay?: number } = {}) {
+async function open(page: Page, options: { linked?: boolean; base?: boolean; plan?: boolean; mission?: boolean; failedTurn?: boolean; failFirstTurn?: boolean; delay?: number } = {}) {
   const calls: Call[] = [], errors: string[] = [], external: string[] = [];
   page.on('pageerror', err => errors.push(err.message));
   await page.addInitScript(({ project, linked, base, plan }) => {
@@ -35,7 +35,7 @@ async function open(page: Page, options: { linked?: boolean; base?: boolean; pla
     const name = url.pathname.split('/').at(-1)!;
     calls.push({ name, body });
     if (options.delay && name === 'sourcing-interview') await new Promise(resolve => setTimeout(resolve, options.delay));
-    if (name === 'sourcing-interview' && options.failedTurn) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Serveur indisponible. Réessayez.' }) });
+    if (name === 'sourcing-interview' && (options.failedTurn || options.failFirstTurn && calls.filter(call => call.name === name).length === 1)) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Serveur indisponible. Réessayez.' }) });
     let data: Record<string, unknown> = { success: true };
     if (name === 'ai-credits') data = { success: true, has_credits: true, estimated_credits: 1, remaining: 1000 };
     if (name === 'sourcing-interview') data = { success: true, reply: 'React et Lyon sont notés. Souhaitez-vous modifier leur importance ?', patch: draft };
@@ -49,12 +49,13 @@ async function open(page: Page, options: { linked?: boolean; base?: boolean; pla
   await page.goto('/guided-sourcing-fixture' + (options.mission ? '?mission=1' : ''));
   return { calls, errors, external, searches: () => calls.filter(c => c.body.action === 'preview' || c.body.action === 'search') };
 }
-const dialog = (page: Page) => page.getByRole('dialog', { name: 'Cadrer la recherche', exact: true });
+const dialog = (page: Page) => page.getByRole('dialog', { name: 'Assistant · Sourcing', exact: true });
 const confirm = (page: Page) => dialog(page).getByRole('button', { name: 'Valider et chercher', exact: true });
 async function startDashboard(page: Page) {
   await page.getByRole('textbox', { name: 'Profil à rechercher depuis l’accueil' }).fill('Développeur React à Lyon, 3 à 10 ans');
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
-  await expect(dialog(page).getByRole('textbox', { name: 'Intitulé du poste', exact: true })).toHaveValue('Développeur React');
+  await expect(dialog(page).getByRole('textbox', { name: 'Message à l’assistant', exact: true })).toBeVisible();
+  await expect(dialog(page).getByText('React et Lyon sont notés. Souhaitez-vous modifier leur importance ?', { exact: true })).toBeVisible();
   await expect(confirm(page)).toBeEnabled();
 }
 test.describe('Sourcing guidé @critical', () => {
@@ -62,6 +63,7 @@ test('Accueil sans LinkedIn : dialogue, critères validés, 20 résultats avec e
   const audit = await open(page);
   await startDashboard(page);
   expect(audit.searches()).toHaveLength(0);
+  await dialog(page).getByRole('button', { name: 'Cadrage', exact: true }).click();
   await dialog(page).getByRole('tab', { name: 'Critères', exact: true }).click();
   await dialog(page).getByRole('group', { name: 'Importance du critère React en production', exact: true }).getByRole('button', { name: 'Indispensable', exact: true }).click();
   await confirm(page).click();
@@ -87,6 +89,7 @@ test('Accueil sans LinkedIn : dialogue, critères validés, 20 résultats avec e
 test('Mission : reprend le cadrage sans appeler l’IA, pourcentages invalides refusés, modifications transmises à la recherche', async ({ page }) => {
   const audit = await open(page, { mission: true });
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
+  await dialog(page).getByRole('button', { name: 'Cadrage', exact: true }).click();
   await expect(dialog(page).getByRole('textbox', { name: 'Lieu et télétravail', exact: true })).toHaveValue('Lyon');
   expect(audit.calls.filter(c => c.name === 'sourcing-interview')).toHaveLength(0);
   await dialog(page).getByRole('tab', { name: 'Critères', exact: true }).click();
@@ -120,23 +123,40 @@ test('Erreur IA : réponse conservée et aucune recherche ni écriture de brief'
   await page.getByRole('textbox', { name: 'Profil à rechercher depuis l’accueil' }).fill('Développeur React à Lyon');
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
   await expect(dialog(page).getByRole('alert')).toBeVisible();
-  await expect(dialog(page).getByRole('textbox', { name: 'Votre réponse ou votre ajustement' })).toHaveValue('Développeur React à Lyon');
+  await expect(dialog(page).getByRole('textbox', { name: 'Message à l’assistant' })).toHaveValue('Développeur React à Lyon');
   expect(audit.searches()).toHaveLength(0);
   expect(await page.evaluate(() => Object.keys((window as FixtureWindow).qaProjects))).toEqual(['mission-a']);
+});
+test('Après un échec : réessai depuis le composer, une seule réponse enregistrée et historique valide', async ({ page }) => {
+  const audit = await open(page, { failFirstTurn: true });
+  await page.getByRole('textbox', { name: 'Profil à rechercher depuis l’accueil' }).fill('Développeur React à Lyon');
+  await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
+  await expect(dialog(page).getByRole('alert')).toBeVisible();
+  await expect(dialog(page).getByRole('textbox', { name: 'Message à l’assistant' })).toHaveValue('Développeur React à Lyon');
+  await dialog(page).getByRole('button', { name: 'Envoyer', exact: true }).click();
+  await expect(confirm(page)).toBeEnabled();
+  await confirm(page).click();
+  await expect(page.getByRole('button', { name: 'Camille 1', exact: true })).toBeVisible();
+  expect(audit.calls.filter(call => call.name === 'sourcing-interview')).toHaveLength(2);
+  const saved = await page.evaluate(() => (window as FixtureWindow).qaProjects['search-guided'].job_details);
+  expect(saved?.raw_brief).toBe('Développeur React à Lyon');
+  expect(audit.errors).toEqual([]);
 });
 test('Sans accès à la base : cadrage possible, lancement bloqué avec lien vers les accès', async ({ page }) => {
   const audit = await open(page, { base: false, mission: true });
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
   await expect(confirm(page)).toBeDisabled();
-  await expect(dialog(page).getByRole('link', { name: 'Vérifier les accès' })).toHaveAttribute('href', '/settings/org/billing#credits');
+  await dialog(page).getByRole('button', { name: 'Choisir la source de recherche' }).click();
+  await expect(page.getByRole('link', { name: 'Vérifier les accès' })).toHaveAttribute('href', '/settings/org/billing#credits');
   expect(audit.searches()).toHaveLength(0);
 });
 test('Base activée avec forfait incompatible : aucune sauvegarde ni recherche', async ({ page }) => {
   const audit = await open(page, { base: true, plan: false, mission: true });
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
-  await expect(dialog(page).getByRole('status')).toContainText('forfait compatible');
+  await dialog(page).getByRole('button', { name: 'Choisir la source de recherche' }).click();
+  await expect(page.getByRole('status')).toContainText('forfait compatible');
   await expect(confirm(page)).toBeDisabled();
-  expect(await page.evaluate(() => (window as FixtureWindow).qaWrites)).toEqual([]);
+  expect(await page.evaluate(() => (window as FixtureWindow).qaWrites.filter(write => 'job_details' in write))).toEqual([]);
   expect(audit.searches()).toHaveLength(0);
 });
 test('Cadrage existant : métadonnées conservées après échange, critères et description libre modifiables sans troncature', async ({ page }) => {
@@ -151,14 +171,17 @@ test('Cadrage existant : métadonnées conservées après échange, critères et
       evaluation_criteria: jd.evaluation_criteria!.map(c => ({ ...c, level_10: 'Application livrée', level_1: 'Aucune pratique', interview_stage: 'Technique' })) } });
   });
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
+  await dialog(page).getByRole('button', { name: 'Cadrage', exact: true }).click();
   await dialog(page).getByRole('combobox', { name: 'Client', exact: true }).focus();
   await expect(dialog(page).getByRole('combobox', { name: 'Client', exact: true })).toHaveAttribute('aria-expanded', 'true');
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page).getByRole('group', { name: 'Quitter le cadrage' })).toHaveCount(0);
-  await dialog(page).getByRole('textbox', { name: 'Votre réponse ou votre ajustement' }).fill('Confirmez les critères existants.');
+  await dialog(page).getByRole('button', { name: 'Revenir à la conversation' }).click();
+  await dialog(page).getByRole('textbox', { name: 'Message à l’assistant' }).fill('Confirmez les critères existants.');
   await dialog(page).getByRole('button', { name: 'Envoyer', exact: true }).click();
   await expect(confirm(page)).toBeEnabled();
+  await dialog(page).getByRole('button', { name: 'Cadrage', exact: true }).click();
   await dialog(page).getByRole('tab', { name: 'Critères', exact: true }).click();
   await dialog(page).getByRole('textbox', { name: 'Libellé du critère 1', exact: true }).fill('React livré en production');
   await dialog(page).getByRole('group', { name: 'Importance du critère React livré en production', exact: true }).getByRole('button', { name: 'Indispensable', exact: true }).click();
@@ -188,6 +211,7 @@ test('Cadrage existant : métadonnées conservées après échange, critères et
 test('Enregistrement échoué et cadrage modifié ailleurs : garde le dialogue et ne lance rien', async ({ page }) => {
   const audit = await open(page, { mission: true });
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
+  await dialog(page).getByRole('button', { name: 'Cadrage', exact: true }).click();
   await dialog(page).getByRole('textbox', { name: 'Lieu et télétravail', exact: true }).fill('Paris');
   await page.evaluate(() => (window as FixtureWindow).qaPatch({ failSave: true }));
   await confirm(page).click();
@@ -198,35 +222,36 @@ test('Enregistrement échoué et cadrage modifié ailleurs : garde le dialogue e
   await expect(dialog(page).getByRole('alert')).toContainText('modifié ailleurs');
   expect(audit.searches()).toHaveLength(0);
 });
-test('Double clic et fermeture pendant l’IA : un seul échange, brouillon protégé à la fermeture', async ({ page }) => {
+test('Fermeture pendant l’IA : un seul échange, brouillon protégé à la fermeture', async ({ page }) => {
   const audit = await open(page, { delay: 500 });
   await page.getByRole('textbox', { name: 'Profil à rechercher depuis l’accueil' }).fill('React à Lyon');
   await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
-  await page.keyboard.press('Escape');
+  await expect.poll(() => audit.calls.filter(c => c.name === 'sourcing-interview').length).toBe(1);
+  await expect(dialog(page).getByRole('button', { name: 'Fermer l’assistant' })).toBeDisabled();
   await expect(dialog(page)).toBeVisible();
   await expect(confirm(page)).toBeEnabled();
   expect(audit.calls.filter(c => c.name === 'sourcing-interview')).toHaveLength(1);
-  await page.keyboard.press('Escape');
+  await dialog(page).getByRole('button', { name: 'Fermer l’assistant' }).click();
   await expect(dialog(page).getByRole('group', { name: 'Quitter le cadrage' })).toBeVisible();
   await dialog(page).getByRole('button', { name: 'Continuer', exact: true }).click();
-  await expect(dialog(page).getByRole('textbox', { name: 'Intitulé du poste', exact: true })).toHaveValue('Développeur React');
+  await expect(dialog(page).getByText('React et Lyon sont notés. Souhaitez-vous modifier leur importance ?', { exact: true })).toBeVisible();
 });
 test('Dialogue 1024x600 : comparaison des sources dépliée, composer et validation accessibles', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 600 });
   const audit = await open(page);
   await startDashboard(page);
-  await dialog(page).getByText('Quelles différences entre les sources ?', { exact: true }).click();
-  const composer = dialog(page).locator('form');
+  const composer = dialog(page).getByRole('textbox', { name: 'Message à l’assistant', exact: true });
   const footer = confirm(page).locator('..');
   const composerRect = await composer.boundingBox();
   const footerRect = await footer.boundingBox();
   expect(composerRect!.y + composerRect!.height).toBeLessThanOrEqual(footerRect!.y);
   await expect(composer).toBeInViewport();
   await expect(confirm(page)).toBeInViewport();
-  const sources = dialog(page).getByRole('region', { name: 'Sources et accès', exact: true });
-  await sources.focus();
-  await page.keyboard.press('End');
-  await expect(dialog(page).getByRole('rowheader', { name: 'Email et téléphone', exact: true })).toBeInViewport();
+  await dialog(page).getByRole('button', { name: 'Choisir la source de recherche' }).click();
+  await page.getByText('Quelles différences entre les sources ?', { exact: true }).click();
+  await page.getByRole('rowheader', { name: 'Email et téléphone', exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('rowheader', { name: 'Email et téléphone', exact: true })).toBeInViewport();
+  await page.keyboard.press('Escape');
   await expect(confirm(page)).toBeInViewport();
   await test.info().attach('dialogue-1024x600-comparaison', { body: await dialog(page).screenshot(), contentType: 'image/png' });
   expect(audit.errors).toEqual([]); expect(audit.external).toEqual([]);
@@ -239,24 +264,29 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await page.evaluate(dark => { document.documentElement.classList.remove('light', 'dark'); document.documentElement.classList.add(dark ? 'dark' : 'light'); }, dark);
       await startDashboard(page);
       await expect(dialog(page)).toBeVisible();
-      await expect(dialog(page).getByRole('tab', { name: 'Le poste', exact: true })).toHaveAttribute('aria-selected', 'true');
-      await expect(dialog(page).getByRole('tab', { name: 'Critères', exact: true })).toBeVisible();
+      await expect(dialog(page).getByRole('textbox', { name: 'Intitulé du poste', exact: true })).toHaveCount(0);
+      const dialogBox = await dialog(page).boundingBox();
+      const composerBox = await dialog(page).getByRole('textbox', { name: 'Message à l’assistant', exact: true }).boundingBox();
+      expect(dialogBox!.width).toBe(viewport.width);
+      expect(composerBox!.width).toBeGreaterThan(viewport.width * 0.8);
+      await page.evaluate(async () => { await document.fonts.load('500 14px "Instrument Sans"'); await document.fonts.ready; });
+      expect(await page.evaluate(() => document.fonts.check('500 14px "Instrument Sans"'))).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
       expect(await dialog(page).evaluate(el => el.scrollWidth <= el.clientWidth)).toBeTruthy();
       await expect.poll(() => dialog(page).locator('.animate-fade-in').evaluateAll(elements => elements.every(el => getComputedStyle(el).opacity === '1'))).toBe(true);
       const axe = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa']).analyze();
       expect(axe.violations).toEqual([]);
-      await test.info().attach(`dialogue-${viewport.width}-${dark ? 'sombre' : 'clair'}-poste`, { body: await dialog(page).screenshot(), contentType: 'image/png' });
+      await test.info().attach(`dialogue-${viewport.width}-${dark ? 'sombre' : 'clair'}-assistant`, { body: await dialog(page).screenshot(), contentType: 'image/png' });
+      await dialog(page).getByRole('button', { name: 'Cadrage', exact: true }).click();
+      await expect(dialog(page).getByRole('tab', { name: 'Le poste', exact: true })).toHaveAttribute('aria-selected', 'true');
       await dialog(page).getByRole('tab', { name: 'Critères', exact: true }).click();
       await expect(dialog(page).getByRole('textbox', { name: 'Libellé du critère 1', exact: true })).toBeVisible();
       const criteriaAxe = await new AxeBuilder({ page }).include('[role="dialog"]').withTags(['wcag2a', 'wcag2aa']).analyze();
       expect(criteriaAxe.violations).toEqual([]);
-      if (viewport.width >= 768) {
-        await dialog(page).locator('[aria-label="Cadrage de la recherche"]').evaluate(el => { el.scrollTop = el.scrollHeight; });
-        await expect(dialog(page).getByRole('tab', { name: 'Critères', exact: true })).toBeInViewport();
-        await expect(confirm(page)).toBeInViewport();
-      }
+      await expect(confirm(page)).toBeInViewport();
       await test.info().attach(`dialogue-${viewport.width}-${dark ? 'sombre' : 'clair'}-criteres`, { body: await dialog(page).screenshot(), contentType: 'image/png' });
+      await dialog(page).getByRole('button', { name: 'Revenir à la conversation' }).click();
+      await expect(dialog(page).getByText('React et Lyon sont notés. Souhaitez-vous modifier leur importance ?', { exact: true })).toBeVisible();
       expect(audit.errors).toEqual([]); expect(audit.external).toEqual([]);
     });
   }
