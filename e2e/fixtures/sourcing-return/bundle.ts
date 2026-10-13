@@ -16,7 +16,8 @@ export async function sourcingReturnHarnessHtml() {
     'contexts/LinkedInAccountsContext', 'hooks/useMemberLinkedInAccounts', 'contexts/AgentContext',
     'hooks/useAgentMemories', 'hooks/useSourcingProjects', 'hooks/useJobCandidateStatus',
   ].map(file => path.join(root, 'src', file)));
-  const baselineFiles = new Set(['src/components/outreach/LinkedInSearch.tsx', 'src/hooks/useFilteredLinkedInAccounts.ts', 'src/components/missions/MissionSourcing.tsx']);
+  const baselineFiles = new Set(['src/components/outreach/LinkedInSearch.tsx', 'src/hooks/useFilteredLinkedInAccounts.ts', 'src/components/missions/MissionSourcing.tsx',
+    'src/components/missions/v3/sourcing/SourcingResultsV3.tsx', 'src/hooks/useLinkedInSearchActions.ts']);
   const observedSources = new Set([...baselineFiles, 'src/hooks/useLinkedInSearch.ts',
     'src/hooks/useLinkedInScoring.ts', 'src/lib/invokeWithCredits.ts', 'src/lib/invokeEdgeFunction.ts',
     'src/components/outreach/search/SearchResultsPanel.tsx', 'src/components/missions/v3/sourcing/SourcingResultsV3.tsx',

@@ -4,6 +4,16 @@ import type { FixtureState, FixtureWindow } from '../fixtures/sourcing-return/ty
 import AxeBuilder from '@axe-core/playwright';
 import { buildScoringInputVersionKey } from '../../src/lib/sourcingScoringContext';
 
+interface SearchReply {
+  count?: number;
+  offset?: number;
+  total?: number;
+  cursor?: string | null;
+  error?: string;
+  delayMs?: number;
+  experienced?: boolean;
+}
+
 test.use({ baseURL: 'http://fixture.local' });
 test.describe('Sourcing — quitter et revenir @critical', () => {
   let html: string;
@@ -24,7 +34,7 @@ test.describe('Sourcing — quitter et revenir @critical', () => {
     job_details: { title: id === 'mission-a' ? 'Backend Engineer' : 'Data Engineer', client: { name: 'Client QA' }, skills_must_have: [keywords] },
     filters_snapshot: { api: 'recruiter', keywords, last_manual_edit: 'fixture-original' },
   });
-  async function open(page: Page, options: { configure?: boolean; state?: FixtureState; empty?: boolean; legacy?: boolean; grouped?: boolean; profileCount?: number } = {}) {
+  async function open(page: Page, options: { configure?: boolean; state?: FixtureState; empty?: boolean; legacy?: boolean; grouped?: boolean; profileCount?: number; searchReplies?: SearchReply[]; locallyFiltered?: boolean } = {}) {
     const calls: Array<Record<string, unknown>> = [];
     const errors: string[] = [];
     const external: Array<{ origin: string; resourceType: string }> = [];
@@ -40,7 +50,10 @@ test.describe('Sourcing — quitter et revenir @critical', () => {
         'a-0': { candidate_id: 'a-0', candidate_name: 'Profil A 01', status: 'shortlisted' },
         'a-1': { candidate_id: 'a-1', candidate_name: 'Profil A 02', status: 'dismissed' },
       } : {};
-    }, { projects: { 'mission-a': initialProject('mission-a', 'Python'), 'mission-b': initialProject('mission-b', 'SQL') }, state: { memoryReady: true, accountsReady: true, ...options.state }, grouped: !!options.grouped });
+    }, { projects: { 'mission-a': {
+      ...initialProject('mission-a', 'Python'),
+      filters_snapshot: { ...initialProject('mission-a', 'Python').filters_snapshot, ...(options.locallyFiltered ? { calculated_experience_min: 20 } : {}) },
+    }, 'mission-b': initialProject('mission-b', 'SQL') }, state: { memoryReady: true, accountsReady: true, ...options.state }, grouped: !!options.grouped });
     // Every request is intercepted: no real provider, model, contact or DB write.
     await page.route('**/*', async route => {
       const request = route.request();
@@ -52,16 +65,21 @@ test.describe('Sourcing — quitter et revenir @critical', () => {
       }
       const body = request.postDataJSON() ?? {};
       calls.push(body);
-      const offset = body.cursor ? 25 : 0;
-      const count = options.profileCount ?? 25;
+      const reply = body.action === 'search' ? options.searchReplies?.[calls.filter(call => call.action === 'search').length - 1] : undefined;
+      if (reply?.delayMs) await new Promise(resolve => setTimeout(resolve, reply.delayMs));
+      const offset = reply?.offset ?? (body.cursor ? 25 : 0);
+      const count = reply?.count ?? options.profileCount ?? 25;
       const profiles = Array.from({ length: count }, (_, index) => ({
         id: `${body.account_id === 'account-b' ? 'b' : 'a'}-${offset + index}`, provider_id: `${body.account_id === 'account-b' ? 'b' : 'a'}-${offset + index}`,
         name: `Profil ${body.account_id === 'account-b' ? 'B' : 'A'} ${String(offset + index + 1).padStart(2, '0')}`,
         headline: 'Backend Engineer Python', location: 'Paris',
-        work_experience: [{ position: 'Backend Engineer', company: 'Entreprise QA', start: '2018-01-01', end: '2026-01-01' }],
+        work_experience: [{ position: 'Backend Engineer', company: 'Entreprise QA', start: reply?.experienced ? '1998-01-01' : '2018-01-01', end: '2026-01-01' }],
       }));
       let data: Record<string, unknown> = { success: true };
       if (body.action === 'search') data = { success: true, results: options.empty ? [] : profiles, total: options.empty ? 0 : options.profileCount ?? 50, cursor: options.empty || body.cursor || options.profileCount ? null : 'page-two' };
+      if (body.action === 'search' && reply) data = reply.error
+        ? { success: false, error: reply.error }
+        : { success: true, results: profiles, total: reply.total ?? 75, cursor: reply.cursor ?? null };
       if (body.action === 'get_parameters') data = { success: true, items: [] };
       if (body.action === 'get_profile') data = { success: true, profile: profiles.find(profile => profile.id === body.profile_id) ?? profiles[0] };
       const functionName = url.pathname.split('/').at(-1);
@@ -319,6 +337,189 @@ test.describe('Sourcing — quitter et revenir @critical', () => {
     await expect(page.getByText('Profil A 26', { exact: true })).toHaveCount(0);
     expect(api.searches()).toHaveLength(2);
     expect(api.searches()[1].cursor).toBe('page-two');
+  });
+  test('Claire — la suite est visible près du compteur sans défiler, puis chaque lot utilise sa suite', async ({ page }) => {
+    const api = await open(page, { configure: true, state: { orgType: 'enterprise' }, searchReplies: [
+      { count: 25, offset: 0, total: 75, cursor: 'suite-a' },
+      { count: 25, offset: 25, total: 75, cursor: 'suite-b' },
+      { count: 25, offset: 50, total: 75, cursor: null },
+    ] });
+    await launch(page);
+    const next = page.getByRole('button', { name: 'Voir la suite', exact: true });
+    await expect(next).toHaveCount(1);
+    const buttonBounds = await next.boundingBox();
+    const viewport = page.viewportSize()!;
+    expect(buttonBounds!.y).toBeGreaterThanOrEqual(0);
+    expect(buttonBounds!.y + buttonBounds!.height).toBeLessThanOrEqual(viewport.height);
+    await expect(page.getByText(/25 profils chargés sur 75/).first()).toBeVisible();
+    expect(await page.evaluate(() => scrollY)).toBe(0);
+    await next.click();
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    await expect(page.getByText(/50 profils chargés sur 75/).first()).toBeVisible();
+    await next.click();
+    await expect(page.getByText('Profil A 51', { exact: true })).toBeVisible();
+    await expect(next).toHaveCount(0);
+    await expect(page.getByText(/^75 profils chargés\.$/).first()).toBeVisible();
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, 'suite-a', 'suite-b']);
+  });
+  test('Théo — zéro profil après filtre local garde un accès à la suite LinkedIn', async ({ page }) => {
+    const api = await open(page, { configure: true, locallyFiltered: true, searchReplies: [
+      ...Array.from({ length: 10 }, (_, index) => ({ count: 25, offset: index * 25, total: 275, cursor: `suite-locale-${index + 1}` })),
+      { count: 25, offset: 250, total: 275, cursor: null, experienced: true },
+    ] });
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect.poll(() => api.searches().length).toBe(10);
+    await expect(page.getByText('Profil A 01', { exact: true })).toHaveCount(0);
+    const next = page.getByRole('button', { name: 'Voir la suite', exact: true });
+    await expect(next).toBeVisible();
+    await expect(page.getByText('Aucun profil trouvé', { exact: true })).toHaveCount(0);
+    await next.click();
+    await expect(page.getByText('Profil A 251', { exact: true })).toBeVisible();
+    expect(api.searches()).toHaveLength(11);
+    expect(api.searches()[10].cursor).toBe('suite-locale-10');
+    await expect(page.getByText(/Tous les profils de cette recherche sont chargés/)).toHaveCount(0);
+  });
+  for (const group of ['Retenus', 'Écartés']) test(`Guillaume — Voir la suite depuis ${group} ouvre les profils à trier`, async ({ page }) => {
+    const api = await open(page, { configure: true, grouped: true });
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(page.getByText('Profil A 03', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: new RegExp('^' + group + '\\b') }).click();
+    await page.getByRole('button', { name: 'Voir la suite', exact: true }).click();
+    await expect(page.getByRole('tab', { name: /^À trier\b/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, 'page-two']);
+  });
+  test('Guillaume — une nouvelle recherche réussie ouvre À trier et le retour garde le groupe choisi', async ({ page }) => {
+    const api = await open(page, { configure: true, grouped: true });
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(page.getByText('Profil A 03', { exact: true })).toBeVisible();
+    const retained = page.getByRole('tab', { name: /^Retenus\b/ });
+    await retained.click();
+    await leaveAndReturn(page);
+    await expect(retained).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('button', { name: 'Nouvelle recherche', exact: true }).click();
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(page.getByRole('tab', { name: /^À trier\b/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Profil A 03', { exact: true })).toBeVisible();
+    expect(api.searches()).toHaveLength(2);
+  });
+  test('Théo — nouvelle recherche en échec garde le groupe et les profils déjà chargés', async ({ page }) => {
+    const api = await open(page, { configure: true, grouped: true, searchReplies: [
+      { count: 25, cursor: 'suite-a' }, { error: 'Recherche indisponible pour le test' },
+    ] });
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(page.getByText('Profil A 03', { exact: true })).toBeVisible();
+    const retained = page.getByRole('tab', { name: /^Retenus\b/ });
+    await retained.click();
+    await page.getByRole('button', { name: 'Nouvelle recherche', exact: true }).click();
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(page.getByText('Recherche indisponible pour le test', { exact: true })).toBeVisible();
+    await expect(retained).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Profil A 01', { exact: true })).toBeVisible();
+    expect(api.searches()).toHaveLength(2);
+  });
+  test('Théo — un nouveau lot partiellement réussi ouvre À trier si le tour suivant échoue', async ({ page }) => {
+    const api = await open(page, { configure: true, grouped: true, searchReplies: [
+      { count: 25, cursor: 'suite-a' },
+      { count: 5, offset: 25, cursor: 'suite-partielle' },
+      { error: 'Tour suivant indisponible pour le test' },
+    ] });
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(page.getByText('Profil A 03', { exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: /^Écartés\b/ }).click();
+    await page.getByRole('button', { name: 'Nouvelle recherche', exact: true }).click();
+    await panel(page).getByRole('button', { name: 'Rechercher', exact: true }).click();
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /^À trier\b/ })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('Profil A 03', { exact: true })).toHaveCount(0);
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, null, 'suite-partielle']);
+  });
+  test('Théo — filtres édités remplacent Voir la suite par une relance de recherche', async ({ page }) => {
+    const api = await open(page, { configure: true });
+    await launch(page);
+    await page.getByRole('button', { name: 'Nouvelle recherche', exact: true }).click();
+    await changeKeywords(page, 'Rust');
+    await closeFilters(page);
+    await expect(page.getByRole('button', { name: 'Voir la suite', exact: true })).toHaveCount(0);
+    const rerun = page.getByRole('button', { name: 'Relancer la recherche', exact: true });
+    await expect(rerun).toBeVisible();
+    await rerun.click();
+    await expect.poll(() => api.searches().length).toBe(2);
+    expect(api.searches()[1].cursor).toBeUndefined();
+    expect(api.searches()[1].keywords).toBe('Rust');
+  });
+  test('Théo — double clic sur Voir la suite lance un seul lot et conserve le focus', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, cursor: 'suite-a' }, { count: 25, offset: 25, cursor: 'suite-b', delayMs: 400 },
+    ] });
+    await launch(page);
+    const next = page.getByRole('button', { name: 'Voir la suite', exact: true });
+    await next.focus();
+    await next.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+    const loading = page.getByRole('button', { name: 'Chargement de la suite', exact: true });
+    await expect(loading).toHaveAttribute('aria-disabled', 'true');
+    await expect(loading).toBeFocused();
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    await expect(next).toBeFocused();
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, 'suite-a']);
+  });
+  test('Théo — une erreur sur la suite garde le premier lot et permet de réessayer cette même suite', async ({ page }) => {
+    const api = await open(page, { configure: true, searchReplies: [
+      { count: 25, cursor: 'suite-a' }, { error: 'Suite indisponible pour le test' },
+      { count: 25, offset: 25, cursor: null },
+    ] });
+    await launch(page);
+    const next = page.getByRole('button', { name: 'Voir la suite', exact: true });
+    await next.click();
+    await expect(page.getByText('Suite indisponible pour le test', { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil A 01', { exact: true })).toBeVisible();
+    await expect(next).toBeEnabled();
+    await next.click();
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, 'suite-a', 'suite-a']);
+  });
+  test('Théo — quota atteint explique le clic sur la suite sans nouvelle requête', async ({ page }) => {
+    const api = await open(page, { configure: true });
+    await launch(page);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('quota:record', {
+      detail: { type: 'searchResultsFetched', count: 999999, accountId: 'account-a' },
+    })));
+    await page.getByRole('button', { name: 'Voir la suite', exact: true }).click();
+    await expect(page.getByText('Quota de recherche journalier atteint. Réessayez demain.', { exact: true })).toBeVisible();
+    await expect(page.getByText('Profil A 01', { exact: true })).toBeVisible();
+    expect(api.searches()).toHaveLength(1);
+  });
+  test('Claire — fin des lots disponibles ne promet pas que tous les profils annoncés sont chargés', async ({ page }) => {
+    const api = await open(page, { configure: true, state: { orgType: 'enterprise' }, searchReplies: [
+      { count: 25, total: 400, cursor: null },
+    ] });
+    await launch(page);
+    await expect(page.getByRole('button', { name: 'Voir la suite', exact: true })).toHaveCount(0);
+    await expect(page.getByText(/Tous les profils de cette recherche sont chargés/)).toHaveCount(0);
+    await expect(page.getByText(/25 profils chargés sur 400/).first()).toBeVisible();
+    expect(api.searches()).toHaveLength(1);
+  });
+  for (const width of [390, 320]) test(`Sophie — suite visible sans défiler et accessible mobile ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 568 });
+    const api = await open(page, { configure: true, state: { orgType: 'freelance', collaborator: true }, searchReplies: [
+      { count: 25, cursor: 'suite-a' }, { count: 25, offset: 25, cursor: 'suite-b', delayMs: 400 },
+    ] });
+    await launch(page);
+    const next = page.getByRole('button', { name: 'Voir la suite', exact: true });
+    const bounds = await next.boundingBox();
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    expect(bounds!.width).toBeGreaterThanOrEqual(44);
+    await next.focus();
+    await next.press('Enter');
+    await expect(page.getByRole('button', { name: 'Chargement de la suite', exact: true })).toBeFocused();
+    await expect(page.getByText('Profil A 26', { exact: true })).toBeVisible();
+    await expect(next).toBeFocused();
+    expect(api.searches().map(call => call.cursor ?? null)).toEqual([null, 'suite-a']);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(accessibility.violations.map(item => ({ id: item.id, targets: item.nodes.map(node => node.target) }))).toEqual([]);
+    await test.info().attach(`mobile-suite-${width}`, { body: await page.screenshot(), contentType: 'image/png' });
   });
   for (const width of [390, 320]) test(`Sophie — filtres et retour mobile ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 568 });

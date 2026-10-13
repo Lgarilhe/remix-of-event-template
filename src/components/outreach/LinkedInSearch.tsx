@@ -208,6 +208,10 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   startWithFilters,
 }) => {
   const isV3 = layout === 'mission-v3' && !!activeProject;
+  const [resultGroup, setResultGroup] = useState<SourcingResultGroup>('to_sort');
+  const onNewSearchResults = useCallback(() => {
+    if (isV3) setResultGroup('to_sort');
+  }, [isV3]);
   const { organizationId, orgType } = useOrganization();
   const { user } = useAuthReady();
   const memory = useAgentMemoryContext(activeProject?.id ?? null);
@@ -424,6 +428,7 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
       setTotal: search.setTotal,
       setHasSearched: search.setHasSearched,
       setExecutedSearch: search.setExecutedSearch,
+      onNewSearchResults,
     }
   );
   const { setResults: setSearchResults, setCursor: setSearchCursor, setTotal: setSearchTotal,
@@ -508,7 +513,6 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
 
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersReturnFocusRef = useRef<HTMLElement | null>(null);
-  const [resultGroup, setResultGroup] = useState<SourcingResultGroup>('to_sort');
   // Only stable screens are restored; an interrupted request never restores a spinner.
   const [flowMode, setFlowMode] = useState<'hero' | 'plan' | 'results'>('results');
   const [flowQuery, setFlowQuery] = useState('');
