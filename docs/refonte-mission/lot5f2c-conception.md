@@ -116,3 +116,18 @@ export type FlowCandidatesStatus = 'loading' | 'error' | 'ready';
 - Aucun `any` nouveau, aucun `@ts-ignore`, dépendances d'effet complètes (le cliquet ESLint compte les avertissements).
 - Un lien vers `/sequences` se fait par `newSequencePath` ou `sequencePath` dans `components/sequences/**` (zone exemptée de la garde de l'interrupteur de `seq-v2-socle`, qui s'applique aux fichiers hors de cette zone) ; ContactFlow ne se monte que interrupteur allumé.
 - Les tests qui lisent le source de `PipelineScreen`, `ContactPanel`, `ContactSelectionButton` et `MissionWorkspaceV3` figent des phrases exactes : voir le plan du lot, section 5f-2.
+
+## Réalisation (13/10/2026)
+
+Livré sur la branche `claude/repository-audit-pcgg0y`, puis relu par neuf angles indépendants (chaque défaut contesté par un sceptique). Écarts au contrat ci-dessus :
+
+- Le panneau ne lit plus la distance de réseau ni l'identifiant du fournisseur des lignes du Pipeline : le moteur lit `network_distance` de l'inscription comme une preuve de connexion, un instantané ancien ou d'un autre compte aurait fait sauter l'attente d'acceptation. Les candidats gardent le profil minimal d'avant. La classification par distance (`checkProfilesCompat`) reste branchée pour les entrées dont le profil est lu en direct (5f-2d).
+- Dérogations : remises à zéro dès que la séquence ou les candidats changent ; absentes pour une séquence à message IA (la fenêtre de relecture a les siennes et reçoit alors aussi les contacts récents et les incompatibles).
+- `ContactFlowProps.refreshing` : la sélection change panneau ouvert (grand écran), les candidats déjà lus restent à l'écran, filtrés sur la sélection, et l'inscription attend la relecture.
+- Jauge : seulement pour une invitation ou un message en première étape, sans rotation d'expéditeurs, sans délai d'un jour ou plus avant la première étape ; les candidats déjà en relation ne comptent pas pour une invitation.
+- `retainCandidates` lit les lignes de l'organisation, quel qu'en soit l'auteur (correctif d'un défaut de 5f-2a que le panneau rendait fréquent).
+- Après une inscription, le panneau ne navigue que s'il est encore monté et encore en mode Contacter ; le focus revient au titre du panneau en le quittant, et au résumé après une dérogation.
+
+Limites connues, non corrigées : le choix de séquence se perd quand on passe par « Ouvrir la fiche » ; une même personne sous deux identifiants du Pipeline est comptée deux fois « prête » (l'inscription n'en retient qu'une et le dit) ; `checkProfileCompat` range « hors réseau » une séquence faite de messages IA seuls alors que le moteur les envoie en InMail (ancien code, aussi dans les deux fenêtres) ; la jauge ne voit que le journal des envois, pas les exécutions déjà promises, et ne tient pas compte d'une pause du compte.
+
+Reste : 5f-2d, les autres entrées.

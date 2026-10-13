@@ -28,6 +28,8 @@ export interface ContactFlowProps {
   candidatesStatus: FlowCandidatesStatus;
   /** Lignes sélectionnées au-delà du plafond de l'inscription (elles restent sélectionnées). */
   overflow: number;
+  /** La sélection a changé et ses candidats sont relus : l'inscription attend (les candidats montrés sont ceux d'avant). */
+  refreshing?: boolean;
   onRetryCandidates: () => void;
   /** Après une inscription : les lignes traitées quittent la sélection et le panneau passe sur « Contactés ». */
   onEnrolled: (handledRowIds: readonly string[]) => void;

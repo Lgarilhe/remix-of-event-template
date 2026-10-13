@@ -2,9 +2,12 @@
 // l'ouvrir. La sélection du Pipeline garde des instantanés de ligne (lot 2) : un lien
 // LinkedIn ajouté entre-temps, un candidat disparu ou une étape changée n'y sont pas.
 // Le panneau relit donc les lignes cochées dans mission_candidate_rows (RLS de
-// l'appelant, comme les listes du Pipeline), avec ce que les colonnes légères n'ont pas et
-// que la compatibilité, l'aperçu et l'anti-doublon lisent : l'identifiant LinkedIn du
-// fournisseur et la distance de réseau, extraits côté base (jamais le profil entier).
+// l'appelant, comme les listes du Pipeline), colonnes légères seulement.
+//
+// Le profil de chaque candidat reste celui que le Pipeline fabriquait déjà (nom, titre, lien
+// LinkedIn) : ni la distance de réseau ni l'identifiant du fournisseur d'un instantané ancien,
+// ou d'un autre compte, ne sont écrits dans l'inscription (le moteur lit `network_distance`
+// de l'inscription comme une preuve de connexion, avant de relire la relation en direct).
 //
 // Lecture seule. Bornée : 400 lignes au plus (les suivantes restent cochées, `overflow`
 // les compte), par lots de 100 identifiants. Relue à chaque ouverture (staleTime 0, relue
@@ -12,7 +15,7 @@
 // sont écartées ; l'ordre est celui de la sélection.
 
 import { useCallback, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { FlowCandidate, FlowCandidatesStatus } from '@/components/sequences/contact/types';
 import type { ATSCandidate } from '@/hooks/useATSData';
@@ -26,13 +29,6 @@ export const CONTACT_FLOW_MAX = 400;
 
 /** Identifiants par lecture (longueur d'adresse raisonnable). */
 const READ_CHUNK = 100;
-
-/** Colonnes légères du Pipeline, plus les deux champs du profil LinkedIn que la compatibilité lit. */
-const CONTACT_COLUMNS = [
-  MISSION_ROW_LIGHT_COLUMNS,
-  'provider_id:linkedin_profile_data->>provider_id',
-  'network_distance:linkedin_profile_data->>network_distance',
-].join(',');
 
 // La vue n'a pas de clé primaire déclarée : lecture non typée, lignes validées par toMissionCandidateRow.
 interface ContactRowsQuery extends PromiseLike<{ data: unknown; error: { message: string } | null }> {
@@ -73,20 +69,11 @@ export function rowToAtsCandidate(row: MissionCandidateRow, project: SourcingPro
   };
 }
 
-const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() !== '' ? value : null);
-
 /** Une ligne brute de la vue vers le candidat du panneau ; null sans identifiant ou sans candidat. */
 function toFlowCandidate(raw: unknown, project: SourcingProject): FlowCandidate | null {
   const row = toMissionCandidateRow(raw);
   if (!row) return null;
-  const extra = (raw ?? {}) as Record<string, unknown>;
-  const providerId = text(extra.provider_id);
-  const networkDistance = text(extra.network_distance);
-  const profile = {
-    ...atsCandidateToProfile(rowToAtsCandidate(row, project)),
-    ...(providerId ? { provider_id: providerId } : {}),
-    ...(networkDistance ? { network_distance: networkDistance } : {}),
-  };
+  const profile = atsCandidateToProfile(rowToAtsCandidate(row, project));
   return {
     id: profile.id,
     rowId: row.id,
@@ -102,7 +89,7 @@ function toFlowCandidate(raw: unknown, project: SourcingProject): FlowCandidate 
 async function readChunk(project: SourcingProject, ids: readonly string[]): Promise<FlowCandidate[]> {
   const { data, error } = await db
     .from('mission_candidate_rows')
-    .select(CONTACT_COLUMNS)
+    .select(MISSION_ROW_LIGHT_COLUMNS)
     .eq('project_id', project.id)
     .eq('is_unopened', false)
     .in('id', ids);
@@ -137,7 +124,7 @@ export function useContactCandidates(
   project: SourcingProject,
   rows: readonly MissionCandidateRow[],
   enabled: boolean,
-): { candidates: FlowCandidate[]; status: FlowCandidatesStatus; refetch: () => void; overflow: number } {
+): { candidates: FlowCandidate[]; status: FlowCandidatesStatus; refetch: () => void; overflow: number; refreshing: boolean } {
   const overflow = Math.max(0, rows.length - CONTACT_FLOW_MAX);
   const signature = rows
     .slice(0, CONTACT_FLOW_MAX)
@@ -152,13 +139,25 @@ export function useContactCandidates(
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
+    // La sélection change panneau ouvert (grand écran, la liste reste cliquable) : les candidats déjà
+    // lus restent affichés pendant la relecture, au lieu de remplacer tout le panneau par un squelette.
+    placeholderData: keepPreviousData,
   });
   const { refetch: refetchQuery } = query;
   const refetch = useCallback(() => {
     void refetchQuery();
   }, [refetchQuery]);
 
-  const candidates = query.data ?? EMPTY_CANDIDATES;
+  // Pendant la relecture d'une autre sélection, seuls les candidats toujours cochés restent montrés :
+  // un candidat décoché ne peut jamais être inscrit par ce qui reste à l'écran.
+  const candidates = useMemo(() => {
+    if (!query.data) return EMPTY_CANDIDATES;
+    if (!query.isPlaceholderData) return query.data;
+    const wanted = new Set(ids);
+    return query.data.filter((candidate) => wanted.has(candidate.rowId));
+  }, [query.data, query.isPlaceholderData, ids]);
+  // Les candidats montrés ne sont pas encore ceux de la sélection : le pied attend la lecture.
+  const refreshing = enabled && ids.length > 0 && query.isPlaceholderData;
   let status: FlowCandidatesStatus;
   if (!enabled) status = 'loading';
   else if (ids.length === 0 || query.data !== undefined) status = 'ready';
@@ -166,5 +165,5 @@ export function useContactCandidates(
   else if (query.isError || query.fetchStatus === 'paused') status = 'error';
   else status = 'loading';
 
-  return { candidates, status, refetch, overflow };
+  return { candidates, status, refetch, overflow, refreshing };
 }

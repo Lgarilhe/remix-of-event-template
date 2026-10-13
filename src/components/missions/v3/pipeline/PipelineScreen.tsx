@@ -22,6 +22,7 @@ import { V3_PARAM } from '@/lib/missionBeta';
 import type { ActionIntent, RowSignals } from '@/lib/missionNextAction';
 import { SETTINGS_PATHS } from '@/lib/settingsRoutes';
 import { invalidateStageReaders } from '@/lib/stageDisplay';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import { useMissionV3 } from '../MissionV3Context';
 import { useMissionSelection } from '../shell/missionSelectionContext';
 import {
@@ -78,7 +79,8 @@ function prefersReducedMotion(): boolean {
 export function PipelineScreen(): JSX.Element | null {
   const ctx = useMissionV3();
   const { project, location } = ctx;
-  const [, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sequencesV2 = useSequencesBeta();
   const queryClient = useQueryClient();
 
   const countsQuery = useMissionStageCounts([project.id]);
@@ -158,7 +160,9 @@ export function PipelineScreen(): JSX.Element | null {
   }, [setSelection]);
   // Panneau Contacter ouvert : état lu à jour par une ref (le nettoyage au démontage ne voit pas le rendu courant).
   const contactPanelOpen = useRef(false);
-  contactPanelOpen.current = location.panel === 'contact';
+  // Seul le mode Contacter lit la sélection : l'onglet Contactés ou Séquences, et l'ancien panneau
+  // (interrupteur éteint), ne la lisent pas, l'écran quitté la vide comme avant.
+  contactPanelOpen.current = location.panel === 'contact' && sequencesV2 && searchParams.get('contacter') === '1';
   // Un changement de filtre d'étape ou de vue vide la sélection. Le simple montage de l'écran (retour de
   // Sourcing ou de Cadrage) ne la vide pas quand le panneau Contacter est ouvert : c'est lui qui la lit.
   const lastScope = useRef<{ filterParam: string | null; view: PipelineViewMode } | null>(null);
@@ -175,6 +179,11 @@ export function PipelineScreen(): JSX.Element | null {
     },
     [clearSelection],
   );
+  // Une sélection vidée (panneau Contacter, dernière case décochée) ne laisse pas sa note de plafond à l'écran.
+  const selectionSize = selection.size;
+  useEffect(() => {
+    if (selectionSize === 0) setSelectionNote(null);
+  }, [selectionSize]);
   const selectedIds = useMemo(() => new Set(selection.keys()), [selection]);
   const selectedRows = useMemo(() => [...selection.values()], [selection]);
 

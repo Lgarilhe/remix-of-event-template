@@ -51,6 +51,11 @@ export async function retainCandidates(params: {
   // depuis une mission), comme useJobCandidateStatus. Une ligne déjà présente
   // sous l'une des deux formes (avec ou sans préfixe) est reprise, jamais
   // doublée : set_candidate_stages porte sur les lignes réelles du candidat.
+  // La lecture est celle de l'organisation (RLS), quel que soit l'auteur de la
+  // ligne : le Pipeline liste les lignes de toute l'équipe et ses gestes les
+  // écrivent déjà. Créer ici une seconde ligne à profil réduit pour un candidat
+  // que la mission a déjà (sourcé par un collègue) la ferait passer ligne
+  // canonique, au détriment de la fiche complète.
   const jobIdForms = job.id.startsWith('project:')
     ? [job.id, job.id.slice('project:'.length)]
     : [job.id];
@@ -58,7 +63,7 @@ export async function retainCandidates(params: {
     .from('job_candidate_status')
     .select('id, candidate_id')
     .in('job_id', jobIdForms)
-    .eq('created_by', userId)
+    .eq('organization_id', organizationId)
     .in('candidate_id', profiles.map(p => p.id));
   if (readError) throw readError;
   const existingCandidates = new Set((existingRows ?? []).map(r => r.candidate_id));

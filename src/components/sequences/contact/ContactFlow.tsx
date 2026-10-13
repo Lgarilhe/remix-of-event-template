@@ -178,6 +178,7 @@ export function ContactFlow({
   candidates,
   candidatesStatus,
   overflow,
+  refreshing = false,
   onRetryCandidates,
   onEnrolled,
   onOpenCandidate,
@@ -223,7 +224,12 @@ export function ContactFlow({
     && selected.sender_accounts.length > 0;
 
   // Éligibilité : anti-doublon, déjà dans la séquence, compatibilité avec le réseau.
-  const eligibility = useContactEligibility({ sequenceId: selectedId, rawSteps, candidates, organizationId });
+  const eligibility = useContactEligibility({
+    sequenceId: selectedId,
+    rawSteps,
+    candidates,
+    organizationId: canSendSequences ? organizationId : null,
+  });
   const { blocking, recent, incompatible, warnings, recentMap, retry: retryEligibility } = eligibility;
 
   // Aperçu des premiers messages (preview_values) : c'est lui qui apprend quels profils sont effacés.
@@ -236,7 +242,12 @@ export function ContactFlow({
     keys: previewKeys,
   });
   const { request: requestPreviewValues, entryOf: previewEntryOf } = previewValues;
-  const previewsEnabled = !!organizationId && !!accountId && !sendingAccount.belongsToOtherMember && stepsReady;
+  // Derrière la porte « formule gratuite » rien n'est lu : personne n'en verrait le résultat.
+  const previewsEnabled = canSendSequences
+    && !!organizationId
+    && !!accountId
+    && !sendingAccount.belongsToOtherMember
+    && stepsReady;
 
   // Profils effacés sur demande (cas gdpr_erased du serveur : aucun nouvel essai possible). Clé de contenu :
   // les groupes ne sont recalculés que si cet ensemble change, pas à chaque aperçu reçu.
@@ -249,20 +260,34 @@ export function ContactFlow({
     .join('\u0001');
   const erased = useMemo<ReadonlySet<string>>(() => new Set(erasedKey ? erasedKey.split('\u0001') : []), [erasedKey]);
 
-  // Dérogations : propres à la séquence choisie, remises à vide quand elle change.
-  const [overrideState, setOverrideState] = useState<{ sequenceId: string | null; set: ReadonlySet<ContactOverride> }>({
-    sequenceId: null,
+  // Dérogations : propres à la séquence choisie ET aux candidats montrés. Elles sont remises à vide dès que
+  // l'un ou l'autre change (comme les fenêtres d'inscription, dont la liste est figée) : une dérogation
+  // levée pour deux contacts récents ne doit pas s'appliquer en silence à un candidat coché ensuite.
+  const candidatesKey = useMemo(() => candidates.map((candidate) => candidate.id).join('\u0001'), [candidates]);
+  const overrideScope = `${selectedId ?? ''}|${candidatesKey}`;
+  const [overrideState, setOverrideState] = useState<{ scope: string; set: ReadonlySet<ContactOverride> }>({
+    scope: '',
     set: NO_OVERRIDES,
   });
-  const overrides = overrideState.sequenceId === selectedId ? overrideState.set : NO_OVERRIDES;
+  const overridesEnabled = !info.aiReview;
+  const overrides = overridesEnabled && overrideState.scope === overrideScope ? overrideState.set : NO_OVERRIDES;
+  // Le bouton cliqué disparaît (le candidat change de groupe) : le focus va au résumé, qui annonce le changement.
+  const summaryRef = useRef<HTMLParagraphElement>(null);
+  const focusSummary = useRef(false);
   const toggleOverride = useCallback((override: ContactOverride) => {
+    focusSummary.current = true;
     setOverrideState((previous) => {
-      const next = new Set(previous.sequenceId === selectedId ? previous.set : NO_OVERRIDES);
+      const next = new Set(previous.scope === overrideScope ? previous.set : NO_OVERRIDES);
       if (next.has(override)) next.delete(override);
       else next.add(override);
-      return { sequenceId: selectedId, set: next };
+      return { scope: overrideScope, set: next };
     });
-  }, [selectedId]);
+  }, [overrideScope]);
+  useEffect(() => {
+    if (!focusSummary.current) return;
+    focusSummary.current = false;
+    summaryRef.current?.focus({ preventScroll: true });
+  }, [overrides]);
 
   const contactEligibility = useMemo<ContactEligibility>(
     () => ({ blocking, erased, recent, incompatible, warnings }),
@@ -281,11 +306,18 @@ export function ContactFlow({
   const recipients = useRecipientsConfirm(readyIds, { aiReview: false });
 
   // Candidats montrés à « Relire les messages » : les prêts et ceux dont seul le message IA reste à relire.
+  // Séquence à message IA : les contacts récents et les incompatibles y vont aussi, car c'est la fenêtre qui
+  // offre alors leurs dérogations (le panneau n'en propose pas, elles ne se transmettent pas à la fenêtre).
   const reviewProfiles = useMemo(() => {
     const ids = new Set(ready.map((entry) => entry.source.id));
     for (const entry of groups.incomplete) if (entry.reason === 'ai_review') ids.add(entry.source.id);
+    if (info.aiReview) {
+      for (const entry of groups.excluded) {
+        if (entry.reason === 'recent_contact' || entry.reason === 'too_far' || entry.reason === 'connection_only') ids.add(entry.source.id);
+      }
+    }
     return candidates.filter((candidate) => ids.has(candidate.id)).map((candidate) => candidate.profile);
-  }, [candidates, ready, groups.incomplete]);
+  }, [candidates, ready, groups.incomplete, groups.excluded, info.aiReview]);
   // Figé à l'ouverture : la fenêtre ne doit pas voir sa liste de candidats changer sous elle.
   const [review, setReview] = useState<{
     sequence: { id: string; name: string; steps: NonNullable<typeof rawSteps> };
@@ -330,24 +362,39 @@ export function ContactFlow({
   }, [previewsEnabled, sweepProfiles, requestPreviewValues]);
 
   // Jauge du plafond LinkedIn (le plafond ne bloque jamais l'inscription : le moteur reporte l'excédent).
-  const quota = useLinkedInQuotaStatus(accountId);
-  const firstStepType = useMemo(
-    () => (rawSteps && rawSteps.length > 0 ? pickFirstStep(rawSteps, () => 0).step?.action_type ?? null : null),
+  // C'est une estimation : elle lit le compte d'envoi choisi et ses compteurs d'aujourd'hui. Elle n'est
+  // donc montrée que si la première action part vraiment de ce compte et maintenant (pas de rotation
+  // d'expéditeurs, pas de délai d'un jour ou plus avant la première étape).
+  const firstStep = useMemo(
+    () => (rawSteps && rawSteps.length > 0 ? pickFirstStep(rawSteps, () => 0).step ?? null : null),
     [rawSteps],
+  );
+  const firstStepType = firstStep?.action_type ?? null;
+  const firstStepLater = !!firstStep
+    && (firstStep.delay_days ?? 0) * 1440 + (firstStep.delay_hours ?? 0) * 60 + (firstStep.delay_minutes ?? 0) >= 1440;
+  const gaugeApplies = !rotation && !firstStepLater && gaugeKindOf(firstStepType) !== null;
+  const quota = useLinkedInQuotaStatus(gaugeApplies ? accountId : null);
+  // Candidats qui consomment une place : ceux que l'inscription visera (messages IA compris), sauf, pour une
+  // invitation, ceux déjà en relation (l'invitation est sautée et la place rendue).
+  const gaugeCount = useMemo(
+    () => reviewProfiles.filter(
+      (profile) => !(gaugeKindOf(firstStepType) === 'invitations' && warnings.get(profile.id) === 'connection_already_connected'),
+    ).length,
+    [reviewProfiles, firstStepType, warnings],
   );
   const quotaStatus = quota.data;
   const gauge = useMemo(
-    () => (quotaStatus
+    () => (gaugeApplies && quotaStatus
       ? quotaGauge(firstStepType, {
         usedToday: quotaStatus.today.visible_actions,
         capToday: quotaStatus.caps.visible_actions,
         usedWeekInvitations: quotaStatus.week.invitations,
         capWeekInvitations: quotaStatus.caps.weekly_invitations,
-      }, ready.length)
+      }, gaugeCount)
       : null),
-    [quotaStatus, firstStepType, ready.length],
+    [gaugeApplies, quotaStatus, firstStepType, gaugeCount],
   );
-  const quotaUnavailable = quota.isError && gaugeKindOf(firstStepType) !== null && ready.length > 0;
+  const quotaUnavailable = gaugeApplies && quota.isError && gaugeCount > 0;
 
   const [enrolling, setEnrolling] = useState(false);
   const enrollingRef = useRef(false);
@@ -413,8 +460,10 @@ export function ContactFlow({
           return;
         }
       }
-      // Refusée, en échec ou rien d'inscrit : rien ne quitte la sélection, les groupes sont relus.
+      // Refusée, en échec ou rien d'inscrit : rien ne quitte la sélection, les groupes et les séquences sont relus
+      // (une séquence désactivée entre-temps ne doit pas rester choisie).
       retryEligibility();
+      sequencesRead.refetch();
     } finally {
       enrollingRef.current = false;
       setEnrolling(false);
@@ -519,12 +568,14 @@ export function ContactFlow({
   // ── Panneau ──
   const eligibilityReady = eligibility.status === 'ready' && !!recentMap;
   const enrollDisabled = enrolling
+    || refreshing
     || ready.length === 0
     || !stepsReady
     || !eligibilityReady
     || !!sendingAccount.blockReason
     || recipients.blocked;
   const reviewDisabled = enrolling
+    || refreshing
     || reviewProfiles.length === 0
     || !stepsReady
     || !eligibilityReady
@@ -566,13 +617,16 @@ export function ContactFlow({
     } else {
       candidatesSection = (
         <div className="space-y-3">
-          <p className="text-sm text-foreground">{contactSummary(groups)}</p>
+          <p ref={summaryRef} tabIndex={-1} role="status" className="text-sm text-foreground outline-none">
+            {contactSummary(groups)}
+          </p>
           <RecipientGroups
             groups={groups}
             canOverrideRecent={isAdmin}
             overrides={overrides}
             onToggleOverride={toggleOverride}
             onOpenCandidate={onOpenCandidate}
+            overridesEnabled={overridesEnabled}
           />
           {previewsEnabled && previewCandidate && (
             <FirstMessagePreviewBlock
@@ -637,8 +691,9 @@ export function ContactFlow({
       </div>
 
       {showFooter && (
-        // pr-20 : la bulle de l'assistant (fixe, 56 px, en bas à droite) ne doit pas recouvrir les boutons du pied.
-        <div className="sticky bottom-0 mt-auto shrink-0 space-y-3 border-t border-border bg-background py-3 pl-4 pr-20 sm:pl-5 sm:pr-20">
+        // lg:pr-20 : à partir de lg le panneau est à côté de la page et la bulle de l'assistant (fixe, 56 px, en bas
+        // à droite) le recouvre ; en plein écran (sous lg) le panneau passe au-dessus de la bulle.
+        <div className="sticky bottom-0 mt-auto shrink-0 space-y-3 border-t border-border bg-background px-4 py-3 sm:px-5 lg:pr-20">
           <RecipientsConfirm
             count={ready.length}
             confirmed={recipients.confirmed}

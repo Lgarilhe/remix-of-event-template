@@ -293,13 +293,21 @@ test('5F2C-E9 aperçu : candidat courant d\'abord, puis balayage de tous, un paq
   assert.match(preview, /onNext: \(\) => goToPreview\(previewPosition \+ 1\)/);
 });
 
-test('5F2C-E10 jauge : première étape par pickFirstStep, chiffres de get_linkedin_quota_status', () => {
-  assert.match(flowCode, /pickFirstStep\(rawSteps, \(\) => 0\)\.step\?\.action_type/);
+test('5F2C-E10 jauge : première étape par pickFirstStep, chiffres de get_linkedin_quota_status, estimation honnête', () => {
+  assert.match(flowCode, /pickFirstStep\(rawSteps, \(\) => 0\)\.step \?\? null/);
   const gauge = between(flowCode, 'const gauge = useMemo(', 'const quotaUnavailable');
   for (const field of ['usedToday: quotaStatus.today.visible_actions', 'capToday: quotaStatus.caps.visible_actions', 'usedWeekInvitations: quotaStatus.week.invitations', 'capWeekInvitations: quotaStatus.caps.weekly_invitations']) {
     assert.ok(gauge.includes(field), field);
   }
   assert.match(flowCode, /\{gauge && <QuotaGauge model=\{gauge\} \/>\}/);
+  // Pas de jauge quand elle mentirait : rotation d'expéditeurs (autre compte), première étape reportée d'un jour ou plus.
+  assert.match(flowCode, /const gaugeApplies = !rotation && !firstStepLater && gaugeKindOf\(firstStepType\) !== null;/);
+  assert.match(flowCode, /useLinkedInQuotaStatus\(gaugeApplies \? accountId : null\)/);
+  assert.match(flowCode, />= 1440/);
+  // Les candidats comptés sont ceux que l'inscription vise (messages IA compris), sans les déjà en relation pour une invitation.
+  const count = between(flowCode, 'const gaugeCount = useMemo(', 'const quotaStatus');
+  assert.match(count, /reviewProfiles\.filter\(/);
+  assert.match(count, /connection_already_connected/);
 });
 
 // ─── Lectures ───────────────────────────────────────────────────────────────
@@ -585,4 +593,59 @@ test('5F2C-A3 ordre des annonces : échecs, effacés, même personne, réinscrit
   // Retenu enregistré (saved seul) : aucune annonce.
   announceEnrollOutcome(done(emptyResults({ success: 1 }), { retained: { saved: 1, failed: 0 } }), ctx);
   assert.deepEqual(calls.map((c) => c.kind), ['success']);
+});
+
+// ─── Défauts confirmés par la relecture indépendante ────────────────────────
+
+test('5F2C-R1 dérogations : propres à la séquence ET aux candidats montrés, jamais armées pour un candidat coché ensuite', () => {
+  assert.match(flowCode, /const candidatesKey = useMemo\(\(\) => candidates\.map\(\(candidate\) => candidate\.id\)\.join\('\\u0001'\), \[candidates\]\);/);
+  assert.match(flowCode, /const overrideScope = `\$\{selectedId \?\? ''\}\|\$\{candidatesKey\}`;/);
+  assert.match(flowCode, /overrideState\.scope === overrideScope \? overrideState\.set : NO_OVERRIDES/);
+  assert.match(flowCode, /return \{ scope: overrideScope, set: next \};/);
+  assert.doesNotMatch(flowCode, /overrideState\.sequenceId/);
+});
+
+test('5F2C-R2 séquence à message IA : aucune dérogation dans le panneau, la fenêtre de relecture reçoit aussi les exclus à dérogation', () => {
+  assert.match(flowCode, /const overridesEnabled = !info\.aiReview;/);
+  assert.match(flowCode, /const overrides = overridesEnabled && overrideState\.scope === overrideScope \? overrideState\.set : NO_OVERRIDES;/);
+  assert.match(flowCode, /overridesEnabled=\{overridesEnabled\}/);
+  const review = between(flowCode, 'const reviewProfiles = useMemo(', 'const [review, setReview]');
+  assert.match(review, /if \(info\.aiReview\) \{/);
+  for (const reason of ['recent_contact', 'too_far', 'connection_only']) assert.ok(review.includes(`'${reason}'`), reason);
+});
+
+test('5F2C-R3 la sélection change panneau ouvert : l\'inscription attend la relecture, rien n\'est lu derrière la porte gratuite', () => {
+  assert.match(flowCode, /refreshing = false,/);
+  assert.match(flowCode, /const enrollDisabled = enrolling\s*\|\| refreshing/);
+  assert.match(flowCode, /const reviewDisabled = enrolling\s*\|\| refreshing/);
+  assert.match(flowCode, /const previewsEnabled = canSendSequences\s*&& !!organizationId/);
+  assert.match(flowCode, /organizationId: canSendSequences \? organizationId : null,/);
+});
+
+test('5F2C-R4 focus et annonces : le résumé est une zone d\'état qui reçoit le focus quand le bouton cliqué disparaît', () => {
+  assert.match(flowCode, /<p ref=\{summaryRef\} tabIndex=\{-1\} role="status"/);
+  assert.match(flowCode, /focusSummary\.current = true;/);
+  assert.match(flowCode, /summaryRef\.current\?\.focus\(\{ preventScroll: true \}\);/);
+});
+
+test('5F2C-R5 refus ou échec de l\'inscription : les séquences sont relues (une séquence désactivée ne reste pas choisie)', () => {
+  assert.match(flowCode, /retryEligibility\(\);\s*sequencesRead\.refetch\(\);/);
+});
+
+test('5F2C-R6 pied : la réserve pour la bulle de l\'assistant ne vaut que dès lg', () => {
+  assert.match(flowCode, /px-4 py-3 sm:px-5 lg:pr-20/);
+  assert.doesNotMatch(flowCode, /pr-20 sm:pr-20/);
+});
+
+test('5F2C-R7 éligibilité : aucune copie gardée, une relecture en échec passe avant les données anciennes', () => {
+  const src = code(read('src/components/sequences/contact/useContactEligibility.ts'));
+  assert.match(src, /staleTime: 0,\s*gcTime: 0,\s*refetchOnMount: 'always',/);
+  const status = src.slice(src.indexOf("else if (profiles.length === 0) status = 'ready';"));
+  assert.ok(status.indexOf('query.isError') < status.indexOf('remote !== undefined'), 'erreur avant données');
+});
+
+test('5F2C-R8 jauge : aucune jauge pour un InMail, un message IA hors panneau ni une rotation ; plus de jauge sans candidat visé', () => {
+  const src = code(read('src/lib/quotaGauge.ts'));
+  assert.match(src, /if \(firstActionType === 'message'\) return 'actions';/);
+  assert.doesNotMatch(src, /inmail|smart_message/);
 });

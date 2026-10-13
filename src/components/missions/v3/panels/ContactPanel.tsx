@@ -104,21 +104,32 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   // L'onglet suit l'adresse (?outreach=), par remplacement et sans perdre le
   // marqueur d'historique du panneau (Retour le ferme toujours). Interrupteur
   // allumé, « Séquences » s'écrit aussi : sans cela l'adresse rouvrirait « Contactés ».
+  // L'adresse est lue à l'appel (ref tenue à jour à chaque rendu) : une fin d'inscription arrive après un
+  // moment, la personne a pu changer de filtre ou d'écran entre-temps.
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const setTab = useCallback(
     (next: ContactTab) => {
       setChosen(next);
-      const params = new URLSearchParams(location.search);
+      const current = locationRef.current;
+      const params = new URLSearchParams(current.search);
       // Choisir un onglet quitte le mode Contacter.
       params.delete(CONTACT_PARAM);
       if (!sequencesV2 && next === 'sequences') params.delete(OUTREACH_PARAM);
       else params.set(OUTREACH_PARAM, next);
       const query = params.toString();
-      const to = `${location.pathname}${query ? `?${query}` : ''}`;
-      if (to !== `${location.pathname}${location.search}`) navigate(to, { replace: true, state: location.state });
+      const to = `${current.pathname}${query ? `?${query}` : ''}`;
+      if (to !== `${current.pathname}${current.search}`) navigate(to, { replace: true, state: current.state });
     },
-    [location.pathname, location.search, location.state, navigate, sequencesV2],
+    [navigate, sequencesV2],
   );
-
   // Mode Contacter : les lignes cochées sont relues à l'ouverture (lien LinkedIn, fournisseur, réseau).
   const flow = useContactCandidates(project, [...selection.values()], asksFlow);
   const job = useMemo(() => missionEnrollJob(project), [project]);
@@ -131,6 +142,10 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
         for (const id of handled) next.delete(id);
         return next;
       });
+      // L'inscription finit après un moment : panneau fermé, fiche ouverte ou mode quitté entre-temps, on
+      // ne navigue plus (les lignes inscrites ont quand même quitté la sélection).
+      if (!mounted.current) return;
+      if (new URLSearchParams(locationRef.current.search).get(CONTACT_PARAM) !== '1') return;
       setTab('contactes');
     },
     [setSelection, setTab],
@@ -139,6 +154,12 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
   // Rechargement : la sélection n'est qu'en mémoire, `?contacter=1` seul ne la rend pas.
   // Au montage, sans sélection, le panneau s'ouvre sur « Contactés » (jamais ensuite : vider la
   // sélection panneau ouvert laisse l'état vide de ContactFlow).
+  // Le bouton cliqué du mode Contacter disparaît quand on le quitte : le focus revient au titre du panneau.
+  const wasFlow = useRef(false);
+  useEffect(() => {
+    if (wasFlow.current && !asksFlow) document.getElementById(titleId)?.focus({ preventScroll: true });
+    wasFlow.current = asksFlow;
+  }, [asksFlow, titleId]);
   const reloadChecked = useRef(false);
   const selectionSize = selection.size;
   useEffect(() => {
@@ -251,6 +272,7 @@ export function ContactPanel({ titleId, onClose }: ContactPanelProps): JSX.Eleme
             candidates={flow.candidates}
             candidatesStatus={flow.status}
             overflow={flow.overflow}
+            refreshing={flow.refreshing}
             onRetryCandidates={flow.refetch}
             onEnrolled={onEnrolled}
             onOpenCandidate={openCandidate}

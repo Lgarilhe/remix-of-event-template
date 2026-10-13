@@ -95,7 +95,12 @@ test('5F2C-P3 PipelineScreen : la sélection vient du contexte, noms et textes v
 test('5F2C-P4 PipelineScreen : le remontage ne vide pas la sélection panneau Contacter ouvert, l\'écran quitté panneau fermé la vide', () => {
   const src = code(read(SCREEN));
   // État à jour du panneau, lu par une ref (le nettoyage ne voit pas le rendu courant).
-  assert.match(src, /const contactPanelOpen = useRef\(false\);\s*contactPanelOpen\.current = location\.panel === 'contact';/);
+  // Seul le vrai mode Contacter (interrupteur allumé, ?contacter=1) garde la sélection : l'ancien panneau et les
+  // onglets Contactés et Séquences ne la lisent pas, l'écran quitté la vide comme avant.
+  assert.match(src, /const contactPanelOpen = useRef\(false\);\s*contactPanelOpen\.current = location\.panel === 'contact' && sequencesV2 && searchParams\.get\('contacter'\) === '1';/);
+  assert.match(src, /const sequencesV2 = useSequencesBeta\(\);/);
+  // Une sélection vidée ne laisse pas sa note de plafond à l'écran.
+  assert.match(src, /const selectionSize = selection\.size;\s*useEffect\(\(\) => \{\s*if \(selectionSize === 0\) setSelectionNote\(null\);\s*\}, \[selectionSize\]\);/);
   // Changement de filtre ou de vue : vide ; premier rendu : vide sauf panneau ouvert.
   assert.match(src, /const lastScope = useRef<\{ filterParam: string \| null; view: PipelineViewMode \} \| null>\(null\);/);
   const effect = src.match(/useEffect\(\(\) => \{\s*const before = lastScope\.current;([\s\S]*?)\}, \[filterParam, view, clearSelection\]\);/);
@@ -193,14 +198,14 @@ test('5F2C-P7 useContactCandidates : lecture bornée de la mission, par lots de 
   // Une seule instruction : mission, jamais ouverts exclus, lot d'identifiants (garde du lot 1-2 sur la vue).
   const queries = [...src.matchAll(/\.from\('mission_candidate_rows'\)[^;]*/g)].map((m) => m[0]);
   assert.equal(queries.length, 1, 'une seule lecture de la vue');
-  assert.match(queries[0], /\.select\(CONTACT_COLUMNS\)/);
+  assert.match(queries[0], /\.select\(MISSION_ROW_LIGHT_COLUMNS\)/);
   assert.match(queries[0], /\.eq\('project_id', project\.id\)/);
   assert.match(queries[0], /\.eq\('is_unopened', false\)/);
   assert.match(queries[0], /\.in\('id', ids\)/);
 
-  // Colonnes légères du Pipeline, plus les deux champs du profil extraits côté base (jamais le profil entier).
-  assert.match(src, /MISSION_ROW_LIGHT_COLUMNS,\s*'provider_id:linkedin_profile_data->>provider_id',\s*'network_distance:linkedin_profile_data->>network_distance',/);
-  assert.doesNotMatch(src, /linkedin_profile_data'|MISSION_ROW_DETAIL_COLUMNS/);
+  // Colonnes légères du Pipeline seulement : ni le profil, ni la distance de réseau ni l'identifiant du fournisseur
+  // d'un instantané (le moteur lit network_distance de l'inscription comme une preuve de connexion).
+  assert.doesNotMatch(src, /linkedin_profile_data|MISSION_ROW_DETAIL_COLUMNS|network_distance|provider_id/);
 
   // Relue à chaque ouverture, clé avec la mission et la signature des identifiants.
   assert.match(src, /queryKey: \['project-candidates', project\.id, 'contact-flow', signature\],/);
@@ -208,8 +213,12 @@ test('5F2C-P7 useContactCandidates : lecture bornée de la mission, par lots de 
   assert.match(src, /const overflow = Math\.max\(0, rows\.length - CONTACT_FLOW_MAX\);/);
   assert.match(src, /\.slice\(0, CONTACT_FLOW_MAX\)/);
 
-  // Profil : celui du Pipeline, plus l'identifiant du fournisseur et la distance seulement quand ils sont connus.
-  assert.match(src, /\.\.\.atsCandidateToProfile\(rowToAtsCandidate\(row, project\)\),\s*\.\.\.\(providerId \? \{ provider_id: providerId \} : \{\}\),\s*\.\.\.\(networkDistance \? \{ network_distance: networkDistance \} : \{\}\),/);
+  // Profil : celui que le Pipeline fabriquait déjà, rien de plus.
+  assert.match(src, /const profile = atsCandidateToProfile\(rowToAtsCandidate\(row, project\)\);/);
+  // La sélection change panneau ouvert : les candidats déjà lus restent, filtrés sur la sélection, l'inscription attend.
+  assert.match(src, /placeholderData: keepPreviousData,/);
+  assert.match(src, /const refreshing = enabled && ids\.length > 0 && query\.isPlaceholderData;/);
+  assert.match(src, /return query\.data\.filter\(\(candidate\) => wanted\.has\(candidate\.rowId\)\);/);
   assert.match(src, /id: profile\.id,\s*rowId: row\.id,\s*candidateId: row\.candidateId,\s*name: row\.name \?\? '',\s*headline: row\.headline,\s*pictureUrl: row\.pictureUrl,\s*hasLinkedIn: !!row\.linkedinUrl,\s*profile,/);
   // Ordre de la sélection, ligne disparue écartée.
   assert.match(src, /for \(const id of ids\) \{\s*const candidate = byRow\.get\(id\);\s*if \(candidate\) ordered\.push\(candidate\);/);
@@ -241,7 +250,7 @@ test('5F2C-P8 ContactPanel : branche du mode Contacter entre l\'archive et l\'on
   assert.match(branch, /<SectionErrorBoundary fallbackTitle="Le panneau Contacter n'a pas pu s'afficher">/);
   assert.match(
     branch,
-    /<ContactFlow\s+missionId=\{project\.id\}\s+job=\{job\}\s+candidates=\{flow\.candidates\}\s+candidatesStatus=\{flow\.status\}\s+overflow=\{flow\.overflow\}\s+onRetryCandidates=\{flow\.refetch\}\s+onEnrolled=\{onEnrolled\}\s+onOpenCandidate=\{openCandidate\}\s+onLeave=\{onLeave\}\s*\/>/,
+    /<ContactFlow\s+missionId=\{project\.id\}\s+job=\{job\}\s+candidates=\{flow\.candidates\}\s+candidatesStatus=\{flow\.status\}\s+overflow=\{flow\.overflow\}\s+refreshing=\{flow\.refreshing\}\s+onRetryCandidates=\{flow\.refetch\}\s+onEnrolled=\{onEnrolled\}\s+onOpenCandidate=\{openCandidate\}\s+onLeave=\{onLeave\}\s*\/>/,
   );
   assert.doesNotMatch(branch, /InvitationsPanel|panel-invitations|ContactedList/);
 
@@ -294,4 +303,30 @@ test('5F2C-P10 fichiers de la plomberie : français, sans tiret long, sans « (s
     // Le seul <button> brut du lot est l'onglet de ContactPanel, d'avant (dette du cliquet de design).
     assert.equal(source.split('<button').length - 1, rel === PANEL ? 1 : 0, `${rel} : bouton brut`);
   }
+});
+
+// ─── Défauts confirmés par la relecture indépendante ────────────────────────
+
+test('5F2C-R9 ContactPanel : l\'adresse est lue à l\'appel, une fin d\'inscription tardive ne renavigue pas', () => {
+  const src = code(read(PANEL));
+  assert.match(src, /const locationRef = useRef\(location\);\s*locationRef\.current = location;/);
+  assert.match(src, /const mounted = useRef\(true\);/);
+  // setTab lit l'adresse la plus récente et ne dépend plus des champs figés de useLocation.
+  const setTab = src.slice(src.indexOf('const setTab = useCallback('), src.indexOf('// Mode Contacter : les lignes cochées'));
+  assert.match(setTab, /const current = locationRef\.current;/);
+  assert.match(setTab, /\[navigate, sequencesV2\],/);
+  assert.doesNotMatch(setTab, /location\.(pathname|search|state)/);
+  // La fin d'inscription retire toujours les lignes, et ne navigue que si le panneau est monté et encore en mode Contacter.
+  const enrolled = src.slice(src.indexOf('const onEnrolled = useCallback('), src.indexOf('const onLeave = useCallback('));
+  assert.match(enrolled, /setSelection\(\(prev\) => \{/);
+  assert.match(enrolled, /if \(!mounted\.current\) return;/);
+  assert.match(enrolled, /new URLSearchParams\(locationRef\.current\.search\)\.get\(CONTACT_PARAM\) !== '1'/);
+  assert.ok(enrolled.indexOf('setSelection(') < enrolled.indexOf('if (!mounted.current) return;'), 'sélection retirée avant le garde de navigation');
+});
+
+test('5F2C-R10 ContactPanel : le focus revient au titre quand le mode Contacter est quitté', () => {
+  const src = code(read(PANEL));
+  assert.match(src, /const wasFlow = useRef\(false\);/);
+  assert.match(src, /if \(wasFlow\.current && !asksFlow\) document\.getElementById\(titleId\)\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(src, /refreshing=\{flow\.refreshing\}/);
 });

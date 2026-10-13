@@ -25,6 +25,7 @@ import { test, expect } from '../fixtures';
 import { pinLegacySequences } from '../helpers/env';
 import { engineAvailable, ENGINE_SKIP_REASON, minutesFromNow, runCycle, sentTexts } from '../helpers/sequence-engine';
 import {
+  addMember,
   admin,
   createOrg,
   deleteOrg,
@@ -342,6 +343,60 @@ test('Contacter : profil effacé exclu sans dérogation (connu avant le clic par
   await expect(flow(page).getByRole('button', { name: /^Inscrire 1 candidat$/ })).toBeEnabled();
   await flow(page).getByRole('button', { name: /^Inscrire 1 candidat$/ }).click();
   await expect.poll(async () => (await enrollmentsOf(seq.id)).map((e) => e.profile_id), { timeout: 30_000 }).toEqual([ana.key]);
+});
+
+test('Contacter : la dérogation est remise à zéro quand la sélection change, un candidat coché ensuite reste exclu', async ({ browser }) => {
+  test.skip(!EDGE, 'draft-sequence (aperçu) absente : E2E_EDGE_FUNCTIONS=1');
+  const ws = await workspace('E2E contacter dérogation armée');
+  const seq = await sequence(ws);
+  const ana = await candidate(ws, 'cand_ana_d', 'Ana Dérogée');
+  const bob = await candidate(ws, 'cand_bob_d', 'Bob Dérogé');
+  const carl = await candidate(ws, 'cand_carl_d', 'Carl Ensuite');
+  const other = await sequence(ws, { name: `Ailleurs ${rand()}`, projectId: null });
+  for (const person of [ana, bob, carl]) {
+    await seedEnrollment(ws.org.orgId, other.id, ws.org.owner.userId, {
+      profile_id: person.key, profile_name: person.name, account_id: ws.accountId, job_id: `project:${ws.missionId}`, status: 'active',
+    });
+  }
+  const page = await openPipeline(browser, ws);
+  await selectAndContact(page, [ana.name, bob.name]);
+  await expect(reason(page, 'recent_contact')).toContainText('Déjà contactés depuis moins de 90 jours (2)', { timeout: 20_000 });
+  await flow(page).getByRole('button', { name: /^Inscrire quand même/ }).click();
+  await expect(group(page, 'ready').locator(`[data-contact-row="${bob.key}"]`)).toContainText('Inscrit quand même');
+
+  // Un troisième contact récent est coché à côté : la dérogation d'avant ne lui est pas appliquée.
+  await check(page, carl.name).click();
+  await expect(reason(page, 'recent_contact').locator(`[data-contact-row="${carl.key}"]`)).toBeVisible({ timeout: 20_000 });
+  // La dérogation est remise à zéro : personne n'est prêt, Ana et Bob sont de nouveau exclus.
+  await expect(group(page, 'ready')).toHaveCount(0);
+  await expect(reason(page, 'recent_contact')).toContainText('Déjà contactés depuis moins de 90 jours (3)');
+  expect(await enrollmentsOf(seq.id)).toHaveLength(0);
+});
+
+test('Contacter : le candidat sourcé par un collègue garde sa ligne, aucune seconde ligne à profil réduit n\'est créée', async ({ browser }) => {
+  test.skip(!EDGE, 'draft-sequence (aperçu) absente : E2E_EDGE_FUNCTIONS=1');
+  const ws = await workspace('E2E contacter ligne collègue');
+  const seq = await sequence(ws);
+  const colleague = await addMember(ws.org.orgId, 'member', 'collegue');
+  const row = await seedCandidateRow({
+    orgId: ws.org.orgId,
+    createdBy: colleague.userId,
+    missionId: ws.missionId,
+    candidateId: 'cand_colleague_row',
+    stage: 'retained',
+    extra: { candidate_name: 'Cléo Collègue', candidate_headline: 'Poste de Cléo', linkedin_profile_url: 'https://www.linkedin.com/in/cand_colleague_row', score: 82 },
+  });
+  const page = await openPipeline(browser, ws);
+  await selectAndContact(page, ['Cléo Collègue']);
+  await flow(page).getByRole('button', { name: /^Inscrire 1 candidat$/ }).click();
+  await expect.poll(async () => (await enrollmentsOf(seq.id)).map((e) => e.profile_id), { timeout: 30_000 }).toEqual(['cand_colleague_row']);
+  await expect(page).toHaveURL(/outreach=contactes/);
+
+  // Une seule ligne dans la mission pour ce candidat : celle du collègue, avec sa note.
+  const { data } = await admin().from('job_candidate_status').select('id, created_by, score').eq('organization_id', ws.org.orgId).eq('candidate_id', 'cand_colleague_row');
+  expect(data ?? []).toHaveLength(1);
+  expect(data?.[0].id).toBe(row.id);
+  expect(data?.[0].created_by).toBe(colleague.userId);
 });
 
 test('Contacter : case des destinataires dès 5 candidats, absente à 4', async ({ browser }) => {

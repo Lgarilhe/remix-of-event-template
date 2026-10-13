@@ -26,6 +26,11 @@ interface RecipientGroupsProps<T extends FlowCandidate> {
   onToggleOverride: (override: ContactOverride) => void;
   /** Ouvre la fiche d'un candidat (lien LinkedIn à compléter). */
   onOpenCandidate: (rowId: string) => void;
+  /**
+   * Faux pour une séquence à message rédigé par l'IA : l'inscription passe par « Relire les
+   * messages », dont la fenêtre propose ses propres dérogations. Aucun bouton ici, une phrase le dit.
+   */
+  overridesEnabled?: boolean;
 }
 
 const TOUCH = 'max-lg:min-h-11';
@@ -42,6 +47,7 @@ const GROUP_TITLE: Record<GroupKey, string> = {
 const AI_REVIEW_SENTENCE =
   "Cette séquence contient des messages rédigés par l'IA Konekt pour chaque candidat. Relisez-les avant l'inscription.";
 const RECENT_ADMINS_ONLY = 'Seuls les propriétaires et administrateurs peuvent les inscrire quand même.';
+const OVERRIDE_IN_REVIEW = 'Vous pourrez les inclure depuis « Relire les messages ».';
 const RECENT_SUBTITLE = 'Déjà contactés depuis moins de 90 jours';
 const ENROLLED_ANYWAY = 'Inscrit quand même';
 const INCLUDED_ANYWAY = 'Inclus quand même';
@@ -55,14 +61,14 @@ const OVERRIDE_SUBJECT: Record<ContactOverride, string> = {
 
 const OVERRIDE_ORDER: readonly ContactOverride[] = ['recent_contact', 'incompatible'];
 
-/** Ordre des raisons dans Exclus : celles sans dérogation d'abord. */
+/** Ordre des raisons dans Exclus : celles qui offrent une dérogation d'abord, pour que le bouton soit sous les yeux. */
 const EXCLUDED_ORDER: readonly string[] = [
-  'in_sequence',
-  'passed_sequence',
-  'erased',
   'recent_contact',
   'too_far',
   'connection_only',
+  'in_sequence',
+  'passed_sequence',
+  'erased',
 ];
 
 interface ReasonBlock<T extends FlowCandidate> {
@@ -139,10 +145,12 @@ interface SectionProps {
   intro?: ReactNode;
   /** Toujours visible, sous la liste (informations sur les candidats prêts). */
   after?: ReactNode;
+  /** Défilement interne de la liste (faux quand chaque bloc défile seul). */
+  scroll?: boolean;
   children: ReactNode;
 }
 
-function Section({ headingId, bodyId, groupKey, count, open, onToggle, pinned, intro, after, children }: SectionProps): JSX.Element {
+function Section({ headingId, bodyId, groupKey, count, open, onToggle, pinned, intro, after, scroll = true, children }: SectionProps): JSX.Element {
   return (
     <section data-contact-group={groupKey} aria-labelledby={headingId}>
       <h4 id={headingId} className="text-sm font-semibold text-foreground">
@@ -163,7 +171,7 @@ function Section({ headingId, bodyId, groupKey, count, open, onToggle, pinned, i
       {open && (
         <div id={bodyId}>
           {intro}
-          <div className="max-h-64 overflow-y-auto">{children}</div>
+          <div className={scroll ? 'max-h-64 overflow-y-auto' : undefined}>{children}</div>
         </div>
       )}
       {after}
@@ -177,6 +185,7 @@ export function RecipientGroups<T extends FlowCandidate>({
   overrides,
   onToggleOverride,
   onOpenCandidate,
+  overridesEnabled = true,
 }: RecipientGroupsProps<T>): JSX.Element | null {
   const baseId = useId();
   // Un choix de la personne l'emporte ; sinon Prêts s'ouvre ou se replie selon le nombre vu à la première lecture.
@@ -216,6 +225,16 @@ export function RecipientGroups<T extends FlowCandidate>({
   const undoInReady = ready.length > 0;
 
   const hasAiReview = incomplete.some((entry) => entry.reason === 'ai_review');
+
+  const excludedBlocks = excludedByReason(excluded);
+  const firstBlockOf = new Map<ContactOverride, string>();
+  const categoryTotal = new Map<ContactOverride, number>();
+  for (const block of excludedBlocks) {
+    const override = block.entries[0].override;
+    if (!override) continue;
+    if (!firstBlockOf.has(override)) firstBlockOf.set(override, block.reason);
+    categoryTotal.set(override, (categoryTotal.get(override) ?? 0) + block.entries.length);
+  }
 
   return (
     <div className="space-y-5">
@@ -293,20 +312,23 @@ export function RecipientGroups<T extends FlowCandidate>({
           count={excluded.length}
           open={isOpen('excluded')}
           onToggle={() => toggle('excluded')}
+          scroll={false}
         >
           <div className="divide-y divide-border">
-            {excludedByReason(excluded).map((block) => {
+            {excludedBlocks.map((block) => {
               const override = block.entries[0].override;
+              // Un seul bouton par catégorie de dérogation, sur son premier bloc : la dérogation lève tous ses blocs.
+              const showButton = overridesEnabled && !!override && firstBlockOf.get(override) === block.reason;
               return (
                 <div key={block.reason} data-contact-reason={block.reason} className="py-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h5 className="text-xs font-semibold text-foreground">{`${block.subtitle} (${block.entries.length})`}</h5>
-                    {override && (
+                    {showButton && override && (
                       <Button
                         type="button"
                         variant="outline"
                         size="xs"
-                        aria-label={`${OVERRIDE_LABEL[override]} : ${block.subtitle}`}
+                        aria-label={`${OVERRIDE_LABEL[override]} : ${OVERRIDE_SUBJECT[override]} (${categoryTotal.get(override) ?? 0})`}
                         onClick={() => onToggleOverride(override)}
                         className={cn('shrink-0', TOUCH)}
                       >
@@ -317,7 +339,10 @@ export function RecipientGroups<T extends FlowCandidate>({
                   {block.reason === 'recent_contact' && !canOverrideRecent && (
                     <p className="mt-1 text-xs text-muted-foreground">{RECENT_ADMINS_ONLY}</p>
                   )}
-                  <ul className="divide-y divide-border">
+                  {!overridesEnabled && !!override && !(block.reason === 'recent_contact' && !canOverrideRecent) && (
+                    <p className="mt-1 text-xs text-muted-foreground">{OVERRIDE_IN_REVIEW}</p>
+                  )}
+                  <ul className="max-h-64 divide-y divide-border overflow-y-auto">
                     {block.entries.map((entry) => (
                       <CandidateRow
                         key={entry.source.id}

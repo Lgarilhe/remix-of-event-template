@@ -6,8 +6,10 @@
 //
 // Deux sortes de jauge, d'après le type de la première action :
 //   - invitations : plafond de la fenêtre glissante de 7 jours ;
-//   - actions : plafond d'actions visibles du jour (messages et InMails).
-// Une première étape sans envoi (visite, attente, e-mail...) n'a pas de jauge.
+//   - actions : plafond d'actions visibles du jour (messages).
+// Une première étape sans envoi (visite, attente, e-mail...) n'a pas de jauge. Un InMail non plus :
+// il a son propre plafond du jour et ses crédits, et un candidat déjà en relation reçoit un message
+// direct à la place, ce que la jauge ne sait pas distinguer.
 //
 // Module pur, testé sous Node (tests/ux/lot5f2c-libs.test.mjs) : les chiffres
 // viennent de get_linkedin_quota_status (useLinkedInQuotaStatus), lus par l'appelant.
@@ -53,9 +55,7 @@ export const GAUGE_CRITICAL_PERCENT = 95;
 /** Sorte de jauge d'après le type de la première action de la séquence. */
 export function gaugeKindOf(firstActionType: string | null | undefined): GaugeKind | null {
   if (firstActionType === 'connection_request') return 'invitations';
-  if (firstActionType === 'message' || firstActionType === 'inmail' || firstActionType === 'smart_message') {
-    return 'actions';
-  }
+  if (firstActionType === 'message') return 'actions';
   return null;
 }
 

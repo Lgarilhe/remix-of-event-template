@@ -83,7 +83,10 @@ export function useContactEligibility({
     },
     enabled: !!sequenceId && !!organizationId && profiles.length > 0,
     // Toujours relu : un contact d'un collègue, une inscription faite depuis un autre onglet.
+    // Aucune copie gardée d'une ouverture à l'autre : rouvrir le panneau repart de « en cours »,
+    // jamais d'un anti-doublon ancien servi comme prêt.
     staleTime: 0,
+    gcTime: 0,
     refetchOnMount: 'always',
   });
   const { refetch: refetchQuery } = query;
@@ -122,9 +125,12 @@ export function useContactEligibility({
 
   let status: ContactEligibilityStatus;
   if (!sequenceId || !organizationId || !rawSteps) status = 'loading';
-  else if (profiles.length === 0 || remote !== undefined) status = 'ready';
-  // Hors ligne la lecture reste en attente : « Réessayer » plutôt qu'un chargement sans fin.
+  else if (profiles.length === 0) status = 'ready';
+  // Une relecture en échec passe avant les données gardées : jamais d'inscription sur un anti-doublon
+  // dont on sait que la relecture a échoué. Hors ligne la lecture reste en attente : « Réessayer »
+  // plutôt qu'un chargement sans fin.
   else if (query.isError || query.fetchStatus === 'paused') status = 'error';
+  else if (remote !== undefined) status = 'ready';
   else status = 'loading';
 
   return {

@@ -820,10 +820,12 @@ test('5F1-RT1 les candidats inscrits passent en Retenu : lignes créées sans co
     assert.equal(out.status, 'done', mode);
     assert.deepEqual(out.retained, { saved: 3, failed: 0 }, mode);
 
-    // Lecture sous les deux formes de job_id, sur mes lignes seulement.
+    // Lecture sous les deux formes de job_id, sur les lignes de l'organisation, quel qu'en soit l'auteur :
+    // jamais de seconde ligne à profil réduit pour un candidat que la mission a déjà (sourcé par un collègue).
     const read = calls.find((c) => c.table === 'job_candidate_status' && c.op === 'select');
     assert.deepEqual(read.in[0], ['job_id', [`project:${MISSION}`, MISSION]], mode);
-    assert.deepEqual(read.eq, [['created_by', 'user-1']], mode);
+    assert.deepEqual(read.eq, [['organization_id', 'org-1']], mode);
+    assert.ok(!read.eq.some(([column]) => column === 'created_by'), `${mode} : aucune lecture réduite à mes lignes`);
     assert.deepEqual(read.in[1], ['candidate_id', ['ACo1', 'ACo2', 'ACo3']], mode);
 
     const rows = jcsRows(calls);

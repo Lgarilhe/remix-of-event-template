@@ -413,9 +413,13 @@ test('5F2C-C14 le contenu d\'une section est borné en hauteur', () => {
     [candidate('a'), candidate('b', { hasLinkedIn: false }), candidate('c')],
     { blocking: new Map([['c', 'in_sequence']]) },
   ));
-  for (const key of ['ready', 'incomplete', 'excluded']) {
+  // Prêts et À compléter défilent d'un bloc ; dans Exclus chaque raison défile seule, pour que le bouton
+  // de dérogation d'un bloc ne soit jamais caché derrière le défilement d'un autre.
+  for (const key of ['ready', 'incomplete']) {
     assert.ok(sectionOf(html, key).includes('max-h-64 overflow-y-auto'), `${key} : hauteur bornée`);
   }
+  assert.ok(sectionOf(html, 'excluded').includes('max-h-64 divide-y divide-border overflow-y-auto'), 'excluded : hauteur bornée par raison');
+  assert.ok(!sectionOf(html, 'excluded').includes('<div class="max-h-64 overflow-y-auto">'), 'excluded : pas de défilement commun');
 });
 
 test('5F2C-C15 À compléter : « Ouvrir la fiche » par ligne sans profil, une phrase unique pour les messages de l\'IA', () => {
@@ -450,7 +454,8 @@ test('5F2C-C16 Exclus : un sous-titre par raison avec son effectif, la dérogati
   const html = renderGroups(groups);
   const excluded = sectionOf(html, 'excluded');
   const blocks = [...excluded.matchAll(/data-contact-reason="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(blocks, ['in_sequence', 'passed_sequence', 'erased', 'recent_contact', 'too_far']);
+  // Les raisons qui offrent une dérogation viennent d'abord : le bouton est sous les yeux.
+  assert.deepEqual(blocks, ['recent_contact', 'too_far', 'in_sequence', 'passed_sequence', 'erased']);
   const text = plain(excluded);
   assert.match(text, /^Exclus \(7\)/);
   assert.ok(text.includes('Déjà dans cette séquence (2)'));
@@ -475,7 +480,35 @@ test('5F2C-C16 Exclus : un sous-titre par raison avec son effectif, la dérogati
   }
   assert.ok(blockOf('recent_contact').includes('>Inscrire quand même</button>'));
   assert.ok(blockOf('too_far').includes('>Inclure quand même</button>'));
-  assert.ok(blockOf('recent_contact').includes('aria-label="Inscrire quand même : Déjà contactés depuis moins de 90 jours"'));
+  assert.ok(blockOf('recent_contact').includes('aria-label="Inscrire quand même : contacts de moins de 90 jours (2)"'));
+});
+
+test('5F2C-C16b une seule dérogation par catégorie : deux raisons incompatibles, un seul bouton qui nomme tout le monde', () => {
+  const groups = classify(
+    [candidate('a'), candidate('b'), candidate('c')],
+    { incompatible: new Map([['a', 'too_far'], ['b', 'too_far'], ['c', 'connection_only_already_connected']]) },
+  );
+  const excluded = sectionOf(renderGroups(groups), 'excluded');
+  assert.equal(count(excluded, '>Inclure quand même</button>'), 1, 'un seul bouton pour la catégorie');
+  assert.ok(excluded.includes('aria-label="Inclure quand même : candidats incompatibles avec la séquence (3)"'));
+  const first = excluded.indexOf('data-contact-reason="too_far"');
+  const second = excluded.indexOf('data-contact-reason="connection_only"');
+  assert.ok(first >= 0 && second > first);
+  assert.ok(excluded.indexOf('>Inclure quand même</button>') < second, 'le bouton est sur le premier bloc de la catégorie');
+});
+
+test('5F2C-C16c séquence à message IA : aucun bouton de dérogation, une phrase renvoie à « Relire les messages »', () => {
+  const entries = [candidate('a'), candidate('b')];
+  const extra = { recent: new Map([['a', 'Déjà contacté par Marie le 03/10/2026']]), incompatible: new Map([['b', 'too_far']]) };
+  const html = renderGroups(classify(entries, extra), { overridesEnabled: false });
+  const excluded = sectionOf(html, 'excluded');
+  assert.ok(!excluded.includes('quand même</button>'), 'pas de bouton de dérogation');
+  assert.equal(count(plain(excluded), 'Vous pourrez les inclure depuis « Relire les messages ».'), 2);
+  // Un membre sans droit sur les contacts récents garde sa phrase propre, jamais la promesse d'une dérogation.
+  const member = renderGroups(classify(entries, extra, { canOverrideRecent: false }), { overridesEnabled: false, canOverrideRecent: false });
+  const memberText = plain(sectionOf(member, 'excluded'));
+  assert.equal(count(memberText, 'Seuls les propriétaires et administrateurs peuvent les inscrire quand même.'), 1);
+  assert.equal(count(memberText, 'Vous pourrez les inclure depuis « Relire les messages ».'), 1);
 });
 
 test('5F2C-C17 contact récent sans droit de dérogation : une phrase, pas de bouton', () => {

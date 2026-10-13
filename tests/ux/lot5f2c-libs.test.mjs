@@ -560,12 +560,12 @@ const figures = (extra = {}) => ({
   ...extra,
 });
 
-test('5F2C-29 gaugeKindOf : invitation = invitations, messages = actions, tout le reste = null', async (t) => {
+test('5F2C-29 gaugeKindOf : invitation = invitations, message = actions, tout le reste (InMail compris) = null', async (t) => {
   const m = await loadTs(t, GAUGE);
   if (!m) return;
   assert.equal(m.gaugeKindOf('connection_request'), 'invitations');
-  for (const type of ['message', 'inmail', 'smart_message']) assert.equal(m.gaugeKindOf(type), 'actions', type);
-  for (const type of ['profile_visit', 'check_connection', 'wait_connection', 'wait_reply', 'wait_profile_visit', 'email', 'whatsapp_message', 'endorse', '', 'Message']) {
+  assert.equal(m.gaugeKindOf('message'), 'actions');
+  for (const type of ['inmail', 'smart_message', 'profile_visit', 'check_connection', 'wait_connection', 'wait_reply', 'wait_profile_visit', 'email', 'whatsapp_message', 'endorse', '', 'Message']) {
     assert.equal(m.gaugeKindOf(type), null, `« ${type} »`);
   }
   assert.equal(m.gaugeKindOf(null), null);
@@ -617,14 +617,14 @@ test('5F2C-32 chaque sorte lit ses propres chiffres', async (t) => {
     { kind: invitations.kind, used: invitations.used, cap: invitations.cap, remaining: invitations.remaining },
     { kind: 'invitations', used: 60, cap: 100, remaining: 40 },
   );
-  for (const type of ['message', 'inmail', 'smart_message']) {
-    const actions = m.quotaGauge(type, f, 5);
-    assert.deepEqual(
-      { kind: actions.kind, used: actions.used, cap: actions.cap, remaining: actions.remaining },
-      { kind: 'actions', used: 10, cap: 80, remaining: 70 },
-      type,
-    );
-  }
+  const actions = m.quotaGauge('message', f, 5);
+  assert.deepEqual(
+    { kind: actions.kind, used: actions.used, cap: actions.cap, remaining: actions.remaining },
+    { kind: 'actions', used: 10, cap: 80, remaining: 70 },
+  );
+  // Un InMail n'a pas de jauge : son plafond du jour et ses crédits ne sont pas ceux des actions visibles.
+  assert.equal(m.quotaGauge('inmail', f, 5), null);
+  assert.equal(m.quotaGauge('smart_message', f, 5), null);
 });
 
 test('5F2C-33 textes exacts de la jauge, jamais de « N / M »', async (t) => {
@@ -641,7 +641,7 @@ test('5F2C-33 textes exacts de la jauge, jamais de « N / M »', async (t) => {
   assert.equal(m.quotaGauge('message', reached, 1).text, "Plafond d'actions atteint pour aujourd'hui");
 
   // Aucun texte ne contient « / » : ni « 0 / N », ni « N / M ».
-  for (const type of ['connection_request', 'message', 'inmail']) {
+  for (const type of ['connection_request', 'message']) {
     for (const g of [figures(), f, one, reached]) {
       for (const count of [1, 5, 500]) {
         const gauge = m.quotaGauge(type, g, count);
