@@ -122,6 +122,7 @@ export function useSidebarNotifications(): SidebarNotifications {
   const retryForYou = useCallback(() => void refetchForYou(), [refetchForYou]);
 
   const invalidateAll = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['sidebar', 'unread-messages', userId, organizationId] });
     void queryClient.invalidateQueries({ queryKey: sidebarRepliesKey(userId, organizationId) });
     void queryClient.invalidateQueries({ queryKey: sidebarForYouKey(userId, organizationId) });
     void queryClient.invalidateQueries({ queryKey: sidebarActivityKey(userId, organizationId) });

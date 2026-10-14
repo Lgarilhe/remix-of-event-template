@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { SEOHead } from '@/components/SEOHead';
 import { MessagesInbox } from '@/components/outreach/MessagesInbox';
@@ -63,6 +64,7 @@ type InboxView = 'conversations' | 'invitations';
 const INVITATIONS_PARAM = 'invitations';
 
 export default function Inbox() {
+  const queryClient = useQueryClient();
   const { accounts: rawAccounts, ready: accountsReady, loadError: accountsError, reload: reloadAccounts } = useLinkedInAccounts();
   const { organizationId } = useOrganization();
   const { getUserLinkedAccountId, isReady: mappingsReady, isError: mappingsError, refetch: reloadMappings } = useMemberLinkedInAccounts();
@@ -141,8 +143,13 @@ export default function Inbox() {
       .eq('type', 'new_message')
       .is('read_at', null)
       .eq('metadata->>chat_id', chatId); // même filtre que le webhook (réponse envoyée depuis LinkedIn)
-    if (error) console.warn('[Inbox] marquage lu de la conversation en échec :', error);
-  }, [demo, user?.id]);
+    if (error) {
+      console.warn('[Inbox] marquage lu de la conversation en échec :', error);
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: ['sidebar', 'unread-messages'] });
+    void queryClient.invalidateQueries({ queryKey: ['sidebar', 'replies'] });
+  }, [demo, user?.id, queryClient]);
 
   useEffect(() => {
     markChatRead(initialChatId).catch((err) => console.warn('[Inbox] marquage lu en échec :', err));

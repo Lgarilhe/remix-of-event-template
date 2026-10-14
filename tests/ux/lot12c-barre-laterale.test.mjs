@@ -135,8 +135,8 @@ test('A-18 — paliers nommés seulement, plancher de 10 px', () => {
   for (const rel of scope) {
     assert.doesNotMatch(code(rel), /\btext-\[\d+(?:\.\d+)?(?:px|rem|em)\]/, `${rel} : taille arbitraire`);
   }
-  // Les deux tailles sous le plancher : tâches en retard (barre repliée), initiales des réponses.
-  assert.match(bottomRow, /collapsed \? 'absolute bottom-0 right-0 text-3xs leading-none' : 'text-2xs'/);
+  // Les petits signaux conservent un palier nommé et lisible.
+  assert.match(bottomRow, /className="absolute right-0 top-0 text-2xs tabular-nums text-muted-foreground"/);
   assert.match(replies, /<span className="text-3xs font-semibold leading-none">\{initialsOf\(r\.name\)\}<\/span>/);
 });
 

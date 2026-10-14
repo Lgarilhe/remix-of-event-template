@@ -13,6 +13,7 @@
  * ne change pas (lot 8).
  */
 import { useId } from 'react';
+import { InboxNavigationLink } from '@/components/sidebar/InboxNavigationLink';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useTodoSignal } from '@/hooks/sidebar/useTodoSignal';
 import { badgeLabel } from '@/lib/sidebarSignals';
@@ -56,6 +57,7 @@ export function AppHeader() {
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-background px-2 md:hidden">
       <MobileMenuTrigger />
+      <div className="ml-auto"><InboxNavigationLink /></div>
     </header>
   );
 }
