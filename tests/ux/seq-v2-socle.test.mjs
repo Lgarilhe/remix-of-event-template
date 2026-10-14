@@ -227,10 +227,10 @@ test('5c-2 — accès (barre, palette, G puis S, raccourcis, liste) seulement in
   const bottomRow = read('src/components/sidebar/SidebarBottomRow.tsx');
   assert.match(bottomRow, /const showSequences = useSequencesBeta\(\);/);
   assert.match(bottomRow, /\.\.\.\(showSequences \? \[\{ to: '\/sequences', label: 'Séquences', icon: Send \}\] : \[\]\)/);
-  // Même <Link>, nom accessible, page courante et infobulle que ses voisines.
-  assert.match(bottomRow, /aria-label=\{name\}/);
-  assert.match(bottomRow, /aria-current=\{active \? 'page' : undefined\}/);
-  assert.match(bottomRow, /<TooltipContent side=\{tooltipSide\}>\{name\}<\/TooltipContent>/);
+  // Lien nommé dans Plus, avec la page courante et une cible de 44 px.
+  assert.match(bottomRow, /<span>\{label\}<\/span>/);
+  assert.match(bottomRow, /aria-current=\{isActive\(to\) \? 'page' : undefined\}/);
+  assert.match(bottomRow, /<DropdownMenuItem key=\{to\} asChild/);
 
   const palette = read('src/components/layout/NavigationPalette.tsx');
   assert.match(palette, /const showSequences = useSequencesBeta\(\);/);
@@ -987,12 +987,11 @@ test('5c-2 — corrections d’écran : statistiques à plat, file « À venir �
   assert.match(orgPage, /copyName: \(name\) => `Copie de \$\{name\}`,/);
   assert.doesNotMatch(orgPage, /Votre offre ne permet pas/);
 
-  // Barre : six cibles de 44 px sur téléphone sans espace fixe ; la disposition
-  // suit le nombre de cibles (lot 5h : Séquences et Appels peuvent s'ajouter
-  // ensemble), jamais le drapeau seul. Sept cibles : voir tests/ux/lot5h-bascule.test.mjs.
+  // Barre : messagerie visible, autres outils nommés dans Plus, cibles de 44 px.
   const bottom = read('src/components/sidebar/SidebarBottomRow.tsx');
-  assert.match(bottom, /const targetCount = links\.length \+ 1;/);
-  assert.match(bottom, /const tight = !collapsed && targetCount >= 6;/);
-  assert.match(bottom, /tight \? 'md:gap-0\.5' : 'gap-0\.5'/);
-  assert.match(bottom, /isTasks && !collapsed && overdue !== null && !dense && \(tight \? 'md:gap-1 md:px-2' : 'gap-1 px-2'\)/);
+  assert.match(bottom, /<InboxNavigationLink compact=\{collapsed\} \/>/);
+  assert.match(bottom, /aria-label=\{moreLabel\}/);
+  assert.match(bottom, /const targetClass = 'min-h-11 min-w-11';/);
+  assert.match(bottom, /max-h-\[var\(--radix-dropdown-menu-content-available-height\)\] overflow-y-auto/);
+
 });
