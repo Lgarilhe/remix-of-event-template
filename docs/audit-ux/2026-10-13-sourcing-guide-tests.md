@@ -47,3 +47,22 @@ Les transports, la base et le modèle sont simulés aux frontières dans ces tes
 5. Faire deux ou trois échanges avec le modèle réel, dont un retrait de compétence et une demande de changement de pondération. Vérifier le cadrage enregistré et la recherche finale avant d’ouvrir aux recruteurs.
 
 Vérification en lecture seule de production le 13 octobre 2026 : `sourcing-interview` n’est pas encore déployée ; aucune clé Base Konekt par organisation et aucune ligne `base_konekt_usage` retrouvées ; une organisation porte un historique d’activation. Le resolver peut aussi utiliser une clé globale serveur : cette vérification ne prouve ni son absence ni un accès opérationnel. Ne pas annoncer la recherche sans LinkedIn comme validée en conditions réelles avant la recette ci-dessus.
+
+## Reprise du 14 octobre 2026 — entrée du sourcing et accès Base Konekt
+
+L’accueil et `/sourcing` réutilisent maintenant `SearchHero` de la mission : prompt central, exemples, raccourci `/`, envoi par Entrée et lien vers les filtres manuels. Depuis `/sourcing`, l’envoi ouvre l’assistant pleine largeur ; aucune recherche n’est créée avant la validation. Quitter sans enregistrer conserve la phrase du prompt. Le chemin manuel ouvre les filtres directement, y compris pour une mission choisie sur l’accueil ; son intention est consommée une fois dans l’historique.
+
+Diagnostic en lecture seule : l’appel `coresignal-search` du 14 octobre à 06:54:28 UTC a reçu un 403 fournisseur, « You cannot consume this service ». L’organisation avait activé la Base, sans clé propre ; le resolver utilise donc la clé serveur globale. Le code et l’audit d’intégration prévoient `employee_multi_source`, confirmé par les essais réels de juillet. Le refus actuel ne prouve pas à lui seul l’expiration d’un essai ou l’offre souscrite. Aucun changement de produit, de clé ou d’abonnement n’a été effectué.
+
+Un bug supplémentaire du resolver est corrigé : un négatif en cache pour la clé d’organisation supprimait le repli sur la clé globale aux appels suivants. Le repli reste désormais disponible ; les clés d’organisation restent prioritaires et isolées, et les TTL existants sont conservés. Les refus 401/403 fournisseur rendent une erreur de disponibilité non réessayable, avec une action d’assistance et une alternative LinkedIn. Ils n’annoncent plus un problème de session utilisateur ni une clé à changer dans l’interface.
+
+Validation : 28 scénarios guidés et d’entrée, 45 scénarios de retour/annulation, 36 tests serveur/credentials/transport et 65 tests ciblés UX/C1 réussis. Chromium système, composants réels et frontières externes simulées ; captures ordinateur, 390 et 320 px, audits axe A/AA sans violation. Build production réussi ; les 11 diagnostics TypeScript et les 9 erreurs/3 alertes lint des deux fichiers hérités sont identiques à la base, aucune nouvelle dette design.
+
+| Persona | Vérification | Verdict local |
+| --- | --- | --- |
+| Guillaume | Recherche guidée, filtres manuels, résultats, groupes et retour sans nouvelle recherche | PASS |
+| Claire | Prompt central, exemples, assistant, annulation et erreur explicite | PASS |
+| Théo | Refus fournisseur sans débit ni reprise, quota restitué, cache des clés isolé et organisation étrangère refusée | PASS |
+| Sophie | Entrées et dialogue à 390/320 px, cibles tactiles, clavier, débordement et accessibilité | PASS |
+
+La recherche Base avec le fournisseur réel reste bloquée par son refus d’accès. Il faut rétablir les droits de la clé globale sur Multi-source Employee (recherche, aperçu et collecte), puis réaliser un essai authentifié. Le changement `_shared` suit le redéploiement habituel des fonctions ; aucune migration.

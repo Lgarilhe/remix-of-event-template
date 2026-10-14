@@ -74,8 +74,9 @@ const createProject = async (payload: CreateProjectInput) => {
   const project = { id: 'search-guided', organization_id: 'org-a', created_by: 'user-a', status: 'active', updated_at: new Date().toISOString(), filters_snapshot: {}, ...payload } as SourcingProject;
   w.qaProjects[project.id] = project; notify(); return project;
 };
-export const useSourcingProjects = () => ({ updateProject, createProject, projects: Object.values(w.qaProjects), findOrCreateForJob: noop });
+export const useSourcingProjects = (kind?: string) => ({ updateProject, createProject, projects: Object.values(w.qaProjects).filter(p => !kind || p.kind === kind), findOrCreateForJob: noop, isLoading: false });
 export const useSourcingProject = (id?: string) => { useFixture(); return { data: id ? w.qaProjects[id] : undefined, isLoading: false, error: null }; };
+export const sourcingProjectQueryOptions = (id: string) => ({ queryKey: ['sourcing-project', id], queryFn: async () => w.qaProjects[id] ?? null, staleTime: 0, gcTime: 0 });
 
 const statuses = new Map(Object.entries(w.qaStatuses ?? {}));
 const empty = new Set<string>();
@@ -113,7 +114,7 @@ export const supabase = {
   auth: { getUser: async () => ({ data: { user: user() } }), getSession: async () => ({ data: { session: session() } }), refreshSession: async () => ({ data: { session: session() } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: noop } } }) },
   functions: { invoke: async (name: string, options: { body: unknown }) => {
     const response = await fetch('/qa-api/' + name, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(options.body) });
-    return { data: await response.json(), error: response.ok ? null : new Error('Fixture refusée') };
+    return { data: await response.clone().json(), error: response.ok ? null : Object.assign(new Error('Fixture refusée'), { context: response }) };
   } },
   channel: () => ({ on() { return this; }, subscribe() { return this; } }), removeChannel: noop,
   storage: { from: () => ({ getPublicUrl: () => ({ data: { publicUrl: '' } }) }) },

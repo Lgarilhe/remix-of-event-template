@@ -76,6 +76,10 @@ interface SearchHeroProps {
   /** Nouvelle page mission : sans pastille de mission (le nom est dans l'en-tête), textes vouvoyés. */
   variant?: 'default' | 'mission-v3';
   guided?: boolean;
+  onConfigureFilters?: () => void;
+  promptLabel?: string;
+  headingLevel?: 1 | 2;
+  className?: string;
 }
 
 const HERO_EXAMPLES = [
@@ -87,8 +91,13 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
   jobTitle, clientName, history, onLaunch, onResumeHistory, onLaunchWithBriefFilters, errorMessage, disabled,
   variant = 'default',
   guided = false,
+  onConfigureFilters,
+  promptLabel,
+  headingLevel = 2,
+  className,
 }) => {
   const isV3 = variant === 'mission-v3';
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -107,7 +116,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-start pt-10 sm:pt-16 pb-10 px-4 relative min-h-[480px]">
+    <div className={cn('flex-1 flex flex-col items-center justify-start pt-10 sm:pt-16 pb-10 px-4 relative min-h-[480px]', className)}>
       {!isV3 && (
       <div className="absolute top-[-60px] left-1/2 -translate-x-1/2 w-[560px] max-w-full h-[300px] pointer-events-none opacity-50"
         style={{ background: 'radial-gradient(ellipse at center, var(--k-accent-tint), transparent 70%)' }} />
@@ -121,7 +130,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
       </div>
       )}
 
-      <h2 className="relative text-xl font-semibold tracking-[-.015em] mb-4 text-[var(--k-text)]">{isV3 ? 'Qui cherchez-vous ?' : 'Qui cherches-tu ?'}</h2>
+      <Heading className="relative text-xl font-semibold tracking-[-.015em] mb-4 text-[var(--k-text)]">{isV3 ? 'Qui cherchez-vous ?' : 'Qui cherches-tu ?'}</Heading>
 
       <div className={cn(
         'relative w-full max-w-[640px] rounded-xl border bg-[var(--k-surface)] px-4 py-3.5 transition-[border-color,box-shadow] duration-150',
@@ -135,12 +144,13 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
             ref={taRef}
             value={value}
             rows={2}
+            maxLength={guided ? 6000 : undefined}
             disabled={disabled}
             onChange={e => setValue(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (armed) onLaunch(value.trim()); } }}
-            aria-label={isV3 ? 'Décrivez le profil recherché' : undefined}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (armed && !disabled) onLaunch(value.trim()); } }}
+            aria-label={promptLabel ?? (isV3 ? 'Décrivez le profil recherché' : undefined)}
             placeholder={isV3
               ? guided ? 'Décrivez le profil idéal. L’assistant vous aide à compléter le cadrage avant de chercher.' : "Décrivez le profil idéal : rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que vous pourrez modifier."
               : "Décris le profil idéal — rôle, séniorité, contexte, lieu. L'IA le traduit en filtres que tu pourras piloter."}
@@ -210,7 +220,7 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
         </span>
         )}
         {HERO_EXAMPLES.map(ex => (
-          <button key={ex} type="button" onClick={() => { setValue(ex); taRef.current?.focus(); }}
+          <button key={ex} type="button" disabled={disabled} onClick={() => { setValue(ex); taRef.current?.focus(); }}
             className={isV3
               ? 'rounded-sm px-1 py-1.5 text-sm text-foreground underline decoration-[var(--k-hairline-focus)] underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-11'
               : 'rounded-full border border-[var(--k-hairline)] px-3 py-1.5 text-xs text-foreground hover:border-[var(--k-hairline-hover)] transition-colors'}>
@@ -222,11 +232,11 @@ export const SearchHero: React.FC<SearchHeroProps> = ({
       {isV3 ? (
       <p className="relative mt-6 text-center text-sm text-[var(--k-text-muted)]">
         ou{' '}
-        <button type="button" onClick={() => onLaunch('')} disabled={disabled}
+        <button type="button" onClick={() => onConfigureFilters ? onConfigureFilters() : onLaunch('')} disabled={disabled}
           className="font-medium text-[var(--k-text-2)] hover:text-[var(--k-text)] underline underline-offset-4 decoration-[var(--k-hairline-focus)] max-sm:inline-block max-sm:py-3">
-          {guided ? 'compléter le cadrage depuis le poste' : onLaunchWithBriefFilters ? 'régénérer les filtres depuis le poste' : 'générer les filtres depuis le poste'}
+          {onConfigureFilters ? 'configurer les filtres manuellement' : guided ? 'compléter le cadrage depuis le poste' : onLaunchWithBriefFilters ? 'régénérer les filtres depuis le poste' : 'générer les filtres depuis le poste'}
         </button>
-        , sans rien écrire
+        {onConfigureFilters ? ', sans passer par le prompt' : ', sans rien écrire'}
       </p>
       ) : (
       <div className="relative flex items-center gap-3 mt-6 text-xs text-[var(--k-text-muted)]">
