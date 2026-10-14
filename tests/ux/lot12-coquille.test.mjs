@@ -133,12 +133,12 @@ test('C-6 : en-tête allégé (design simplifié, 04/10/2026) : logo du client, 
   const client = code(`${SHELL_DIR}/missionClient.ts`);
   const statusLib = code(`${SHELL_DIR}/missionStatus.ts`);
 
-  // Règle 4 : le logo du client (initiales sinon) devant le nom, et devant chaque mission du menu.
-  assert.match(switcher, /import \{ MissionCompanyLogo \} from '@\/components\/dashboard\/MissionCompanyLogo'/);
-  assert.equal((switcher.match(/<MissionCompanyLogo/g) ?? []).length, 2, 'logo dans le déclencheur et dans chaque entrée du menu');
-  assert.match(switcher, /company=\{item\.client_name \|\| item\.name\}/);
+  // Repère personnel devant le nom et chaque mission ; logo du client par défaut.
+  assert.match(switcher, /import \{ MissionMarker \} from '@\/components\/missions\/MissionMarker'/);
+  assert.equal((switcher.match(/<MissionMarker/g) ?? []).length, 2, 'logo dans le déclencheur et dans chaque entrée du menu');
+  assert.match(switcher, /missionId=\{item\.id\} name=\{item\.name\}/);
   // Le client se lit comme l'accueil et la liste : celui du brief d'abord, puis client_name (même client partout).
-  assert.match(switcher, /company=\{missionClientName\(project\) \|\| project\.name\}/);
+  assert.match(switcher, /missionId=\{project\.id\} name=\{project\.name\}/);
   assert.match(client, /project\.job_details\?\.client\?\.name\?\.trim\(\) \|\| project\.client_name\?\.trim\(\) \|\| null/);
   assert.match(header, /const client = missionClientName\(project\)/);
   assert.doesNotMatch(header + switcher, /project\.client_name/, 'jamais client_name seul : passer par missionClientName');

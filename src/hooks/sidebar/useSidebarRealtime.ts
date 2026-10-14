@@ -20,7 +20,7 @@ import { useAuthReady } from '@/hooks/useAuthReady';
 // le nom est déjà pris, et le nettoyage d'une instance couperait l'autre.
 let channelSeq = 0;
 
-type Target = 'replies' | 'for-you' | 'activity' | 'agent-signals' | 'assistant-recent';
+type Target = 'unread-messages' | 'replies' | 'for-you' | 'activity' | 'agent-signals' | 'assistant-recent';
 
 const rowType = (payload: { new: unknown; old: unknown }): unknown => {
   for (const row of [payload.new, payload.old]) {
@@ -69,10 +69,10 @@ export function useSidebarRealtime(): void {
         { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
         (payload) => {
           const type = rowType(payload);
-          if (type === 'new_message') schedule('replies');
+          if (type === 'new_message') schedule('replies', 'unread-messages');
           else if (typeof type === 'string') schedule('for-you', 'activity');
           // Suppression sans le type de la ligne : tout ce qui lit la table.
-          else schedule('replies', 'for-you', 'activity');
+          else schedule('replies', 'unread-messages', 'for-you', 'activity');
         },
       )
       .on(

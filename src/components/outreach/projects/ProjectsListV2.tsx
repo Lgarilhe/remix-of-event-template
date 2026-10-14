@@ -81,7 +81,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
+import { MissionMarker } from '@/components/missions/MissionMarker';
 import { REVEAL_ON_ROW } from '@/components/missions/v3/cadrage/sectionUi';
 import { CreateMissionV2 } from '@/components/missions/v2/CreateMissionV2';
 import { EmptyMissionState } from '@/components/missions/EmptyMissionState';
@@ -332,8 +332,8 @@ const MissionRow: React.FC<MissionRowProps> = ({
         <div className="flex min-w-0 items-center gap-3.5">
           {/* Jamais d'opacité sur le logo : elle faisait passer ses initiales sous 4,5:1.
               Une mission terminée est atténuée par la couleur de son texte. */}
-          <MissionCompanyLogo
-            company={project.clientName || project.name}
+          <MissionMarker
+            missionId={project.key} name={project.name} editable
             logoUrl={project.clientLogoUrl}
             size={archived ? 32 : 40}
           />

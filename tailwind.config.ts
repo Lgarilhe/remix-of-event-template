@@ -65,6 +65,13 @@ export default {
   			]
   		},
   		colors: {
+        'mission-teal': { DEFAULT: 'hsl(var(--mission-teal))', soft: 'hsl(var(--mission-teal-soft))' },
+        'mission-blue': { DEFAULT: 'hsl(var(--mission-blue))', soft: 'hsl(var(--mission-blue-soft))' },
+        'mission-violet': { DEFAULT: 'hsl(var(--mission-violet))', soft: 'hsl(var(--mission-violet-soft))' },
+        'mission-rose': { DEFAULT: 'hsl(var(--mission-rose))', soft: 'hsl(var(--mission-rose-soft))' },
+        'mission-amber': { DEFAULT: 'hsl(var(--mission-amber))', soft: 'hsl(var(--mission-amber-soft))' },
+        'mission-green': { DEFAULT: 'hsl(var(--mission-green))', soft: 'hsl(var(--mission-green-soft))' },
+
   			// Filets : teinte et opacité séparées pour que border-border/40 reste valide en sombre.
   			border: {
   				DEFAULT: 'hsl(var(--border-hsl) / calc(var(--border-alpha) * <alpha-value>))',

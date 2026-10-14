@@ -1,7 +1,7 @@
 /**
  * Ligne mission de l'onglet Missions (§3.3).
  *
- * - pastille d'initiale neutre (aucune image réseau), nom, sous-titre client
+ * - repère personnel (icône ou point de couleur), nom, sous-titre client
  *   ou « Confiée par … », point neutre « nouveaux profils » ;
  * - clic sur le nom : dernière vue de la mission, sauf vue verrouillée (Vue
  *   d'ensemble et message de blocage, comme la page) ;
@@ -32,13 +32,13 @@ import {
   PIN_LIMIT_MESSAGE,
   blockerOf,
   isViewLocked,
-  missionInitial,
   missionViewPath,
   resolveOpenTarget,
   type MissionNavItem,
 } from '@/lib/sidebarMissions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
+import { MissionMarker } from '@/components/missions/MissionMarker';
 import { SIDEBAR_GHOST_CLASS } from '../sidebarButtonClass';
 
 export interface MissionNavRowProps {
@@ -123,6 +123,7 @@ export function MissionNavRow({
   return (
     <li className="flex flex-col">
       <div className="group/mission flex items-center gap-0.5">
+        <MissionMarker missionId={item.id} name={item.name} size={24} editable />
         <Link
           to={target.path}
           onClick={handleOpen}
@@ -133,12 +134,6 @@ export function MissionNavRow({
             isOpenMission && 'bg-sidebar-accent',
           )}
         >
-          <span
-            aria-hidden="true"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted text-3xs font-semibold text-muted-foreground"
-          >
-            {missionInitial(item)}
-          </span>
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-sm text-foreground-secondary">{item.name}</span>
             {item.sub && <span className="truncate text-2xs leading-4 text-muted-foreground">{item.sub}</span>}

@@ -10,7 +10,7 @@
  * Panneau : celui de l'onglet actif, seul monté ; masqué en mode replié.
  * Dessous, sur les trois onglets : « Événements à venir » (entretiens des 3
  * prochains jours), et l'alerte de début d'entretien (useInterviewAlerts).
- * Bas : rangée Tâches, Agenda, Marketplace, Paramètres, Aide ; menu de l'avatar ;
+ * Bas : Messagerie avec non-lus, menu Plus (outils et aide) ; menu de l'avatar ;
  * marque Konekt.
  *
  * Toujours montés, hors du contenu de la feuille mobile (démonté à sa
@@ -251,7 +251,7 @@ export function AppSidebar() {
           {!collapsed && <UpcomingEvents />}
         </SidebarContent>
 
-        {/* Bas : rangée basse, menu de l'avatar, marque Konekt */}
+        {/* Bas : messagerie, menu Plus, menu de l'avatar, marque Konekt */}
         <SidebarFooter className="px-2 py-2">
           <SidebarBottomRow
             collapsed={collapsed}
