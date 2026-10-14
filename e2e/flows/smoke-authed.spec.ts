@@ -16,11 +16,15 @@ test.describe('@smoke Accès authentifié par rôle', () => {
     await expect(page.getByRole('tab', { name: 'Missions' })).toBeVisible();
   });
 
-  test('agency-owner voit la nav Prospection/Marketplace (accès agence)', async ({ asRole }) => {
+  test('agency-owner accède à Marketplace depuis Plus (accès agence)', async ({ asRole }) => {
     const page = await asRole('agencyOwner');
     await page.goto('/dashboard');
-    // Au moins une entrée agence-only doit être visible.
-    await expect(page.getByRole('link', { name: /marketplace|prospection|vivier/i }).first()).toBeVisible();
+    await page.getByRole('button', { name: /^Plus(?:,|$)/ }).click();
+    const marketplace = page.getByRole('menuitem', { name: 'Marketplace', exact: true });
+    await expect(marketplace).toBeVisible();
+    await expect(marketplace).toHaveAttribute('href', '/marketplace');
+    await marketplace.click();
+    await expect(page).toHaveURL(/\/marketplace$/);
   });
 
   test('freelance atterrit sur l\'app sans crash', async ({ asRole }) => {

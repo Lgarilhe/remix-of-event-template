@@ -195,7 +195,7 @@ test.describe('@smoke Barre latérale à onglets', () => {
       const targets = [
         page.getByRole('tab', { name: 'Missions' }),
         page.getByRole('link', { name: 'Ouvrir la messagerie' }),
-        page.getByRole('link', { name: 'Paramètres', exact: true }),
+        page.getByRole('button', { name: /^Plus(?:,|$)/ }),
       ];
       for (const target of targets) {
         await expect(target).toBeVisible();
@@ -208,11 +208,9 @@ test.describe('@smoke Barre latérale à onglets', () => {
     }
   });
 
-  // 11. Rangée basse à sept cibles (lot 5h) : Séquences par défaut, Appels dès
-  // un premier appel reçu, Marketplace pour un cabinet, Paramètres, Aide.
-  // Rien ne sort de la barre : deux lignes de cibles de 44 px au téléphone,
-  // une ligne de cibles de 32 px de large sur ordinateur.
-  test('rangée basse à sept cibles : tout tient dans la barre, au téléphone et sur ordinateur', async ({ org, browser, browserName }) => {
+  // Secondary tools are now grouped in Plus; all destinations and help
+  // must remain reachable, without overflow or undersized targets.
+  test('menu Plus : outils et aide accessibles, au téléphone et sur ordinateur', async ({ org, browser, browserName }) => {
     test.skip(browserName === 'firefox', 'isMobile non pris en charge');
     const { error } = await admin().from('phone_calls').insert({
       organization_id: org.orgId,
@@ -235,30 +233,30 @@ test.describe('@smoke Barre latérale à onglets', () => {
         await expect(page).not.toHaveURL(/\/auth/);
         if (device.isMobile) await page.getByRole('button', { name: 'Afficher ou masquer la navigation' }).click();
         const bar = device.isMobile ? page.getByRole('dialog', { name: 'Barre latérale' }) : page.locator('[data-sidebar="sidebar"]');
-        for (const label of ['Tâches', 'Agenda', 'Séquences', 'Appels', 'Marketplace', 'Paramètres']) {
-          await expect(bar.getByRole('link', { name: label, exact: true }), `${name} : ${label}`).toBeVisible();
+        await expect(bar.getByRole('link', { name: 'Ouvrir la messagerie' })).toBeVisible();
+        await bar.getByRole('button', { name: /^Plus(?:,|$)/ }).click();
+        const menu = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Paramètres', exact: true }) });
+        await expect(menu).toBeVisible();
+        for (const [label, href] of [['Tâches', '/tasks'], ['Agenda', '/calendar'], ['Séquences', '/sequences'], ['Appels', '/calls'], ['Marketplace', '/marketplace'], ['Paramètres', '/settings']]) {
+          const item = menu.getByRole('menuitem', { name: label, exact: true });
+          await expect(item, `${name} : ${label}`).toBeVisible();
+          await expect(item).toHaveAttribute('href', href);
         }
-        await expect(bar.getByRole('button', { name: 'Aide', exact: true })).toBeVisible();
-
-        const m = await bar.getByRole('link', { name: 'Paramètres', exact: true }).evaluate((settings) => {
-          const row = settings.parentElement as HTMLElement;
-          const container = (settings.closest('[role="dialog"]') ?? settings.closest('[data-sidebar="sidebar"]')) as HTMLElement;
-          const c = container.getBoundingClientRect();
-          return {
-            clientWidth: row.clientWidth,
-            scrollWidth: row.scrollWidth,
-            container: { left: c.left, right: c.right },
-            targets: [...row.children].map((el) => {
-              const r = el.getBoundingClientRect();
-              return { label: el.getAttribute('aria-label') ?? '', left: r.left, right: r.right, width: r.width, height: r.height };
-            }),
-          };
-        });
-        expect(m.targets.map((t) => t.label), `${name} : sept cibles`).toHaveLength(7);
-        expect(m.scrollWidth, `${name} : rangée sans débordement`).toBeLessThanOrEqual(m.clientWidth);
+        await expect(menu.getByRole('menuitem', { name: 'Raccourcis clavier', exact: true })).toBeVisible();
+        const m = await menu.evaluate((el) => ({
+          clientWidth: el.clientWidth,
+          scrollWidth: el.scrollWidth,
+          viewportWidth: window.innerWidth,
+          targets: [...el.querySelectorAll('[role="menuitem"]')].map((item) => {
+            const r = item.getBoundingClientRect();
+            return { label: item.textContent, left: r.left, right: r.right, width: r.width, height: r.height };
+          }),
+        }));
+        expect(m.targets.length, `${name} : six outils et aide`).toBeGreaterThanOrEqual(7);
+        expect(m.scrollWidth, `${name} : menu sans débordement`).toBeLessThanOrEqual(m.clientWidth);
         for (const t of m.targets) {
-          expect(t.left, `${name} : ${t.label} dans la barre (gauche)`).toBeGreaterThanOrEqual(m.container.left);
-          expect(t.right, `${name} : ${t.label} dans la barre (droite)`).toBeLessThanOrEqual(m.container.right);
+          expect(t.left, `${name} : ${t.label} dans la fenêtre (gauche)`).toBeGreaterThanOrEqual(0);
+          expect(t.right, `${name} : ${t.label} dans la fenêtre (droite)`).toBeLessThanOrEqual(m.viewportWidth);
           expect(t.width, `${name} : ${t.label} assez large`).toBeGreaterThanOrEqual(minSide);
           expect(t.height, `${name} : ${t.label} assez haute`).toBeGreaterThanOrEqual(minSide);
         }
