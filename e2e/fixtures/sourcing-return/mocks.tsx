@@ -75,6 +75,20 @@ const createProject = async (payload: CreateProjectInput) => {
   w.qaProjects[project.id] = project; notify(); return project;
 };
 export const useSourcingProjects = () => ({ updateProject, createProject, projects: Object.values(w.qaProjects), findOrCreateForJob: noop });
+// Same query contract as the real hook; read the current fixture state when
+// invoked, including writes performed after these options were created.
+export function sourcingProjectQueryOptions(projectId: string, userId: string | null) {
+  return {
+    queryKey: ['sourcing-project', projectId] as ['sourcing-project', string],
+    queryFn: async (): Promise<SourcingProject | null> => {
+      if (!projectId) return null;
+      if (!userId) throw new Error('Not authenticated');
+      return w.qaProjects[projectId] ?? null;
+    },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  };
+}
 export const useSourcingProject = (id?: string) => { useFixture(); return { data: id ? w.qaProjects[id] : undefined, isLoading: false, error: null }; };
 
 const statuses = new Map(Object.entries(w.qaStatuses ?? {}));

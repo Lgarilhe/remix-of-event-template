@@ -1,6 +1,6 @@
 /**
  * Refonte des séquences, lot 5c-2 (partie 1) : interrupteur konekt.sequences-v2,
- * écran « Séquences » de l'organisation et ses accès.
+ * écran « Séquences » de l'organisation et ses accès (outils dans Plus depuis #347).
  *
  * Contrat testé (docs/refonte-mission/lot5-plan.md, 5c-2 et 5h ; décision 8) :
  * - lot 5h : drapeau allumé par défaut, entrée « Séquences » sans paramètre,
@@ -8,7 +8,7 @@
  * - secours (?sequences-v2=0 ou clé à « 0 », jusqu'au lot 5j) : /sequences
  *   renvoie vers /missions, aucune entrée dans la barre latérale ni dans la
  *   palette Ctrl J ;
- * - ?sequences-v2=1 allume : entrée « Séquences » de la rangée basse (lien,
+ * - ?sequences-v2=1 allume : entrée « Séquences » du menu Plus (lien de menu,
  *   page courante), palette Ctrl J, « G puis S » ;
  * - tableau : interrupteur (pause immédiate avec « Annuler », lot 5b), barre
  *   des inscrits, alerte par cause, taux à partir de 5 contactés ;
@@ -126,6 +126,22 @@ async function seedTrackedSequence(orgId: string, ownerId: string, missionId: st
 
 const storedFlag = (page: Page) => page.evaluate((key) => window.localStorage.getItem(key), SEQUENCES_V2_STORAGE_KEY);
 
+// Since #347, secondary tools live in Plus and expose the menuitem role.
+async function openTools(page: Page) {
+  await page.getByRole('button', { name: /^Plus(?:,|$)/ }).click({ timeout: 30_000 });
+  const menu = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Agenda', exact: true }) });
+  await expect(menu).toBeVisible();
+  return menu;
+}
+async function sequenceEntry(page: Page) {
+  const menu = await openTools(page);
+  const entry = menu.getByRole('menuitem', { name: 'Séquences', exact: true });
+  await expect(entry).toBeVisible();
+  await expect(entry).toHaveAttribute('href', '/sequences');
+  return entry;
+}
+
+
 // Lot 5h : allumé par défaut ; le secours (?sequences-v2=0 ou clé à « 0 ») rend
 // l'ancien parcours, sans changement (critère de fin du 5c-2). Aucune fonction serveur appelée.
 test.describe('Séquences v2 : défaut allumé et secours (lots 5c-2 et 5h)', () => {
@@ -133,9 +149,9 @@ test.describe('Séquences v2 : défaut allumé et secours (lots 5c-2 et 5h)', ()
     const account = await seedLinkedInAccount(org.orgId, org.owner.userId, `acc_e2e_${rand()}`);
     const page = await openAs(browser, org.owner, [account]);
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-    const entry = page.getByRole('link', { name: 'Séquences', exact: true });
-    await expect(entry).toBeVisible({ timeout: 30_000 });
+    await sequenceEntry(page);
     expect(await storedFlag(page), 'rien d’écrit : la valeur par défaut suffit').toBeNull();
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Control+j');
     const palette = page.getByRole('dialog', { name: 'Aller à' });
     await expect(palette.getByRole('option', { name: /Séquences/ })).toBeVisible();
@@ -144,14 +160,17 @@ test.describe('Séquences v2 : défaut allumé et secours (lots 5c-2 et 5h)', ()
     await page.goto('/outreach', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/sequences$/, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1, name: 'Séquences' })).toBeVisible({ timeout: 30_000 });
-    await expect(entry).toHaveAttribute('aria-current', 'page');
+    await expect(await sequenceEntry(page)).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Escape');
     // Secours demandé sur l'ancienne adresse même, sans clé posée avant : le
     // paramètre suit la redirection et la garde des pages l'applique.
     expect(await storedFlag(page)).toBeNull();
     await page.goto('/outreach?sequences-v2=0', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/missions(\?|$)/, { timeout: 30_000 });
-    await expect(page.getByRole('link', { name: 'Agenda' }).first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole('link', { name: 'Séquences', exact: true })).toHaveCount(0);
+    const tools = await openTools(page);
+    await expect(tools.getByRole('menuitem', { name: 'Agenda', exact: true })).toBeVisible();
+    await expect(tools.getByRole('menuitem', { name: 'Séquences', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
     expect(await storedFlag(page)).toBe('0');
   });
 
@@ -160,8 +179,10 @@ test.describe('Séquences v2 : défaut allumé et secours (lots 5c-2 et 5h)', ()
     const page = await openAs(browser, org.owner, [account]);
     await page.goto('/sequences?sequences-v2=0', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/missions(\?|$)/, { timeout: 30_000 });
-    await expect(page.getByRole('link', { name: 'Agenda' }).first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole('link', { name: 'Séquences', exact: true })).toHaveCount(0);
+    const tools = await openTools(page);
+    await expect(tools.getByRole('menuitem', { name: 'Agenda', exact: true })).toBeVisible();
+    await expect(tools.getByRole('menuitem', { name: 'Séquences', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Control+j');
     const palette = page.getByRole('dialog', { name: 'Aller à' });
     await expect(palette).toBeVisible();
@@ -177,7 +198,8 @@ test.describe('Séquences v2 : défaut allumé et secours (lots 5c-2 et 5h)', ()
     // ?sequences-v2=1 reste accepté : le nouveau parcours revient.
     await page.goto('/dashboard?sequences-v2=1', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
-    await expect(page.getByRole('link', { name: 'Séquences', exact: true })).toBeVisible({ timeout: 30_000 });
+    await sequenceEntry(page);
+    await page.keyboard.press('Escape');
     expect(await storedFlag(page)).toBe('1');
   });
 
@@ -235,11 +257,11 @@ test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
     // ?sequences-v2=1 sur une autre page : l'interrupteur s'allume et le paramètre quitte l'adresse.
     await page.goto('/dashboard?sequences-v2=1', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 });
-    const entry = page.getByRole('link', { name: 'Séquences', exact: true });
-    await expect(entry).toBeVisible({ timeout: 30_000 });
+    const entry = await sequenceEntry(page);
     await entry.click();
     await expect(page).toHaveURL(/\/sequences$/);
-    await expect(entry).toHaveAttribute('aria-current', 'page');
+    await expect(await sequenceEntry(page)).toHaveAttribute('aria-current', 'page');
+    await page.keyboard.press('Escape');
     await expect(page.getByRole('heading', { level: 1, name: 'Séquences' })).toBeVisible();
 
     // Ligne suivie : mission, barre, alerte, taux.
@@ -289,14 +311,16 @@ test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
 
     // Palette Ctrl J et « G puis S ».
     await page.goto('/tasks', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('link', { name: 'Séquences', exact: true })).toBeVisible({ timeout: 30_000 });
+    await sequenceEntry(page);
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Control+j');
     const palette = page.getByRole('dialog', { name: 'Aller à' });
     await expect(palette).toBeVisible();
     await palette.getByRole('option', { name: /Séquences/ }).click();
     await expect(page).toHaveURL(/\/sequences$/);
     await page.goto('/tasks', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('link', { name: 'Séquences', exact: true })).toBeVisible({ timeout: 30_000 });
+    await sequenceEntry(page);
+    await page.keyboard.press('Escape');
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press('g');
     await page.keyboard.press('s');
@@ -335,7 +359,7 @@ test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
     await expect(page).toHaveURL(new RegExp(`/sequences/${tracked.sequenceId}\\?depuis=mission`));
   });
 
-  test('téléphone : la rangée basse tient dans la feuille avec Séquences, cibles de 44 px', async ({ browser, org }, testInfo) => {
+  test('téléphone : le menu Plus tient dans la fenêtre avec Séquences, cibles de 44 px', async ({ browser, org }, testInfo) => {
     const account = await seedLinkedInAccount(org.orgId, org.owner.userId, `acc_e2e_${rand()}`);
     const context = await browser.newContext({
       storageState: await storageStateForUser(org.owner),
@@ -352,25 +376,23 @@ test.describe('Séquences v2 — écran de l’organisation (lot 5c-2)', () => {
     const page = await context.newPage();
     await page.goto('/dashboard?sequences-v2=1', { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: 'Afficher ou masquer la navigation' }).click();
-    const sheet = page.getByRole('dialog').filter({ has: page.getByRole('link', { name: 'Paramètres', exact: true }) });
-    const entry = sheet.getByRole('link', { name: 'Séquences', exact: true });
-    await expect(entry).toBeVisible({ timeout: 30_000 });
-    // Fin de l'ouverture de la feuille (elle glisse depuis la gauche) avant de mesurer.
+    const sheet = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: /^Plus(?:,|$)/ }) });
+    await expect(sheet).toBeVisible();
     await expect.poll(async () => Math.round((await sheet.boundingBox())?.x ?? -1)).toBe(0);
-    const sheetBox = await sheet.boundingBox();
-    // Rangée entière : aucune cible qui déborde (six cibles de 44 px dans le tiroir).
-    const bottomRow = entry.locator('xpath=..');
-    expect(await bottomRow.evaluate((el) => el.scrollWidth - el.clientWidth), 'rangée sans débordement').toBeLessThanOrEqual(0);
-    const rowBox = await bottomRow.boundingBox();
-    const targets = bottomRow.locator(':scope > a, :scope > button');
+    const menu = await openTools(page);
+    const entry = menu.getByRole('menuitem', { name: 'Séquences', exact: true });
+    await expect(entry).toBeVisible();
+    await expect(entry).toHaveAttribute('href', '/sequences');
+    expect(await menu.evaluate((el) => el.scrollWidth - el.clientWidth), 'menu sans débordement').toBeLessThanOrEqual(0);
+    const targets = menu.getByRole('menuitem');
     expect(await targets.count()).toBeGreaterThanOrEqual(5);
     for (const target of await targets.all()) {
       const box = await target.boundingBox();
       expect(box, 'cible mesurable').not.toBeNull();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
       expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
-      expect((box?.x ?? 0) + (box?.width ?? 0), 'dans la rangée').toBeLessThanOrEqual((rowBox?.x ?? 0) + (rowBox?.width ?? 0) + 0.5);
-      expect((box?.x ?? 0) + (box?.width ?? 0), 'dans la feuille').toBeLessThanOrEqual((sheetBox?.x ?? 0) + (sheetBox?.width ?? 0));
+      expect(box?.x ?? -1, 'dans la fenêtre').toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 0), 'dans la fenêtre').toBeLessThanOrEqual(360);
     }
     const path = testInfo.outputPath('barre-360.png');
     await page.screenshot({ path });
