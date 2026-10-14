@@ -1,22 +1,21 @@
 // Refonte mission, écran Cadrage : bandeau de complétude (conception 5.6).
-// Un seul calcul (cadrageReadiness), l'état de l'enregistrement et la dictée.
-// La dictée enregistre un texte libre du poste (raw_brief), lu par la notation ;
-// elle ne remplit pas les champs : il faudrait une structuration côté serveur.
+// Un seul calcul (cadrageReadiness), l'état de l'enregistrement et le brief
+// vocal. Le brief vocal ouvre une fenêtre guidée (BriefInterviewDialog) : l'IA
+// pose les questions sur ce qui manque et range chaque réponse dans le brief.
 //
 // Design simplifié (04/10/2026) : une seule ligne calme, sans cadre. Un anneau
 // d'avancement, un titre et une phrase qui nomme ce qu'il reste à faire ; ce qui
 // est déjà complet ne s'écrit plus en coches (la liste reste pour les lecteurs
-// d'écran). « Dicter » est un bouton discret. « Aller au sourcing » ferme la
+// d'écran). « Brief vocal » est un bouton discret. « Aller au sourcing » ferme la
 // ligne : plein quand le poste est prêt, contour d'encre sinon (les écrans ne sont jamais
 // verrouillés, conception 3.1).
-import { useCallback, useId, useState } from 'react';
-import { AlertCircle, ArrowRight, Check, Loader2, Mic, X } from 'lucide-react';
-import { toast } from 'sonner';
+import { useState } from 'react';
+import { AlertCircle, ArrowRight, Check, Loader2, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { VoiceDictation } from '@/components/missions/VoiceDictation';
 import type { JobDetails } from '@/types/jobDetails';
 import type { JobDetailsSaveStatus } from '@/hooks/useJobDetailsAutosave';
 import { cn } from '@/lib/utils';
+import { BriefInterviewDialog, type NewInterviewStep } from './BriefInterviewDialog';
 import { cadrageReadiness, type StepsState } from './cadrageModel';
 import { TOUCH } from './sectionUi';
 
@@ -26,9 +25,13 @@ export interface CadrageReadinessProps {
   stepsState: StepsState;
   saveStatus: JobDetailsSaveStatus;
   onRetry: () => void;
-  /** Dictée permise (brief modifiable). */
+  /** Brief vocal permis (brief modifiable). */
   canDictate: boolean;
   updateField: (patch: Partial<JobDetails>) => void;
+  /** Noms des étapes d'entretien déjà créées. */
+  stepNames: string[];
+  /** Création des étapes citées au brief vocal ; absent quand le process n'est pas modifiable. */
+  onAddSteps?: (steps: NewInterviewStep[]) => Promise<void>;
   /** Passe à l'écran Sourcing. */
   onContinue: () => void;
 }
@@ -101,19 +104,21 @@ function ProgressRing({ done, total, ready }: { done: number; total: number; rea
   );
 }
 
-export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetry, canDictate, updateField, onContinue }: CadrageReadinessProps) {
+export function CadrageReadiness({
+  jd,
+  stepCount,
+  stepsState,
+  saveStatus,
+  onRetry,
+  canDictate,
+  updateField,
+  stepNames,
+  onAddSteps,
+  onContinue,
+}: CadrageReadinessProps) {
   const { markers, status, title, sentence, done, total } = cadrageReadiness(jd, stepCount, stepsState);
+  // Fenêtre du brief vocal ouverte ou non.
   const [dictating, setDictating] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const [listening, setListening] = useState(false);
-  const panelId = useId();
-  // Une session d'écoute repart d'un texte vide : seul le texte de la dernière
-  // session est enregistré. Pendant l'écoute, la dictée ne se ferme pas (le
-  // texte en cours serait perdu) : il faut d'abord l'arrêter.
-  const onRecordingChange = useCallback((active: boolean) => {
-    setListening(active);
-    if (active) setTranscript('');
-  }, []);
 
   return (
     <div className="flex flex-col gap-3">
@@ -130,20 +135,12 @@ export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetr
             variant="ghost"
             size="sm"
             aria-expanded={dictating}
-            aria-controls={panelId}
-            aria-disabled={dictating && listening}
-            title={dictating && listening ? 'Arrêtez la dictée pour la fermer.' : undefined}
-            onClick={() => {
-              if (dictating && listening) {
-                toast.info('Arrêtez la dictée pour la fermer : le texte en cours sera enregistré.');
-                return;
-              }
-              setDictating((v) => !v);
-            }}
-            className={cn('shrink-0', TOUCH, dictating && 'bg-muted')}
+            aria-haspopup="dialog"
+            onClick={() => setDictating(true)}
+            className={cn('shrink-0', TOUCH)}
           >
-            {dictating ? <X aria-hidden="true" /> : <Mic aria-hidden="true" />}
-            {dictating ? 'Fermer la dictée' : 'Dicter'}
+            <Mic aria-hidden="true" />
+            Brief vocal
           </Button>
         )}
         <Button
@@ -168,27 +165,20 @@ export function CadrageReadiness({ jd, stepCount, stepsState, saveStatus, onRetr
         ))}
       </ul>
 
-      {canDictate && dictating && (
-        <div id={panelId} className="flex flex-col gap-3 rounded-xl bg-muted/50 p-4">
-          <p className="text-sm text-muted-foreground">
-            Votre dictée est enregistrée comme description libre du poste, à la place de la précédente. Elle sert à la
-            notation des profils ; elle ne remplit pas les champs.
-          </p>
-          <VoiceDictation
-            variant="mission-v3"
-            onRecordingChange={onRecordingChange}
-            onTranscript={(chunk) => setTranscript((prev) => (prev ? `${prev} ` : '') + chunk)}
-            onComplete={(fullText) => {
-              updateField({ voice_transcript: fullText, raw_brief: fullText, brief_source: 'voice' });
-              toast.success('Dictée enregistrée.');
-            }}
-          />
-          {transcript && (
-            <p className="max-h-[150px] overflow-y-auto whitespace-pre-wrap rounded-lg bg-background p-3 text-sm leading-relaxed">
-              {transcript}
-            </p>
-          )}
-        </div>
+      {canDictate && (
+        <BriefInterviewDialog
+          open={dictating}
+          onOpenChange={setDictating}
+          jd={jd}
+          updateField={updateField}
+          stepNames={stepNames}
+          stepsState={stepsState}
+          onAddSteps={onAddSteps}
+          onContinue={onContinue}
+          ring={<ProgressRing done={done} total={total} ready={status === 'ready'} />}
+          saveStatus={saveStatus}
+          onRetrySave={onRetry}
+        />
       )}
     </div>
   );

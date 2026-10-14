@@ -19,10 +19,38 @@ interface VoiceDictationProps {
    * d'encadré. Défaut : le rendu d'aujourd'hui (brief de l'ancienne page).
    */
   variant?: 'default' | 'mission-v3';
+  /** Libellé du bouton qui lance l'écoute, dans la variante de la nouvelle page. Défaut : « Dicter le brief ». */
+  startLabel?: string;
+  /** « bar » (variante mission-v3) : seulement la commande, sans minuteur ni boîte de texte en direct. Le texte provisoire sort par onInterim. */
+  layout?: 'stack' | 'bar';
+  /** Avec « bar » : plein quand c'est l'action de la zone, contour d'encre sinon. */
+  startVariant?: 'primary' | 'secondary';
+  /** Phrase en cours de dictée. Chaîne vide quand elle est finie ou à l'arrêt. */
+  onInterim?: (text: string) => void;
+  /** Avec « bar » : le micro ne peut pas démarrer. */
+  disabled?: boolean;
 }
 
-export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, onComplete, onRecordingChange, className, variant = 'default' }) => {
+export const VoiceDictation: React.FC<VoiceDictationProps> = ({
+  onTranscript,
+  onComplete,
+  onRecordingChange,
+  className,
+  variant = 'default',
+  startLabel,
+  layout = 'stack',
+  startVariant = 'primary',
+  onInterim,
+  disabled,
+}) => {
   const v3 = variant === 'mission-v3';
+  const bar = v3 && layout === 'bar';
+  // startRecording est mémorisé : il doit lire le dernier rappel, pas celui de son premier rendu.
+  const onInterimRef = useRef(onInterim);
+  onInterimRef.current = onInterim;
+  const interimRef = useRef(''); // dernière phrase provisoire
+  const keepPartialRef = useRef(false);
+  keepPartialRef.current = bar;
   const [isRecording, setIsRecording] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [interimText, setInterimText] = useState('');
@@ -126,8 +154,12 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
             fullTranscriptRef.current += (fullTranscriptRef.current ? ' ' : '') + transcript;
             onTranscript(transcript);
             setInterimText('');
+            interimRef.current = '';
+            onInterimRef.current?.('');
           } else {
             setInterimText(transcript);
+            interimRef.current = transcript;
+            onInterimRef.current?.(transcript);
           }
         }
       };
@@ -154,6 +186,17 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
   }, [onTranscript]);
 
   const stopRecording = useCallback(() => {
+    // Disposition « bar » : ce que la personne a vu s'écrire dans la zone reste dans
+    // la réponse (sinon la dernière phrase, pas encore finalisée, disparaît à l'arrêt).
+    const keep = keepPartialRef.current ? interimRef.current.trim() : '';
+    if (keepPartialRef.current && socketRef.current) socketRef.current.onmessage = null; // pas de doublon avec un résultat qui arriverait après
+    if (keep) {
+      fullTranscriptRef.current += (fullTranscriptRef.current ? ' ' : '') + keep;
+      onTranscript(keep);
+    }
+    interimRef.current = '';
+    onInterimRef.current?.('');
+
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'CloseStream' }));
       socketRef.current.close();
@@ -171,7 +214,25 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
     if (fullTranscriptRef.current.trim()) {
       onComplete(fullTranscriptRef.current.trim());
     }
-  }, [onComplete]);
+  }, [onComplete, onTranscript]);
+
+  if (bar) {
+    return (
+      <div className={className}>
+        {!isRecording ? (
+          <Button type="button" size="lg" variant={startVariant} onClick={startRecording} loading={isConnecting} disabled={disabled} className="max-sm:h-11">
+            {!isConnecting && <Mic aria-hidden="true" />}
+            {isConnecting ? 'Connexion au micro…' : (startLabel ?? 'Dicter le brief')}
+          </Button>
+        ) : (
+          <Button type="button" size="lg" variant="primary" onClick={stopRecording} className="max-sm:h-11">
+            <Square aria-hidden="true" />
+            Arrêter l'écoute
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   if (v3) {
     return (
@@ -180,7 +241,7 @@ export const VoiceDictation: React.FC<VoiceDictationProps> = ({ onTranscript, on
           {!isRecording ? (
             <Button type="button" variant="primary" onClick={startRecording} loading={isConnecting} className="max-sm:h-11">
               {!isConnecting && <Mic aria-hidden="true" />}
-              {isConnecting ? 'Connexion au micro...' : 'Dicter le brief'}
+              {isConnecting ? 'Connexion au micro...' : (startLabel ?? 'Dicter le brief')}
             </Button>
           ) : (
             <>

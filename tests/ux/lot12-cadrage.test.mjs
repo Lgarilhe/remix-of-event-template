@@ -248,14 +248,18 @@ test('une seule logique d\'enregistrement du poste : useJobDetailsAutosave, une 
   assert.match(screen, /hideMessageSettings/, 'Réglages sans second chemin vers outreach_config');
 });
 
-test('dictée : pas de fermeture pendant l\'écoute, texte de la dernière session seulement', () => {
+test('brief vocal : pas de fermeture pendant l\'écoute, texte dicté gardé dans la réponse', () => {
+  const dialog = code(read(`${DIR}/BriefInterviewDialog.tsx`));
+  assert.match(dialog, /onRecordingChange=\{onListeningChange\}/);
+  assert.match(dialog, /if \(!next && listeningRef\.current\) \{[\s\S]*?return;/, 'pas de fermeture pendant l\'écoute');
+  assert.match(dialog, /setAnswer\(\(prev\) => \(prev \? `\$\{prev\} \$\{chunk\}` : chunk\)\)/, 'plusieurs prises de parole s\'ajoutent');
+  // Le bandeau n'écoute plus : il ouvre la fenêtre.
   const readiness = code(read(`${DIR}/CadrageReadiness.tsx`));
-  assert.match(readiness, /onRecordingChange=\{onRecordingChange\}/);
-  assert.match(readiness, /if \(active\) setTranscript\(''\);/);
-  assert.match(readiness, /if \(dictating && listening\) \{[\s\S]*?return;/);
+  assert.doesNotMatch(readiness, /VoiceDictation|onRecordingChange/, 'l\'écoute vit dans la fenêtre');
+  assert.match(readiness, /<BriefInterviewDialog\s+open=\{dictating\}/);
 });
 
-test('rien qui exige une fonction absente : ni Recalculer, ni suggestion IA, dictée honnête', () => {
+test('rien qui exige une fonction absente : ni Recalculer, ni suggestion IA, brief vocal honnête', () => {
   for (const rel of FILES) {
     const src = code(read(rel));
     assert.doesNotMatch(src, /Recalculer/, `${rel} : « Recalculer » (pas de renotation)`);
@@ -263,9 +267,11 @@ test('rien qui exige une fonction absente : ni Recalculer, ni suggestion IA, dic
     assert.doesNotMatch(src, /se remplissent/, `${rel} : la dictée ne remplit pas les champs`);
     assert.doesNotMatch(src, /Partenaires|confidentielle|Changer de responsable/, `${rel} : fonction gelée ou sans donnée`);
   }
-  const readiness = read(`${DIR}/CadrageReadiness.tsx`);
-  assert.match(readiness, /elle ne remplit pas les champs/);
-  assert.match(readiness, /raw_brief: fullText/);
+  // Le brief vocal remplit les champs (réponse du serveur validée) et garde les mots du recruteur.
+  const dialog = read(`${DIR}/BriefInterviewDialog.tsx`);
+  assert.match(dialog, /applyBriefUpdates\(base, updates, Date\.now\(\)\)/);
+  assert.match(dialog, /voice_transcript: answersRef\.current\.join\('\\n\\n'\)/);
+  assert.match(dialog, /raw_brief: appendAnswers\(base\.raw_brief, \[text\]\)/, 'les réponses s\'ajoutent au texte du poste, sans l\'effacer');
 });
 
 test('écritures d\'étape candidat : par useMissionStageActions seulement, étape supprimée ensuite', () => {
@@ -603,7 +609,8 @@ test('dictée : variante de la nouvelle page sans capitales ni rouge écrit, anc
   assert.match(defaultBranch, /border border-red-600 bg-red-600 text-white/);
   assert.match(defaultBranch, /En écoute \u2014 parlez naturellement\.\.\./);
   assert.doesNotMatch(code(read('src/components/missions/v2/MissionBriefV2.tsx')), /mission-v3/);
-  assert.match(code(read(`${DIR}/CadrageReadiness.tsx`)), /<VoiceDictation\s+variant="mission-v3"/);
+  assert.match(dictation, /startLabel\?: string;/, 'libellé du bouton réglable, « Dicter le brief » par défaut');
+  assert.match(code(read(`${DIR}/BriefInterviewDialog.tsx`)), /<VoiceDictation\s+variant="mission-v3"\s+startLabel="Répondre à voix haute"/);
 });
 
 test('confirmation de suppression : le focus revient à la corbeille, jamais à la page', () => {
