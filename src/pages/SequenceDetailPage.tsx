@@ -38,7 +38,7 @@ import { useSequenceDetail } from '@/hooks/useSequenceDetail';
 import { useInertWhile } from '@/hooks/useInertWhile';
 import { DEFAULT_QUOTAS, useMemberQuotas } from '@/hooks/useMemberQuotas';
 import { hasPlanFeature } from '@/lib/featureGates';
-import { SEQUENCES_PATH, sequencePath } from '@/lib/sequencesBeta';
+import { SEQUENCES_PATH, sequenceEnrollPath, sequencePath } from '@/lib/sequencesBeta';
 import {
   candidats,
   COLLABORATOR_DEACTIVATION_HINT,
@@ -508,6 +508,9 @@ function SequenceView({ id }: { id: string | undefined }) {
   };
 
   // ── Rendu ───────────────────────────────────────────────────────────────
+  // « Inscrire des candidats » (en-tête et état vide de l'onglet Candidats, lot 5f-2d) : une seule cible,
+  // le Pipeline de la mission avec cette séquence proposée d'avance, ou /sourcing sans mission.
+  const enrollHref = sequence ? sequenceEnrollPath(sequence) : '/sourcing';
   const header = sequence && settings && (() => {
     const editable = canEdit(sequence);
     const draft = !countsError && isDraftSequence(sequence.enrollments);
@@ -535,7 +538,7 @@ function SequenceView({ id }: { id: string | undefined }) {
         onSave={session.flow.save}
         saveState={editable ? session.flow.state : null}
         savedAt={session.flow.savedAt}
-        enrollHref={sequence.project_id ? `/missions/${encodeURIComponent(sequence.project_id)}?tab=pipeline` : '/sourcing'}
+        enrollHref={enrollHref}
         menu={
           <SequenceMenu
             sequence={sequence}
@@ -637,7 +640,7 @@ function SequenceView({ id }: { id: string | undefined }) {
                 canManageSequence={canEdit(sequence) && !isCollaborator}
                 onReactivate={() => { void requestToggle(sequence); }}
                 onChanged={() => { void refreshPage(); }}
-                enrollHref={sequence.project_id ? `/missions/${encodeURIComponent(sequence.project_id)}?tab=pipeline` : '/sourcing'}
+                enrollHref={enrollHref}
               />
             </TabsContent>
             {hasEnrollments && (

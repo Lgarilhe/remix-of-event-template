@@ -318,7 +318,10 @@ test('5F2C-L1 séquences : requête du menu « Séquence » plus auteur et rotat
   assert.match(src, /\.select\('id, name, is_active, created_at, project_id, created_by, multi_sender_enabled, sender_accounts, sequence_steps\(count\)'\)/);
   assert.match(src, /\.eq\('is_active', true\)/);
   assert.match(src, /\.order\('created_at', \{ ascending: false \}\)/);
-  assert.match(src, /queryKey: \[CONTACT_SEQUENCES_KEY, organizationId, missionId\]/);
+  // La lecture ne dépend pas de la mission (le menu filtre par mission) : la clé ne la contient pas, sinon changer de
+  // mission dans la feuille de la messagerie relirait la liste et remettrait le flux en squelette.
+  assert.match(src, /queryKey: \[CONTACT_SEQUENCES_KEY, organizationId\]/);
+  assert.doesNotMatch(src, /missionId/);
   assert.match(src, /refetchOnMount: 'always'/);
   assert.match(src, /refetchOnWindowFocus: true/);
   assert.match(src, /staleTime: 0/);

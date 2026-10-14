@@ -150,10 +150,10 @@ test('lot 3 liste : textes, aucun prestataire, tiret long, confirm natif ni mesu
 const FORMAT = 'src/components/outreach/projects/missionListFormat.ts';
 const PEOPLE = 'src/components/outreach/projects/useInterviewingPeople.ts';
 
-test('liste simplifiée : une ligne = le logo du client et le nom, le client dessous, les visages en entretien', () => {
+test('liste simplifiée : une ligne = le repère personnel ou le logo du client et le nom, le client dessous, les visages en entretien', () => {
   const src = code(LIST);
-  assert.match(src, /import \{ MissionCompanyLogo \} from '@\/components\/dashboard\/MissionCompanyLogo'/);
-  assert.match(src, /<MissionCompanyLogo\s+company=\{project\.clientName \|\| project\.name\}\s+logoUrl=\{project\.clientLogoUrl\}\s+size=\{archived \? 32 : 40\}/);
+  assert.match(src, /import \{ MissionMarker \} from '@\/components\/missions\/MissionMarker'/);
+  assert.match(src, /<MissionMarker\s+missionId=\{project\.key\} name=\{project\.name\} editable\s+logoUrl=\{project\.clientLogoUrl\}\s+size=\{archived \? 32 : 40\}/);
   assert.match(src, /import \{ AvatarStack \} from '@\/components\/ui\/person-avatar'/);
   assert.match(src, /<AvatarStack people=\{people\} total=\{value\}/);
   // Le client d'abord dans la ligne du dessous : c'est de lui que parle le logo.
@@ -264,7 +264,7 @@ test('liste simplifiée : le focus ne tombe pas sur la page à la fermeture de l
 
 test('liste simplifiée : aucune opacité sur le logo (les initiales passaient sous 4,5:1)', () => {
   const src = code(LIST);
-  const logo = src.slice(src.indexOf('<MissionCompanyLogo'), src.indexOf('/>', src.indexOf('<MissionCompanyLogo')));
+  const logo = src.slice(src.indexOf('<MissionMarker'), src.indexOf('/>', src.indexOf('<MissionMarker')));
   assert.doesNotMatch(logo, /opacity|className/);
   assert.doesNotMatch(src, /opacity-70/);
 });

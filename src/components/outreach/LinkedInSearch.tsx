@@ -1044,12 +1044,16 @@ export const LinkedInSearch: React.FC<LinkedInSearchProps> = ({
   // est posé par le serveur au premier envoi réel. On recharge les statuts
   // (« Retenu » de la shortlist sans message) et les badges « En séquence »,
   // dont les lectures ne passent pas par React Query.
-  const handleSequenceEnrollSuccess = useCallback(() => {
-    search.setSelectedProfiles(new Set());
+  // Flux d'inscription du panneau Contacter (lot 5f-2d) : il rend les profils traités et
+  // seuls ceux-là quittent la sélection (un profil exclu ou refusé y reste). Ancien flux :
+  // appelé sans argument, la sélection est vidée.
+  const handleSequenceEnrollSuccess = useCallback((enrolledIds?: readonly string[]) => {
+    if (enrolledIds) dropFromSelection([...enrolledIds]);
+    else search.setSelectedProfiles(new Set());
     queryClient.invalidateQueries({ queryKey: ['job-candidate-status'] });
     void search.candidateStatus.refresh();
     refreshProjectEnrollments();
-  }, [search.setSelectedProfiles, search.candidateStatus.refresh, queryClient]);
+  }, [search.setSelectedProfiles, search.candidateStatus.refresh, queryClient, dropFromSelection]);
 
   // Refine search state and handler
   const [refineLoading, setRefineLoading] = useState(false);

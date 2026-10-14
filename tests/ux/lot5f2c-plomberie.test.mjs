@@ -89,7 +89,12 @@ test('5F2C-P3 PipelineScreen : la sélection vient du contexte, noms et textes v
   // Une sélection déjà vide ne fait pas re-rendre les lecteurs du contexte.
   assert.match(src, /setSelection\(\(prev\) => \(prev\.size === 0 \? prev : new Map\(\)\)\);/);
   assert.doesNotMatch(src, /openContactPanel\(\)/);
-  assert.doesNotMatch(src, /openContactFlow/, 'la barre d\'actions ouvre le panneau, pas l\'écran');
+  // Lot 5f-2d : le seul appel à openContactFlow est la fin de l'effet des retenus (« Contacter les N » de la
+  // carte Maintenant), interrupteur allumé et au moins un retenu coché ; éteint, le focus de la barre d'avant.
+  assert.match(src, /const \{ openContactFlow \} = ctx;/);
+  assert.equal(src.split('openContactFlow()').length - 1, 1, 'un seul appel à openContactFlow');
+  assert.doesNotMatch(src, /ctx\.openContactFlow/, 'déstructuré : le contexte change à chaque rendu');
+  assert.match(src, /if \(sequencesV2 && picked\.length > 0\) openContactFlow\(\);\s*else setFocusContact\(picked\.length > 0\);/);
 });
 
 test('5F2C-P4 PipelineScreen : le remontage ne vide pas la sélection panneau Contacter ouvert, l\'écran quitté panneau fermé la vide', () => {
@@ -250,8 +255,13 @@ test('5F2C-P8 ContactPanel : branche du mode Contacter entre l\'archive et l\'on
   assert.match(branch, /<SectionErrorBoundary fallbackTitle="Le panneau Contacter n'a pas pu s'afficher">/);
   assert.match(
     branch,
-    /<ContactFlow\s+missionId=\{project\.id\}\s+job=\{job\}\s+candidates=\{flow\.candidates\}\s+candidatesStatus=\{flow\.status\}\s+overflow=\{flow\.overflow\}\s+refreshing=\{flow\.refreshing\}\s+onRetryCandidates=\{flow\.refetch\}\s+onEnrolled=\{onEnrolled\}\s+onOpenCandidate=\{openCandidate\}\s+onLeave=\{onLeave\}\s*\/>/,
+    /<ContactFlow\s+missionId=\{project\.id\}\s+job=\{job\}\s+candidates=\{flow\.candidates\}\s+candidatesStatus=\{flow\.status\}\s+overflow=\{flow\.overflow\}\s+refreshing=\{flow\.refreshing\}\s+onRetryCandidates=\{flow\.refetch\}\s+onEnrolled=\{onEnrolled\}\s+onOpenCandidate=\{openCandidate\}\s+onLeave=\{onLeave\}\s+preferredSequenceId=\{preferredSequenceId\}\s*\/>/,
   );
+  // Lot 5f-2d : la séquence demandée par l'adresse (page d'une séquence), lue une fois à la création du panneau
+  // (état local, consommée : retirée de l'adresse à l'ouverture du mode) et transmise au seul mode Contacter.
+  assert.match(src, /const SEQUENCE_PARAM = 'sequence';/);
+  assert.match(src, /const \[preferredSequenceId\] = useState<string \| null>\(\(\) => new URLSearchParams\(location\.search\)\.get\(SEQUENCE_PARAM\) \|\| null\);/);
+  assert.equal(src.split('preferredSequenceId={').length - 1, 1, 'transmise une seule fois, à ContactFlow');
   assert.doesNotMatch(branch, /InvitationsPanel|panel-invitations|ContactedList/);
 
   // Hooks : avant la redirection vers la messagerie.
@@ -269,6 +279,8 @@ test('5F2C-P9 ContactPanel : onglet = quitter le mode, après l\'inscription ou 
     src,
     /params\.delete\(CONTACT_PARAM\);\s*if \(!sequencesV2 && next === 'sequences'\) params\.delete\(OUTREACH_PARAM\);\s*else params\.set\(OUTREACH_PARAM, next\);/,
   );
+  // Lot 5f-2d : quitter le mode retire aussi la séquence demandée, placée avant la ligne verrouillée.
+  assert.match(src, /params\.delete\(SEQUENCE_PARAM\);\s*params\.delete\(CONTACT_PARAM\);\s*if \(!sequencesV2 && next === 'sequences'\)/);
   // Inscription faite : les lignes traitées quittent la sélection, puis « Contactés ».
   const enrolled = src.match(/const onEnrolled = useCallback\(([\s\S]*?)\[setSelection, setTab\],\s*\);/);
   assert.ok(enrolled, 'onEnrolled');

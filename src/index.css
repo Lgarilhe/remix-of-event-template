@@ -12,6 +12,20 @@
 @layer base {
   :root {
     color-scheme: dark;
+    /* Repères personnels des missions, sans signification de statut. */
+    --mission-teal: 171 77% 64%;
+    --mission-teal-soft: 179 84% 10%;
+    --mission-blue: 213 94% 68%;
+    --mission-blue-soft: 224 64% 15%;
+    --mission-violet: 255 92% 76%;
+    --mission-violet-soft: 261 73% 18%;
+    --mission-rose: 350 89% 73%;
+    --mission-rose-soft: 343 88% 16%;
+    --mission-amber: 45 97% 65%;
+    --mission-amber-soft: 22 90% 15%;
+    --mission-green: 142 69% 58%;
+    --mission-green-soft: 145 80% 10%;
+
 
     /* ── Surfaces ── */
     /* Échelle de relief : fond 11, carte 16, menu 18, zone en retrait 20, survol 22.
@@ -163,6 +177,20 @@
   /* ── Thème clair : dessiné à part, pas inversé ── */
   .light {
     color-scheme: light;
+    /* Repères personnels des missions, sans signification de statut. */
+    --mission-teal: 175 84% 24%;
+    --mission-teal-soft: 166 76% 97%;
+    --mission-blue: 221 83% 37%;
+    --mission-blue-soft: 214 95% 93%;
+    --mission-violet: 263 70% 40%;
+    --mission-violet-soft: 251 91% 95%;
+    --mission-rose: 343 80% 35%;
+    --mission-rose-soft: 356 100% 95%;
+    --mission-amber: 32 65% 28%;
+    --mission-amber-soft: 48 96% 89%;
+    --mission-green: 143 61% 22%;
+    --mission-green-soft: 141 84% 93%;
+
 
     --background: 40 12% 96%;
     --card: 0 0% 100%;

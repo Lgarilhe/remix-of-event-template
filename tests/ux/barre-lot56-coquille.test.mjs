@@ -155,11 +155,11 @@ test('B-C5 — cloche et entrées Notifications et Paramètres retirées', () =>
 });
 
 // ---------------------------------------------------------------- B-C6
-test('B-C6 — rangée basse : quatre liens (six avec Séquences et Appels), Aide en bouton, Marketplace selon les droits', () => {
+test('B-C6 — messagerie persistante et menu Plus : outils selon les droits, aide accessible', () => {
   for (const route of ["'/tasks'", "'/calendar'", "'/sequences'", "'/calls'", "'/marketplace'", "'/settings'"]) {
     assert.ok(bottomRow.includes(route), `SidebarBottomRow.tsx : ${route} absent`);
   }
-  // Les cibles sont rendues par un même <Link> (liste), l'Aide seule est un bouton (HelpMenu).
+  // Les outils sont des liens nommés dans Plus ; la messagerie reste visible.
   // Lot 5c-2 (décision 8 du 05/10) : Séquences quand l'interrupteur konekt.sequences-v2 est allumé,
   // c'est-à-dire pour tous depuis le lot 5h (absente seulement avec le secours ?sequences-v2=0).
   // Téléphonie : Appels, que seul un premier appel reçu de l'opérateur relié fait apparaître.
@@ -172,19 +172,21 @@ test('B-C6 — rangée basse : quatre liens (six avec Séquences et Appels), Aid
   assert.ok(bottomRow.indexOf("'/calendar'") < bottomRow.indexOf("'/sequences'")
     && bottomRow.indexOf("'/sequences'") < bottomRow.indexOf("'/calls'")
     && bottomRow.indexOf("'/calls'") < bottomRow.indexOf("'/marketplace'"));
-  assert.ok(!bottomRow.includes('<button'), 'seule l\'Aide est un bouton');
+  assert.ok(bottomRow.includes('<InboxNavigationLink compact={collapsed} />'));
+  assert.ok(bottomRow.includes('<DropdownMenuTrigger asChild>'));
+  assert.ok(bottomRow.includes('aria-label={moreLabel}'));
   for (const label of ["'Tâches'", "'Agenda'", "'Séquences'", "'Marketplace'", "'Paramètres'"]) {
     assert.ok(bottomRow.includes(label), `SidebarBottomRow.tsx : libellé ${label} absent`);
   }
-  assert.ok(bottomRow.includes('aria-label={name}'));
-  assert.ok(bottomRow.includes("aria-current={active ? 'page' : undefined}"));
-  assert.ok(helpMenu.includes('aria-label="Aide"'));
+  assert.ok(bottomRow.includes('<span>{label}</span>'));
+  assert.ok(bottomRow.includes("aria-current={isActive(to) ? 'page' : undefined}"));
+  assert.ok(bottomRow.includes('<DropdownMenuLabel>Aide</DropdownMenuLabel>'));
   assert.ok(bottomRow.includes("'marketplace_browse'") && bottomRow.includes("'marketplace_publish'"));
   for (const dialog of ['KeyboardShortcutsDialog', 'TutorialVideoDialog']) {
     assert.ok(!helpMenu.includes(dialog), `HelpMenu.tsx contient ${dialog}`);
   }
-  assert.ok(helpMenu.includes('Raccourcis clavier') && helpMenu.includes('Vidéo du tutoriel'));
-  assert.ok(helpMenu.includes('onCloseAutoFocus') && helpMenu.includes('preventDefault()'));
+  assert.ok(bottomRow.includes('Raccourcis clavier') && bottomRow.includes('Vidéo du tutoriel'));
+  assert.ok(bottomRow.includes('onCloseAutoFocus') && bottomRow.includes('preventDefault()'));
 });
 
 // ---------------------------------------------------------------- B-C7

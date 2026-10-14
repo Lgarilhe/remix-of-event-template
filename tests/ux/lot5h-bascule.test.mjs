@@ -139,32 +139,17 @@ test('5h : entrée « Séquences » de la barre latérale par défaut, entre Age
   assert.match(code('src/components/sidebar/KeyboardShortcutsDialog.tsx'), /\.\.\.\(showSequences \? \[G_SEQUENCES\] : \[\]\),/);
 });
 
-test('5h : rangée basse à sept cibles (Séquences, Appels et Marketplace) : rien ne sort de la barre', () => {
-  // Séquences par défaut, plus Appels dès un premier appel reçu : sept cibles
-  // (six liens et l'Aide) pour une organisation qui voit Marketplace.
+test('5h : les outils optionnels restent accessibles dans Plus sans multiplier les cibles visibles', () => {
   const row = code('src/components/sidebar/SidebarBottomRow.tsx');
-  assert.match(row, /const targetCount = links\.length \+ 1;/, 'liens et Aide comptés');
-  assert.match(row, /const tight = !collapsed && targetCount >= 6;/, 'six cibles : selon le nombre, plus selon le drapeau');
-  assert.match(row, /const dense = !collapsed && targetCount >= 7;/);
-  assert.doesNotMatch(row, /const tight = showSequences/, 'le drapeau seul ne décide plus de la disposition');
-  // Téléphone : deux lignes de quatre colonnes de 44 px ; ordinateur : cibles de 32 px de large,
-  // Aide comprise (le bouton icône du kit fait 36 px sans md:w-8).
-  assert.match(row, /dense \? 'max-md:grid max-md:grid-cols-\[repeat\(4,2\.75rem\)\] max-md:gap-y-1' : tight \? 'md:gap-0\.5' : 'gap-0\.5'/);
-  assert.match(row, /const targetClass = collapsed \? 'h-8 w-8' : cn\('min-h-11 min-w-11 md:min-h-9 px-1', dense \? 'md:w-8 md:min-w-8' : 'md:min-w-9'\);/);
-  // Chiffre des tâches en retard dans l'angle, sans élargir sa cible.
-  assert.match(row, /isTasks && !collapsed && overdue !== null && !dense && \(tight/);
-  assert.match(row, /dense\s*\? 'absolute right-0\.5 top-0\.5 leading-none'\s*: tight && 'max-md:absolute/);
-
-  // Largeurs : tiroir de téléphone et barre d'ordinateur, moins px-2 du pied et la bordure.
-  const kit = read('src/components/ui/sidebar.tsx');
-  const rem = (name) => Number(kit.match(new RegExp(`const ${name} = "(\\d+(?:\\.\\d+)?)rem";`))[1]) * 16;
-  const phone = rem('SIDEBAR_WIDTH_MOBILE') - 2 * 8 - 1;
-  const desktop = rem('SIDEBAR_WIDTH') - 2 * 8 - 1;
-  assert.equal(phone, 271);
-  assert.equal(desktop, 239);
-  assert.ok(6 * 44 <= phone && 7 * 44 > phone, 'six cibles de 44 px tiennent sur une ligne, sept non');
-  assert.ok(4 * 44 <= phone, 'quatre colonnes de 44 px tiennent');
-  assert.ok(7 * 32 <= desktop && 7 * 36 > desktop, 'sept cibles de 32 px tiennent, pas de 36 px');
+  assert.match(row, /<InboxNavigationLink compact=\{collapsed\} \/>/);
+  assert.match(row, /<DropdownMenuTrigger asChild>/);
+  assert.match(row, /links\.map\(\(\{ to, label, icon: Icon \}\)/);
+  assert.match(row, /<span>\{label\}<\/span>/);
+  assert.match(row, /const targetClass = 'min-h-11 min-w-11';/);
+  assert.match(row, /max-h-\[var\(--radix-dropdown-menu-content-available-height\)\] overflow-y-auto/);
+  assert.doesNotMatch(row, /targetCount|const tight|const dense/);
+  assert.match(row, /to === '\/tasks' && overdue/);
+  assert.match(row, /<DropdownMenuLabel>Aide<\/DropdownMenuLabel>/);
 });
 
 // ─── Adresses ───────────────────────────────────────────────────────────────

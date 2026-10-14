@@ -158,6 +158,28 @@ export function sequencePath(id: string, fromMissionId?: string | null): string 
   return `${base}?depuis=mission:${encodeURIComponent(fromMissionId)}`;
 }
 
+/**
+ * « Inscrire des candidats » de la page d'une séquence (lot 5f-2d) : le Pipeline de
+ * la mission de la séquence, qui propose cette séquence d'avance
+ * (/missions/<mission>?tab=pipeline&sequence=<id>). Sans mission : /sourcing.
+ *
+ * `tab=pipeline` sert les deux pages de la mission, comme les autres liens qui écrivent
+ * encore ?tab= : la nouvelle page le retire et garde `sequence` (legacyToV3Target, adresse
+ * /missions/<mission>?sequence=<id>, paramètre local lu par l'écran Pipeline et par le
+ * panneau Contacter, comme `contacter`), l'ancienne page ouvre son onglet Pipeline.
+ *
+ * Même adresse, une fois convertie, que missionV3Path(mission, 'pipeline', { sequence: id })
+ * de missionBeta.ts, et même identifiant nu que bareMissionId de missionSequencePick.ts
+ * (un « project:<uuid> » est ramené à l'uuid) : copie minimale, ce module restant
+ * sans import (garde 5c-2). Parité verrouillée par tests/ux/lot5f2d-seq-maintenant.test.mjs.
+ */
+export function sequenceEnrollPath(sequence: { id: string; project_id: string | null }): string {
+  const raw = sequence.project_id;
+  const mission = typeof raw === 'string' && raw.startsWith('project:') ? raw.slice('project:'.length) : raw;
+  if (!mission) return '/sourcing';
+  return `/missions/${encodeURIComponent(mission)}?${new URLSearchParams({ tab: 'pipeline', sequence: sequence.id }).toString()}`;
+}
+
 /** Segment de l'adresse d'une séquence pas encore créée (/sequences/nouvelle, lot 5d-2). */
 export const NEW_SEQUENCE_SLUG = 'nouvelle';
 

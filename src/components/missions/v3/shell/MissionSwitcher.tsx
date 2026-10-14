@@ -19,15 +19,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MissionCompanyLogo } from '@/components/dashboard/MissionCompanyLogo';
+import { MissionMarker } from '@/components/missions/MissionMarker';
 import { useMissionV3 } from '../MissionV3Context';
-import { missionClientName } from './missionClient';
 
 function MissionItem({ item, href }: { item: MissionNavItem; href: string }) {
   return (
     <DropdownMenuItem asChild className="cursor-pointer">
       <Link to={href} className="flex min-w-0 items-center gap-2.5 max-sm:min-h-11">
-        <MissionCompanyLogo company={item.client_name || item.name} size={24} />
+        <MissionMarker missionId={item.id} name={item.name} size={24} />
         <span className="flex min-w-0 flex-1 flex-col items-start">
           <span className="w-full truncate text-sm text-foreground">{item.name}</span>
           {item.sub && <span className="w-full truncate text-xs text-muted-foreground">{item.sub}</span>}
@@ -55,8 +54,8 @@ export function MissionSwitcher() {
           'transition-colors duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
         )}
       >
-        <MissionCompanyLogo
-          company={missionClientName(project) || project.name}
+        <MissionMarker
+          missionId={project.id} name={project.name}
           logoUrl={project.job_details?.client?.logo_url}
           size={24}
         />

@@ -375,13 +375,21 @@ export const ProfileDetailSheet: React.FC<ProfileDetailSheetProps> = ({
     return false;
   };
 
+  // Un geste commencé dans une feuille ou une fenêtre rendue dans un portail (flux de contact, message)
+  // remonte par l'arbre React jusqu'ici, mais ne se passe pas dans la fiche : il ne la fait pas changer de profil.
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (!e.currentTarget.contains(e.target as Node)) return;
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
     swipeBlocked.current = isInsideScrollable(e.target as HTMLElement);
   }, []);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!e.currentTarget.contains(e.target as Node)) {
+      touchStartX.current = null;
+      touchStartY.current = null;
+      return;
+    }
     if (touchStartX.current == null || touchStartY.current == null || swipeBlocked.current) {
       touchStartX.current = null;
       touchStartY.current = null;

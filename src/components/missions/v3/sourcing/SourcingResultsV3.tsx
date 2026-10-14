@@ -150,7 +150,7 @@ export interface SourcingResultsV3Props {
   /** Ordre du groupe affiché, pour les flèches de la fiche. */
   onOrderChange?: (profiles: LinkedInProfile[]) => void;
   onOpenInMail: () => void;
-  onSequenceEnrollSuccess: () => void;
+  onSequenceEnrollSuccess: (enrolledIds?: readonly string[]) => void;
   /** Affichage des profils à trier et son changement (choix gardé par SearchResultsPanel). */
   view?: SourcingView;
   onViewChange?: (view: SourcingView) => void;

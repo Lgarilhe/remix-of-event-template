@@ -54,16 +54,24 @@ async function readSequences(): Promise<ContactSequenceRow[]> {
   });
 }
 
-export function useContactSequences(missionId: string | null): {
+export function useContactSequences(): {
   sequences: ContactSequenceRow[];
   status: ContactSequencesStatus;
+  /**
+   * Vrai quand la liste vient d'être relue pour cette ouverture et que la dernière relecture n'a pas échoué.
+   * Une liste gardée en cache d'une ouverture précédente est affichée tout de suite (status 'ready') mais
+   * n'est pas à jour : seule une liste à jour peut dire qu'une séquence demandée est absente.
+   */
+  settled: boolean;
   refetch: () => void;
 } {
   const { organizationId } = useOrganization();
   const query = useQuery({
-    queryKey: [CONTACT_SEQUENCES_KEY, organizationId, missionId],
+    // La lecture ne dépend pas de la mission (le choix par mission est fait par missionSequenceMenu) : changer
+    // de mission dans la feuille de la messagerie ne relit rien et ne remet pas le flux en squelette.
+    queryKey: [CONTACT_SEQUENCES_KEY, organizationId],
     queryFn: readSequences,
-    enabled: !!organizationId && !!missionId,
+    enabled: !!organizationId,
     staleTime: 0,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
@@ -80,5 +88,7 @@ export function useContactSequences(missionId: string | null): {
   else if (query.isError || query.fetchStatus === 'paused') status = 'error';
   else status = 'loading';
 
-  return { sequences: query.data ?? NO_SEQUENCES, status, refetch };
+  const settled = query.data !== undefined && query.isFetchedAfterMount && !query.isRefetchError;
+
+  return { sequences: query.data ?? NO_SEQUENCES, status, settled, refetch };
 }

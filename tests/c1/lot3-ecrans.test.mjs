@@ -101,24 +101,28 @@ test('lot 3 écrans : « Trier » efface la vue et l\'étape avant d\'ouvrir la 
   assert.match(open[1], /setParams\(\{ \[V3_PARAM\.stage\]: null, \[V3_PARAM\.view\]: null \}\)/);
 });
 
-test('lot 3 écrans : « Contacter les N » filtre sur Retenu, coche les retenus, puis met le focus sur « Contacter » de la barre', () => {
+test('lot 3 écrans : « Contacter les N » filtre sur Retenu, coche les retenus, puis ouvre le panneau Contacter (éteint : focus sur « Contacter » de la barre)', () => {
   const src = code(SCREEN);
   assert.match(src, /useMissionCandidateRows\(project\.id, RETAINED_FILTER,/);
-  assert.match(src, /const contactRetained = useCallback\(\(\) => \{\s*setParams\(\{ \[V3_PARAM\.stage\]: 'retained', \[V3_PARAM\.view\]: null \}\);\s*setSelectionNote\(null\);\s*setContactRequest\(true\);/);
+  assert.match(src, /const contactRetained = useCallback\(\(\) => \{\s*setParams\(\{ \[V3_PARAM\.stage\]: 'retained', \[V3_PARAM\.view\]: null \}\);\s*setSelectionNote\(null\);\s*retainedReached\.current = false;\s*setContactRequest\(true\);/);
   // Les retenus ne sont lus qu'à la demande : pas de page lue à chaque arrivée ni à chaque retour de focus.
   assert.match(src, /enabled: contactRequest && counts !== null && counts\.retained > 0/);
   // La sélection est posée après le changement de filtre (qui la vide).
   assert.match(src, /filterParam !== 'retained' \|\| view !== 'liste'/);
   assert.match(src, /setSelection\(new Map\(picked\.map/);
   assert.match(src, /rows\.slice\(0, RETAINED_SELECTION_MAX\)/);
-  // Le panneau de contact ne reçoit aucune sélection : « Contacter les N » ne l'ouvre pas, le geste est dans la barre.
+  // Lot 5f-2d : la sélection posée, le panneau Contacter s'ouvre dessus (interrupteur des séquences allumé,
+  // au moins un retenu) ; éteint, ou rien de coché, l'ancien geste : le focus va au « Contacter » de la barre.
   assert.doesNotMatch(src, /openContactPanel\(\)/);
+  assert.match(src, /const \{ openContactFlow \} = ctx;/);
+  assert.match(src, /setSelection\(new Map\(picked\.map[\s\S]*?setSelectionNote\([\s\S]*?\);\s*if \(sequencesV2 && picked\.length > 0\) openContactFlow\(\);\s*else setFocusContact\(picked\.length > 0\);/);
   assert.match(src, /\[data-bulk-bar\] button/);
   assert.match(src, /startsWith\('Contacter'\)/);
   // Plafond et échec de lecture dits à l'écran, jamais en silence.
   assert.match(src, /une sélection groupée est limitée à/);
   assert.match(src, /Les retenus n\\'ont pas pu être lus/);
-  assert.match(src, /<p role="status"[^>]*>\s*\{selectionNote\}/);
+  // La note de sélection garde l'emplacement (et la priorité) ; l'indication de la page séquence (lot 5f-2d) passe après.
+  assert.match(src, /<p role="status"[^>]*>\s*\{selectionNote \?\? sequenceHint\}/);
 });
 
 // ─── Remplacement de la règle provisoire ────────────────────────────────────

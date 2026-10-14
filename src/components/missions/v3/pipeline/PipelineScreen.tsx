@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { SectionErrorBoundary } from '@/components/SectionErrorBoundary';
 import { useMissionCandidateRows } from '@/hooks/useMissionCandidateRows';
 import { useMissionRowSignals } from '@/hooks/useMissionNow';
@@ -57,6 +58,12 @@ import { useContactBadge } from './useContactBadge';
 const EMPTY_ROWS: readonly MissionCandidateRow[] = [];
 
 const RETAINED_FILTER: StageFilter = { stage: 'retained', stepId: null };
+/**
+ * Lot 5f-2d : `?sequence=<id>` arrive de la page d'une séquence (« Inscrire des candidats »). Paramètre local de
+ * la mission, comme `contacter` : l'écran l'annonce (vue Liste, rien de coché), le panneau Contacter le consomme à
+ * l'ouverture du mode (ContactPanel), et l'écran le retire de l'adresse d'arrivée une fois qu'il a servi.
+ */
+const SEQUENCE_PARAM = 'sequence';
 /** « Contacter les N » sélectionne les retenus par pages de 50, jusqu'à ce plafond (dit à l'écran quand il coupe). */
 const RETAINED_SELECTION_MAX = 400;
 
@@ -254,18 +261,24 @@ export function PipelineScreen(): JSX.Element | null {
   }, [sortRequest, filterParam, view]);
 
   // « Contacter les N » (rang 7) : liste filtrée sur Retenu, retenus cochés, puis
-  // le focus va au « Contacter » de la barre d'actions, qui est le geste qui
-  // ouvre le panneau Contacter sur la sélection (ce raccourci ne l'ouvre pas lui-même). La
-  // sélection est posée après le changement de filtre, qui la vide. Les retenus
+  // le panneau Contacter s'ouvre sur cette sélection (lot 5f-2d, interrupteur des
+  // séquences allumé). Éteint : l'ancien geste, le focus va au « Contacter » de la
+  // barre d'actions, qui ouvrait le menu « Séquence ». La sélection est posée après le
+  // changement de filtre, qui la vide, et avant l'ouverture du panneau : sans elle, il
+  // s'ouvrirait sur « Contactés » (garde de rechargement de ContactPanel). Les retenus
   // ne sont lus qu'à la demande, jusqu'à RETAINED_SELECTION_MAX.
+  const { openContactFlow } = ctx;
   const [contactRequest, setContactRequest] = useState(false);
   const [focusContact, setFocusContact] = useState(false);
   const retainedQuery = useMissionCandidateRows(project.id, RETAINED_FILTER, {
     enabled: contactRequest && counts !== null && counts.retained > 0,
   });
+  // Vrai quand l'effet a vu la portée de la demande (filtre Retenu, vue Liste) : la demande ne tombe qu'après l'avoir quittée.
+  const retainedReached = useRef(false);
   const contactRetained = useCallback(() => {
     setParams({ [V3_PARAM.stage]: 'retained', [V3_PARAM.view]: null });
     setSelectionNote(null);
+    retainedReached.current = false;
     setContactRequest(true);
   }, [setParams]);
   const { isPending: retainedPending, isError: retainedError, hasNextPage: retainedMore, isFetchingNextPage: retainedFetching, fetchStatus: retainedFetchStatus } = retainedQuery;
@@ -274,7 +287,18 @@ export function PipelineScreen(): JSX.Element | null {
   const retainedTotal = counts ? counts.retained : 0;
   const countsKnown = counts !== null;
   useEffect(() => {
-    if (!contactRequest || filterParam !== 'retained' || view !== 'liste') return;
+    if (!contactRequest) return;
+    // La demande ne vaut que pour la portée retenus + liste. Quittée (autre puce d'étape, vue Étapes) après l'avoir
+    // atteinte, avant la fin de la lecture, elle tombe : revenir plus tard sur Retenu ne rouvre rien. Avant de
+    // l'avoir atteinte elle attend, car le changement de filtre et la demande peuvent être rendus séparément.
+    if (filterParam !== 'retained' || view !== 'liste') {
+      if (retainedReached.current) {
+        retainedReached.current = false;
+        setContactRequest(false);
+      }
+      return;
+    }
+    retainedReached.current = true;
     // Plus aucun retenu (un geste entre-temps) : rien à cocher, la demande tombe.
     if (countsKnown && retainedTotal === 0) {
       setContactRequest(false);
@@ -299,14 +323,17 @@ export function PipelineScreen(): JSX.Element | null {
     }
     const picked = rows.slice(0, RETAINED_SELECTION_MAX);
     setSelection(new Map(picked.map((row) => [row.id, row] as const)));
-    setSelectionNote(
+    const capNote =
       retainedTotal > picked.length
         ? `${picked.length.toLocaleString('fr-FR')} retenus sur ${retainedTotal.toLocaleString('fr-FR')} sont cochés : une sélection groupée est limitée à ${RETAINED_SELECTION_MAX.toLocaleString('fr-FR')}.`
-        : null,
-    );
-    setFocusContact(picked.length > 0);
-  }, [contactRequest, filterParam, view, retainedPending, retainedFetchStatus, retainedError, retainedMore, retainedFetching, retainedPages, retainedTotal, countsKnown, fetchMoreRetained, setSelection]);
-  // La barre d'actions apparaît avec la sélection : le focus va à « Contacter », sans ouvrir de panneau.
+        : null;
+    setSelectionNote(capNote);
+    // Sous lg, le panneau Contacter couvre la page et sa note : le plafond est dit aussi par un toast, posé avant l'ouverture.
+    if (capNote && sequencesV2 && picked.length > 0) toast.info(capNote);
+    if (sequencesV2 && picked.length > 0) openContactFlow();
+    else setFocusContact(picked.length > 0);
+  }, [contactRequest, filterParam, view, retainedPending, retainedFetchStatus, retainedError, retainedMore, retainedFetching, retainedPages, retainedTotal, countsKnown, fetchMoreRetained, setSelection, sequencesV2, openContactFlow]);
+  // Interrupteur éteint : la barre d'actions apparaît avec la sélection, le focus va à « Contacter », sans ouvrir de panneau.
   // « Contacter » est grisé tant que le compte LinkedIn n'est pas lu : on attend qu'il s'active
   // (au plus 4 s), au lieu d'abandonner à la première image.
   useEffect(() => {
@@ -340,6 +367,30 @@ export function PipelineScreen(): JSX.Element | null {
       window.clearTimeout(timer);
     };
   }, [focusContact, selection.size]);
+
+  // Lot 5f-2d : arrivé de la page d'une séquence, rien n'est encore coché. Une ligne le dit, dans l'emplacement
+  // de la note de sélection (qui garde la priorité) ; elle disparaît dès qu'une case est cochée.
+  const sequenceHint =
+    sequencesV2 && !ctx.isArchived && view === 'liste' && !!searchParams.get(SEQUENCE_PARAM) && selection.size === 0
+      ? 'Cochez les candidats à inscrire, puis « Contacter » : la séquence demandée sera proposée d\'avance.'
+      : null;
+
+  // La séquence demandée est consommée à l'ouverture du mode Contacter : le panneau la lit et la retire de l'adresse
+  // d'ouverture. Fermer le panneau (Retour) ramène l'adresse d'arrivée, qui la porte encore : l'écran l'en retire alors
+  // aussi, pour que l'indication ne revienne pas et qu'un « Contacter » ultérieur ne la repropose pas.
+  const contactMode = contactPanelOpen.current;
+  const requestedSequence = searchParams.get(SEQUENCE_PARAM);
+  const sequenceUsed = useRef<string | null>(null);
+  useEffect(() => {
+    if (contactMode) {
+      if (requestedSequence) sequenceUsed.current = requestedSequence;
+      return;
+    }
+    if (requestedSequence && requestedSequence === sequenceUsed.current) {
+      sequenceUsed.current = null;
+      setParams({ [SEQUENCE_PARAM]: null });
+    }
+  }, [contactMode, requestedSequence, setParams]);
 
   const activeRowId = location.panel === 'fiche' ? location.candidateRowId : null;
   const goToSourcing = useCallback(() => ctx.goToScreen('sourcing'), [ctx]);
@@ -428,9 +479,9 @@ export function PipelineScreen(): JSX.Element | null {
         />
       )}
 
-      {selectionNote && (
+      {(selectionNote ?? sequenceHint) && (
         <p role="status" className="text-xs text-muted-foreground">
-          {selectionNote}
+          {selectionNote ?? sequenceHint}
         </p>
       )}
 

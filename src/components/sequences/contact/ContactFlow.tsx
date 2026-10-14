@@ -1,4 +1,8 @@
 // Refonte mission, lot 5f-2c : panneau « Contacter » ouvert depuis la sélection du Pipeline.
+// Lot 5f-2d : le même flux sert les autres entrées (feuille du Sourcing et des fiches, messagerie,
+// page d'une séquence) ; ses props nouvelles sont facultatives et valent, absentes, le lot 5f-2c.
+// Hors mission (missionId et job nuls) aucune ligne n'est écrite dans le Pipeline ; un candidat sans
+// ligne (rowId nul) sort de onEnrolled par l'identifiant de son profil.
 //
 // De haut en bas : la séquence (choisie d'avance, avec le compte d'envoi et la
 // première action), les candidats en trois groupes (prêts, à compléter, exclus,
@@ -97,6 +101,8 @@ const NO_OVERRIDES: ReadonlySet<ContactOverride> = new Set();
 const STEPS_LOAD_FAILED_MESSAGE = 'Impossible de charger les étapes de la séquence. Réessayez.';
 const STEPS_EMPTY_MESSAGE =
   "Cette séquence ne contient aucune étape. Ajoutez au moins une étape avant d'inscrire des candidats.";
+const PREFERRED_MISSING_MESSAGE =
+  "La séquence demandée n'est pas disponible : elle est en pause, sans étape ou hors de votre vue. Choisissez-en une autre.";
 const AI_PREVIEW_MESSAGE = "Message rédigé par l'IA Konekt pour chaque candidat : relisez-les avant l'inscription.";
 
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
@@ -163,11 +169,15 @@ function firstMessageOf(
   return { candidateName, items };
 }
 
-/** Rangée « Voir les contactés » des portes, pour ne jamais enfermer la personne dans le mode Contacter. */
-function LeaveButton({ onLeave }: { onLeave: () => void }) {
+/**
+ * Rangée « Voir les contactés » des portes, pour ne jamais enfermer la personne dans le mode Contacter.
+ * Sans libellé (le conteneur a sa propre croix), aucun bouton.
+ */
+function LeaveButton({ onLeave, label }: { onLeave: () => void; label: string | null }) {
+  if (!label) return null;
   return (
     <Button type="button" variant="ghost" size="xs" className={cn('shrink-0', TOUCH)} onClick={onLeave}>
-      Voir les contactés
+      {label}
     </Button>
   );
 }
@@ -177,12 +187,19 @@ export function ContactFlow({
   job,
   candidates,
   candidatesStatus,
-  overflow,
+  overflow = 0,
   refreshing = false,
   onRetryCandidates,
   onEnrolled,
   onOpenCandidate,
   onLeave,
+  accountId: imposedAccountId,
+  notice = null,
+  leaveLabel = 'Voir les contactés',
+  emptyHint = 'Cochez des candidats dans la liste, puis « Contacter ».',
+  onBusyChange,
+  onChanged,
+  preferredSequenceId = null,
 }: ContactFlowProps): JSX.Element {
   const { organizationId, isAdmin } = useOrganization();
   const queryClient = useQueryClient();
@@ -192,26 +209,39 @@ export function ContactFlow({
   const { effectivePlanId, isLoading: planLoading, isLoadingError: planLoadFailed } = useSubscriptionState();
   const canSendSequences = planLoading || planLoadFailed || hasPlanFeature(effectivePlanId, 'sequences_send');
 
+  // Le compte d'envoi vient du point d'entrée quand il en impose un (messagerie : celui de la conversation) ;
+  // sinon c'est le compte propre de la personne. Un compte de collègue reste bloqué par useSendingAccount.
   const { selectedAccount, accountsLoading } = useFilteredLinkedInAccounts();
-  const accountId = selectedAccount;
+  const accountId = imposedAccountId ?? selectedAccount;
   const sendingAccount = useSendingAccount(accountId);
 
   // Séquence : la plus récente de la mission est choisie d'avance, sauf choix de la personne encore proposé.
-  const sequencesRead = useContactSequences(missionId);
+  // Séquence demandée par l'adresse (page d'une séquence) : choisie d'avance ; absente du menu (en pause, sans
+  // étape, hors de la vue), elle n'est jamais remplacée en silence par une autre : aucune séquence choisie.
+  // Le constat « absente » ne se fait que sur une liste à jour : pendant la relecture d'une liste gardée en
+  // cache, la séquence peut y arriver, et rien n'est dit.
+  const sequencesRead = useContactSequences();
   const menu = useMemo(() => missionSequenceMenu(sequencesRead.sequences, missionId), [sequencesRead.sequences, missionId]);
-  const [chosenSequenceId, setChosenSequenceId] = useState<string | null>(null);
+  const [chosenSequenceId, setChosenSequenceId] = useState<string | null>(preferredSequenceId);
   const selected = useMemo(() => {
     if (chosenSequenceId) {
       const kept = [...menu.mission, ...menu.others].find((sequence) => sequence.id === chosenSequenceId);
       if (kept) return kept;
+      if (chosenSequenceId === preferredSequenceId) return null;
     }
     return menu.pick;
-  }, [menu, chosenSequenceId]);
+  }, [menu, chosenSequenceId, preferredSequenceId]);
   const selectedId = selected?.id ?? null;
+  const preferredMissing = !!preferredSequenceId
+    && chosenSequenceId === preferredSequenceId
+    && !selected
+    && sequencesRead.settled;
 
   const stepsRead = useSequenceSteps(selectedId);
   const rawSteps = stepsRead.steps;
   const stepsReady = rawSteps !== null && rawSteps.length > 0;
+  // Avertissement du point d'entrée : texte fixe, ou calculé sur les étapes de la séquence choisie.
+  const noticeText = typeof notice === 'function' ? (rawSteps ? notice(rawSteps) : null) : notice;
   const steps = useMemo(() => (rawSteps ? toFlowSteps(rawSteps) : []), [rawSteps]);
   const info = useMemo(() => flowSequenceInfo(steps), [steps]);
   const previewKeys = useMemo(
@@ -238,7 +268,7 @@ export function ContactFlow({
     missionId,
     sequenceId: selectedId,
     accountId,
-    jobTitle: job.title,
+    jobTitle: job?.title ?? null,
     keys: previewKeys,
   });
   const { request: requestPreviewValues, entryOf: previewEntryOf } = previewValues;
@@ -398,9 +428,18 @@ export function ContactFlow({
 
   const [enrolling, setEnrolling] = useState(false);
   const enrollingRef = useRef(false);
+  // Le conteneur retient sa fermeture tant que l'écriture dure.
+  useEffect(() => {
+    onBusyChange?.(enrolling);
+  }, [enrolling, onBusyChange]);
 
   const openSequence = useCallback(() => {
     if (!selectedId) return;
+    // Hors mission, sequencePath n'a pas de « ? » : l'onglet s'ajoute avec « ? ».
+    if (!missionId) {
+      navigate(`${sequencePath(selectedId)}?onglet=candidats`);
+      return;
+    }
     navigate(`${sequencePath(selectedId, missionId)}&onglet=candidats`);
   }, [navigate, selectedId, missionId]);
 
@@ -454,7 +493,8 @@ export function ContactFlow({
         if (outcome.results.success > 0) void invalidateMissionContacted(queryClient);
         if (outcome.retained && outcome.retained.saved > 0) void invalidateStageReaders(queryClient);
         const enrolled = new Set(outcome.enrolledIds);
-        const handledRowIds = candidates.filter((candidate) => enrolled.has(candidate.id)).map((candidate) => candidate.rowId);
+        // Une clé par candidat traité : sa ligne du Pipeline, sinon l'identifiant de son profil (aucune ligne).
+        const handledRowIds = candidates.filter((candidate) => enrolled.has(candidate.id)).map((candidate) => candidate.rowId ?? candidate.id);
         if (handledRowIds.length > 0) {
           onEnrolled(handledRowIds);
           return;
@@ -485,13 +525,18 @@ export function ContactFlow({
     try {
       const { blocking: entered } = await findBlockingSequenceEnrollments(supabase, done.sequence.id, done.profiles);
       const ids = new Set(done.profiles.filter((profile) => entered.has(profile.id)).map((profile) => profile.id));
-      handledRowIds = candidates.filter((candidate) => ids.has(candidate.id)).map((candidate) => candidate.rowId);
+      handledRowIds = candidates.filter((candidate) => ids.has(candidate.id)).map((candidate) => candidate.rowId ?? candidate.id);
     } catch (err) {
       // Lecture en échec : personne ne quitte la sélection à tort, les groupes sont relus.
       console.warn('[ContactFlow] inscrits de la fenêtre non relus', err);
     }
-    if (handledRowIds.length > 0) onEnrolled(handledRowIds);
-    else retryEligibility();
+    if (handledRowIds.length > 0) {
+      onEnrolled(handledRowIds);
+    } else {
+      // Rien d'inscrit (par exemple « Retenir sans contacter ») : les groupes sont relus et l'appelant prévenu.
+      retryEligibility();
+      onChanged?.();
+    }
   };
 
   // ── Portes ──
@@ -501,7 +546,7 @@ export function ContactFlow({
     return gate(
       <>
         <UpgradePrompt title="Séquences" description={SEQUENCES_PLAN_REQUIRED_MESSAGE} />
-        <LeaveButton onLeave={onLeave} />
+        <LeaveButton onLeave={onLeave} label={leaveLabel} />
       </>,
     );
   }
@@ -521,10 +566,12 @@ export function ContactFlow({
       <div role="alert" className="space-y-2">
         <p className="text-foreground">Les candidats sélectionnés n'ont pas pu être chargés.</p>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" className={TOUCH} onClick={onRetryCandidates}>
-            Réessayer
-          </Button>
-          <LeaveButton onLeave={onLeave} />
+          {onRetryCandidates && (
+            <Button type="button" variant="outline" size="sm" className={TOUCH} onClick={onRetryCandidates}>
+              Réessayer
+            </Button>
+          )}
+          <LeaveButton onLeave={onLeave} label={leaveLabel} />
         </div>
       </div>,
     );
@@ -535,11 +582,13 @@ export function ContactFlow({
       <>
         <div className="space-y-1">
           <p className="text-foreground">Aucun candidat sélectionné.</p>
-          <p className="text-muted-foreground">Cochez des candidats dans la liste, puis « Contacter ».</p>
+          <p className="text-muted-foreground">{emptyHint}</p>
         </div>
-        <Button type="button" variant="outline" size="sm" className={TOUCH} onClick={onLeave}>
-          Voir les contactés
-        </Button>
+        {leaveLabel && (
+          <Button type="button" variant="outline" size="sm" className={TOUCH} onClick={onLeave}>
+            {leaveLabel}
+          </Button>
+        )}
       </>,
     );
   }
@@ -559,7 +608,7 @@ export function ContactFlow({
           <Button asChild variant="outline" size="sm" className={TOUCH}>
             <Link to="/settings/account/connections">Relier LinkedIn</Link>
           </Button>
-          <LeaveButton onLeave={onLeave} />
+          <LeaveButton onLeave={onLeave} label={leaveLabel} />
         </div>
       </>,
     );
@@ -655,7 +704,7 @@ export function ContactFlow({
           <h3 className="min-w-0 text-sm font-semibold text-foreground">
             {`Contacter ${plural(candidates.length, 'candidat')}`}
           </h3>
-          <LeaveButton onLeave={onLeave} />
+          <LeaveButton onLeave={onLeave} label={leaveLabel} />
         </div>
 
         <div className="space-y-2">
@@ -667,6 +716,7 @@ export function ContactFlow({
             onSelect={setChosenSequenceId}
             missionId={missionId}
           />
+          {preferredMissing && <p role="note" className="text-xs text-foreground">{PREFERRED_MISSING_MESSAGE}</p>}
           {selected && (
             <div className="space-y-1.5">
               {rotation && !sendingAccount.blockReason ? (
@@ -677,6 +727,11 @@ export function ContactFlow({
               {firstAction && <p className="text-xs text-muted-foreground">{firstAction}</p>}
             </div>
           )}
+          {noticeText && (
+            <p role="note" className="rounded-lg border border-warning/25 bg-warning-muted px-3 py-2 text-xs text-foreground">
+              {noticeText}
+            </p>
+          )}
         </div>
 
         {candidatesSection}
@@ -684,8 +739,8 @@ export function ContactFlow({
         {overflow > 0 && (
           <p className="text-xs text-muted-foreground">
             {`${CONTACT_FLOW_MAX} candidats au plus par inscription : ${overflow > 1
-              ? `les ${plural(overflow, 'autre')} restent sélectionnés`
-              : "l'autre reste sélectionné"}.`}
+              ? `les ${plural(overflow, 'autre')} ne sont pas inclus dans cette inscription`
+              : "l'autre n'est pas inclus dans cette inscription"}.`}
           </p>
         )}
       </div>
@@ -747,6 +802,7 @@ export function ContactFlow({
           profiles={review.profiles}
           accountId={accountId}
           job={job}
+          notice={noticeText}
           onSuccess={() => { void handleReviewDone(); }}
         />
       )}

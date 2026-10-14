@@ -12,7 +12,7 @@
  * La hauteur vient du parent (Inbox.tsx, calée sur l'espace visible).
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, GitBranch, RefreshCw } from 'lucide-react';
 import { LinkedInAccount } from '@/pages/Outreach';
@@ -24,6 +24,7 @@ import { useChatDrafts } from '@/hooks/useChatDraft';
 import { useMultichannelInbox } from '@/hooks/useMultichannelInbox';
 import { useAuthReady } from '@/hooks/useAuthReady';
 import { useOrganization } from '@/hooks/useOrganization';
+import { useSequencesBeta } from '@/hooks/useSequencesBeta';
 import { ChatListSidebar } from './inbox/ChatListSidebar';
 import { MessageView } from './inbox/MessageView';
 import { MultichannelConversation } from './inbox/MultichannelConversation';
@@ -52,6 +53,12 @@ import { sequenceChannels } from '@/lib/sequenceCatalog';
 import { cn } from '@/lib/utils';
 import { plural } from '@/lib/plural';
 import type { ResponseFilter } from '@/lib/inboxThreadState';
+
+// Feuille d'inscription de l'interrupteur des séquences allumé (lot 5f-2d) : chargée à l'ouverture,
+// elle reste hors du lot de la messagerie.
+const InboxContactSheet = lazy(() =>
+  import('./inbox/InboxContactSheet').then((m) => ({ default: m.InboxContactSheet })),
+);
 
 /** Valeur de « Sans mission » dans le choix de mission (une option ne peut pas valoir ''). */
 const NO_MISSION = '__none__';
@@ -131,6 +138,10 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
 
   // Brouillons en cours, signalés dans la liste (revue design D-10)
   const drafts = useChatDrafts();
+
+  // Interrupteur des séquences : allumé, « Inscrire dans une séquence » ouvre la feuille du flux
+  // d'inscription ; éteint (secours jusqu'au lot 5j), l'ancien dialogue puis SequenceEnrollModal.
+  const sequencesV2 = useSequencesBeta();
 
   const candidateProfile = getCurrentCandidateProfile(inbox.selectedChat);
 
@@ -348,124 +359,145 @@ const MessagesInboxInner: React.FC<MessagesInboxProps & { multichannel: ReturnTy
         </div>
       </div>
 
-      {/*
-        Choix de la séquence, sur le dialogue partagé (focus, Échap, titre
-        annoncé ; constat UX07). Il s'ouvre depuis l'en-tête de la conversation
-        (revue design D-02) et ne fait que choisir : l'inscription se confirme
-        dans la préparation.
-      */}
-      <Dialog open={inbox.showSequenceSelect} onOpenChange={inbox.setShowSequenceSelect}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Choisir une séquence</DialogTitle>
-            <DialogDescription>
-              {candidateProfile?.name
-                ? `Vous verrez les messages et les avertissements avant d'inscrire ${candidateProfile.name}.`
-                : "Vous verrez les messages et les avertissements avant d'inscrire le candidat."}
-            </DialogDescription>
-          </DialogHeader>
-          {/* Mission de rattachement : contexte donné à l'IA et suivi dans le
-              pipeline de la mission. « Sans mission » ne bloque rien. */}
-          <div className="space-y-1.5">
-            <Label htmlFor="inbox-enroll-mission">Mission</Label>
-            <Select
-              value={selectedMissionId || NO_MISSION}
-              onValueChange={(value) => setSelectedMissionId(value === NO_MISSION ? '' : value)}
-            >
-              <SelectTrigger id="inbox-enroll-mission" className="max-md:h-11">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_MISSION}>Sans mission</SelectItem>
-                {inbox.activeMissions.map((mission) => (
-                  <SelectItem key={mission.id} value={mission.id}>{mission.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {inbox.sequencesStatus === 'error' ? (
-            <ErrorState
-              variant="compact"
-              title="Impossible de charger les séquences."
-              description="Vérifiez votre connexion, puis réessayez."
-              action={
-                <Button variant="primary" size="sm" onClick={() => void inbox.fetchSequences()}>
-                  <RefreshCw aria-hidden="true" />
-                  Réessayer
-                </Button>
-              }
+      {sequencesV2 ? (
+        inbox.showSequenceSelect && (
+          <Suspense fallback={null}>
+            <InboxContactSheet
+              open={inbox.showSequenceSelect}
+              onOpenChange={inbox.setShowSequenceSelect}
+              chat={inbox.selectedChat}
+              accountId={selectedAccount}
+              missions={inbox.activeMissions}
+              missionId={selectedMissionId}
+              onMissionChange={setSelectedMissionId}
+              onEnrolled={() => {
+                inbox.fetchEnrollments();
+              }}
             />
-          ) : inbox.sequences.length === 0 && inbox.sequencesStatus !== 'ready' ? (
-            <div className="flex justify-center py-6">
-              <Spinner label="Chargement des séquences" />
-            </div>
-          ) : inbox.sequences.length === 0 ? (
-            <EmptyState
-              variant="compact"
-              icon={GitBranch}
-              title="Aucune séquence active"
-              description="Les séquences se créent et s'activent depuis l'onglet Outreach d'une mission."
-              action={
-                <Button variant="outline" size="sm" asChild>
-                  <Link to="/missions" onClick={() => inbox.setShowSequenceSelect(false)}>
-                    Voir les missions
-                  </Link>
-                </Button>
-              }
-            />
-          ) : (
-            <ul className="max-h-72 space-y-2 overflow-y-auto" aria-label="Séquences actives">
-              {inbox.sequences.map((sequence) => {
-                const channels = sequenceChannels(sequence.steps);
-                return (
-                  <li key={sequence.id}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => handleChooseSequence(sequence)}
-                      className="h-auto w-full justify-start gap-3 whitespace-normal rounded-xl border border-border p-3 text-left font-normal hover:border-foreground"
-                    >
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground">
-                        <GitBranch aria-hidden="true" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-foreground">{sequence.name}</span>
-                        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                          {plural(sequence.stepCount, 'étape')}
-                          {channels.map((channel) => (
-                            <ChannelIcon key={channel} channel={channel} size="sm" />
-                          ))}
-                        </span>
-                      </span>
-                      <ChevronRight aria-hidden="true" />
+          </Suspense>
+        )
+      ) : (
+        <>
+          {/*
+            Choix de la séquence, sur le dialogue partagé (focus, Échap, titre
+            annoncé ; constat UX07). Il s'ouvre depuis l'en-tête de la conversation
+            (revue design D-02) et ne fait que choisir : l'inscription se confirme
+            dans la préparation.
+          */}
+          <Dialog open={inbox.showSequenceSelect} onOpenChange={inbox.setShowSequenceSelect}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Choisir une séquence</DialogTitle>
+                <DialogDescription>
+                  {candidateProfile?.name
+                    ? `Vous verrez les messages et les avertissements avant d'inscrire ${candidateProfile.name}.`
+                    : "Vous verrez les messages et les avertissements avant d'inscrire le candidat."}
+                </DialogDescription>
+              </DialogHeader>
+              {/* Mission de rattachement : contexte donné à l'IA et suivi dans le
+                  pipeline de la mission. « Sans mission » ne bloque rien. */}
+              <div className="space-y-1.5">
+                <Label htmlFor="inbox-enroll-mission">Mission</Label>
+                <Select
+                  value={selectedMissionId || NO_MISSION}
+                  onValueChange={(value) => setSelectedMissionId(value === NO_MISSION ? '' : value)}
+                >
+                  <SelectTrigger id="inbox-enroll-mission" className="max-md:h-11">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_MISSION}>Sans mission</SelectItem>
+                    {inbox.activeMissions.map((mission) => (
+                      <SelectItem key={mission.id} value={mission.id}>{mission.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {inbox.sequencesStatus === 'error' ? (
+                <ErrorState
+                  variant="compact"
+                  title="Impossible de charger les séquences."
+                  description="Vérifiez votre connexion, puis réessayez."
+                  action={
+                    <Button variant="primary" size="sm" onClick={() => void inbox.fetchSequences()}>
+                      <RefreshCw aria-hidden="true" />
+                      Réessayer
                     </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </DialogContent>
-      </Dialog>
+                  }
+                />
+              ) : inbox.sequences.length === 0 && inbox.sequencesStatus !== 'ready' ? (
+                <div className="flex justify-center py-6">
+                  <Spinner label="Chargement des séquences" />
+                </div>
+              ) : inbox.sequences.length === 0 ? (
+                <EmptyState
+                  variant="compact"
+                  icon={GitBranch}
+                  title="Aucune séquence active"
+                  description="Les séquences se créent et s'activent depuis l'onglet Outreach d'une mission."
+                  action={
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to="/missions" onClick={() => inbox.setShowSequenceSelect(false)}>
+                        Voir les missions
+                      </Link>
+                    </Button>
+                  }
+                />
+              ) : (
+                <ul className="max-h-72 space-y-2 overflow-y-auto" aria-label="Séquences actives">
+                  {inbox.sequences.map((sequence) => {
+                    const channels = sequenceChannels(sequence.steps);
+                    return (
+                      <li key={sequence.id}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => handleChooseSequence(sequence)}
+                          className="h-auto w-full justify-start gap-3 whitespace-normal rounded-xl border border-border p-3 text-left font-normal hover:border-foreground"
+                        >
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-muted text-foreground">
+                            <GitBranch aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-foreground">{sequence.name}</span>
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                              {plural(sequence.stepCount, 'étape')}
+                              {channels.map((channel) => (
+                                <ChannelIcon key={channel} channel={channel} size="sm" />
+                              ))}
+                            </span>
+                          </span>
+                          <ChevronRight aria-hidden="true" />
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </DialogContent>
+          </Dialog>
 
-      {/*
-        Préparation avant engagement, la même que depuis le sourcing : candidat,
-        messages, contacts récents et avertissements de compatibilité, puis
-        confirmation explicite.
-      */}
-      {pendingSequence && enrollProfile && selectedAccount && (
-        <SequenceEnrollModal
-          isOpen
-          onClose={() => setPendingSequence(null)}
-          sequence={pendingSequence}
-          profiles={[enrollProfile]}
-          accountId={selectedAccount}
-          job={selectedMission ? { id: selectedMission.id, title: selectedMission.name } : null}
-          notice={enrollNotice}
-          onSuccess={() => {
-            setPendingSequence(null);
-            inbox.fetchEnrollments();
-          }}
-        />
+          {/*
+            Préparation avant engagement, la même que depuis le sourcing : candidat,
+            messages, contacts récents et avertissements de compatibilité, puis
+            confirmation explicite.
+          */}
+          {pendingSequence && enrollProfile && selectedAccount && (
+            <SequenceEnrollModal
+              isOpen
+              onClose={() => setPendingSequence(null)}
+              sequence={pendingSequence}
+              profiles={[enrollProfile]}
+              accountId={selectedAccount}
+              job={selectedMission ? { id: selectedMission.id, title: selectedMission.name } : null}
+              notice={enrollNotice}
+              onSuccess={() => {
+                setPendingSequence(null);
+                inbox.fetchEnrollments();
+              }}
+            />
+          )}
+        </>
       )}
 
       {inbox.showPipelineModal && candidateProfile && (

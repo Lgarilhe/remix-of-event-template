@@ -32,6 +32,18 @@ Un entry par décision, spec, insight, ou action majeure. Ajouté en fin de chaq
 
 ---
 
+## 2026-10-13 — SHIP — Lot 5f-2d : les autres entrées de ContactFlow
+
+**Contexte** : fin du lot 5f-2, après le panneau Contacter du Pipeline (5f-2c). Contrat : `docs/refonte-mission/lot5f2d-conception.md`.
+**Fait** : interrupteur des séquences allumé, le même flux d'inscription sert le bouton « Séquence » de la recherche et des fiches (Sourcing de la mission, cartes, fiches, ancienne page, recherche autonome) dans une feuille latérale, « Inscrire dans une séquence » de la messagerie (feuille avec le choix de la mission), le lien « Inscrire des candidats » de la page séquence (Pipeline avec la séquence demandée proposée d'avance) et « Contacter les N » de la carte Maintenant (panneau ouvert sur les retenus). « Présélectionner sans message » devient « Retenir sans contacter » sous l'interrupteur. Seuls les inscrits quittent la sélection du Sourcing (avant : toute la sélection). Interrupteur éteint : ancien parcours, inchangé, retrait au lot 5j.
+**Relecture indépendante** (35 agents, cinq angles, chaque constat contesté par un sceptique) : 26 constats confirmés dont des doublons, aucun bloquant, tous corrigés. Les plus utiles : la feuille du Sourcing disparaissait après « Retenir sans contacter » (l'hôte démonte le bouton quand les statuts changent), un fichier de chargement périmé après un déploiement faisait tomber l'écran du Sourcing, le paramètre `sequence` survivait à la fermeture du panneau, la phrase « séquence demandée indisponible » pouvait s'afficher sur une liste en cache périmée, les clics et gestes de la feuille remontaient jusqu'à la carte et à la fiche.
+**Visible pour tous au merge** : oui (interrupteur allumé par défaut). Aucune migration, aucune fonction serveur.
+**QA** : TypeScript 11 erreurs (base), ESLint égal à `main`, cliquet design égal à `main`, `test:c1` 743, `test:agent` 441 (1 ignoré), `test:ux` 2780 sur 2782 (les 2 rouges de `main`), build OK. Nouveaux tests `tests/ux/lot5f2d-*.test.mjs` joués par la CI (job Node 22). E2E locale : `seq-v2-entrees-sourcing`, `seq-v2-entrees-sequence`, `seq-v2-entrees-messagerie`, `mission-now`, `seq-v2-suivi` et les specs voisines (`seq-v2-contacter`, `seq-retenu`, `seq-v2-contactes`, `seq-v2-invitations`, `seq-last-enroll-batch`, `seq-ai-review`).
+**Impact** : `src/components/sequences/contact/` (`ContactFlowSheet`, `flowCandidates`, `ContactFlow`, `SequencePicker`, `RecipientGroups`, `useContactSequences`, `types`), `SequenceEnrollButton`, `LinkedInSearch`, `ProfileDetailSheet`, `EnrollmentPreviewModal`, `MessagesInbox` et `inbox/InboxContactSheet`, `SequenceDetailPage`, `sequencesBeta`, `PipelineScreen`, `ContactPanel`, tests, CI, `CLAUDE.md`, plan.
+**Limites connues** : les cartes de résultats ne rafraîchissent pas leur badge « En séquence » après une inscription ; le profil de la messagerie reste mince ; un profil réhydraté du Sourcing garde la distance de réseau d'un ancien instantané ; la lecture des séquences de la messagerie reste faite sous l'interrupteur allumé ; `SequencesList` inchangé.
+**Reste à faire** : `[ ]` pousser sur `main` (feu vert explicite attendu) ; `[ ]` lot 5g puis retrait de l'ancien flux au lot 5j.
+**Refs** : branche `claude/repository-audit-pcgg0y`, `docs/refonte-mission/lot5-plan.md` section 5f-2.
+
 ## 2026-10-13 — BUG — Fiche candidat commune depuis la messagerie
 
 **Contexte** : la messagerie ouvrait une mini-fiche LinkedIn distincte du dossier disponible dans le pipeline et les missions.

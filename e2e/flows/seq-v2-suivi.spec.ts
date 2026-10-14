@@ -516,7 +516,9 @@ test.describe('Séquences v2 — page d’une séquence (lot 5c-2)', () => {
     await expect(page).not.toHaveURL(/sequences-v2/);
     // Inscrits : onglet Candidats par défaut ; un seul bouton plein.
     await expect(page.getByRole('tab', { name: /Candidats/ })).toHaveAttribute('data-state', 'active');
-    await expect(page.getByRole('link', { name: 'Inscrire des candidats' })).toHaveAttribute('href', `/missions/${missionId}?tab=pipeline`);
+    // Lot 5f-2d : le Pipeline de la mission, avec cette séquence proposée d'avance (paramètre local `sequence`).
+    // `tab=pipeline` sert aussi l'ancienne page mission (onglet Pipeline) ; la nouvelle page le retire en arrivant.
+    await expect(page.getByRole('link', { name: 'Inscrire des candidats' })).toHaveAttribute('href', `/missions/${missionId}?tab=pipeline&sequence=${seeded.sequenceId}`);
     await expect(page.getByText(/Depuis le compte LinkedIn de la personne qui inscrit/)).toBeVisible();
 
     // Puces : nombres de toute la séquence, aucune puce à zéro (« En pause » absente).
