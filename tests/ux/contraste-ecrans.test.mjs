@@ -87,9 +87,11 @@ test('barre latérale : icônes de la rangée basse et des têtes de ligne à la
   const row = read('src/components/sidebar/SidebarRow.tsx');
   assert.match(row, /items-center justify-center text-sidebar-foreground \[&>svg\]:h-4 \[&>svg\]:w-4/);
   const bottom = read('src/components/sidebar/SidebarBottomRow.tsx');
-  assert.match(bottom, /'relative inline-flex items-center justify-center rounded-md text-sidebar-foreground outline-none/);
-  assert.match(bottom, /active && 'bg-sidebar-accent text-sidebar-accent-foreground'/);
-  assert.match(bottom, /'tabular-nums text-muted-foreground'/, 'le compteur des tâches en retard reste gris');
+  assert.match(bottom, /'relative shrink-0 text-sidebar-foreground'/);
+  assert.match(bottom, /moreActive && 'bg-sidebar-accent'/);
+  const inbox = read('src/components/sidebar/InboxNavigationLink.tsx');
+  assert.match(inbox, /bg-sidebar-accent text-sidebar-accent-foreground/);
+  assert.match(bottom, /text-2xs tabular-nums text-muted-foreground/,  'le compteur des tâches en retard reste gris');
 });
 
 test('rétrogradations : contour aux actions qui font avancer, discret pour l\'entretien et les retraits', () => {
