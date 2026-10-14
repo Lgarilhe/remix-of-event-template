@@ -17,7 +17,7 @@ const draft = { title: 'Développeur React', location: 'Lyon', skills_must_have:
 const project = { id: 'mission-a', name: 'Mission React', kind: 'mission', status: 'active', organization_id: 'org-a', created_by: 'user-a', updated_at: '2026-10-13T09:00:00Z', job_details: draft, filters_snapshot: {} };
 let html: string;
 test.beforeAll(async () => { html = await sourcingReturnHarnessHtml('guided.tsx'); });
-async function open(page: Page, options: { linked?: boolean; base?: boolean; plan?: boolean; mission?: boolean; failedTurn?: boolean; failFirstTurn?: boolean; delay?: number } = {}) {
+async function open(page: Page, options: { linked?: boolean; base?: boolean; plan?: boolean; mission?: boolean; searchEntry?: boolean; deniedBase?: boolean; failedTurn?: boolean; failFirstTurn?: boolean; delay?: number } = {}) {
   const calls: Call[] = [], errors: string[] = [], external: string[] = [];
   page.on('pageerror', err => errors.push(err.message));
   await page.addInitScript(({ project, linked, base, plan }) => {
@@ -36,6 +36,7 @@ async function open(page: Page, options: { linked?: boolean; base?: boolean; pla
     calls.push({ name, body });
     if (options.delay && name === 'sourcing-interview') await new Promise(resolve => setTimeout(resolve, options.delay));
     if (name === 'sourcing-interview' && (options.failedTurn || options.failFirstTurn && calls.filter(call => call.name === name).length === 1)) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Serveur indisponible. Réessayez.' }) });
+    if (options.deniedBase && name === 'coresignal-search') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'La Base Konekt n’est pas accessible pour le moment. Contactez l’assistance pour rétablir l’accès, ou utilisez LinkedIn si votre compte est relié.', errorType: 'PROVIDER_ACCESS_DENIED', retryable: false }) });
     let data: Record<string, unknown> = { success: true };
     if (name === 'ai-credits') data = { success: true, has_credits: true, estimated_credits: 1, remaining: 1000 };
     if (name === 'sourcing-interview') data = { success: true, reply: 'React et Lyon sont notés. Souhaitez-vous modifier leur importance ?', patch: draft };
@@ -46,7 +47,7 @@ async function open(page: Page, options: { linked?: boolean; base?: boolean; pla
     if (name === 'coresignal-search' && body.action === 'collect') data = { success: true, profile: { id: body.id, name: 'Camille 1', headline: 'Développeur React', location: 'Lyon', source: 'database', summary: 'Création d’applications B2B', skills: ['React'], work_experience: [{ role: 'Développeur React', company: 'Produit QA', description: 'Produit B2B', start: '2018-01-01', current: true }] } };
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
   });
-  await page.goto('/guided-sourcing-fixture' + (options.mission ? '?mission=1' : ''));
+  await page.goto('/guided-sourcing-fixture' + (options.mission ? '?mission=1' : options.searchEntry ? '?entry=searches' : ''));
   return { calls, errors, external, searches: () => calls.filter(c => c.body.action === 'preview' || c.body.action === 'search') };
 }
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Assistant · Sourcing', exact: true });
@@ -292,4 +293,91 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
   }
 }
 
+});
+
+
+test.describe('Entrée sourcing et accès Base @critical', () => {
+  test('Mes recherches : exemples, assistant avant création, annulation garde le prompt', async ({ page }) => {
+    const audit = await open(page, { searchEntry: true });
+    await expect(page.getByRole('heading', { name: 'Qui cherchez-vous ?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Head of Sales fintech série B, Paris, a scalé une équipe', exact: true }).click();
+    const prompt = page.getByRole('textbox', { name: 'Décrivez le profil recherché' });
+    await expect(prompt).toHaveValue('Head of Sales fintech série B, Paris, a scalé une équipe');
+    await prompt.press('Enter');
+    await expect(dialog(page)).toBeVisible();
+    expect(await page.evaluate(() => Object.keys((window as FixtureWindow).qaProjects))).toEqual(['mission-a']);
+    expect(audit.searches()).toHaveLength(0);
+    await expect(confirm(page)).toBeEnabled();
+    await dialog(page).getByRole('button', { name: 'Fermer l’assistant', exact: true }).click();
+    await dialog(page).getByRole('button', { name: 'Quitter sans enregistrer', exact: true }).click();
+    await expect(dialog(page)).toBeHidden();
+    await expect(prompt).toHaveValue('Head of Sales fintech série B, Paris, a scalé une équipe');
+    await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
+    await expect(confirm(page)).toBeEnabled();
+    await confirm(page).click();
+    await expect(page.getByRole('button', { name: 'Camille 1', exact: true })).toBeVisible();
+    expect(audit.searches()).toHaveLength(1);
+    expect(audit.errors).toEqual([]);
+  });
+  test('Filtres manuels depuis Mes recherches : aucun cadrage IA ni appel fournisseur', async ({ page }) => {
+    const audit = await open(page, { searchEntry: true });
+    await page.getByRole('button', { name: 'configurer les filtres manuellement', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: /Filtres/ })).toBeVisible();
+    expect(audit.calls.filter(c => c.name === 'sourcing-interview' || c.name === 'generate-search-filters')).toHaveLength(0);
+    expect(audit.searches()).toHaveLength(0);
+    expect(audit.errors).toEqual([]);
+  });
+  test('Accès Base refusé : explication, pas de reprise automatique et LinkedIn utilisable', async ({ page }) => {
+    const audit = await open(page, { mission: true, linked: true, deniedBase: true });
+    await page.getByRole('button', { name: 'Base Konekt', exact: true }).click();
+    await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
+    await confirm(page).click();
+    await expect(page.getByText(/Contactez l’assistance pour rétablir l’accès/)).toBeVisible();
+    expect(audit.searches()).toHaveLength(1);
+    expect(audit.searches()[0].name).toBe('coresignal-search');
+    await page.getByRole('button', { name: 'LinkedIn', exact: true }).click();
+    await page.getByRole('button', { name: 'Préparer la recherche', exact: true }).click();
+    await confirm(page).click();
+    await expect(page.getByRole('button', { name: 'Camille 1', exact: true })).toBeVisible();
+    expect(audit.searches()).toHaveLength(2);
+    expect(audit.searches()[1].name).toBe('unipile-search');
+    expect(audit.errors).toEqual([]);
+  });
+});
+
+for (const entry of ['accueil', 'recherches'] as const) for (const width of [1440, 390, 320]) {
+  test(`Entrée ${entry} ${width}px : prompt, exemples, filtres, clavier et accessibilité @critical`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const audit = await open(page, { searchEntry: entry === 'recherches' });
+    const prompt = page.getByRole('textbox', { name: entry === 'accueil' ? 'Profil à rechercher depuis l’accueil' : 'Décrivez le profil recherché' });
+    await expect(prompt).toBeVisible();
+    await page.keyboard.press('/');
+    await expect(prompt).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Préparer la recherche', exact: true })).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'configurer les filtres manuellement', exact: true })).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(accessibility.violations).toEqual([]);
+    if (width < 500) {
+      const targets = await page.getByRole('button').evaluateAll(buttons => buttons.filter(b => /Préparer la recherche|configurer les filtres|Head of Sales/.test(b.textContent ?? '')).map(b => b.getBoundingClientRect().height));
+      expect(targets.every(height => height >= 44)).toBe(true);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`entree-${entry}-${width}.png`), fullPage: true });
+    expect(audit.searches()).toHaveLength(0);
+    expect(audit.errors).toEqual([]);
+  });
+}
+
+for (const mission of [false, true]) test(`Filtres manuels accueil ${mission ? 'mission existante' : 'nouvelle recherche'} @critical`, async ({ page }) => {
+  const audit = await open(page);
+  if (mission) {
+    await page.getByRole('combobox', { name: 'Contexte de la recherche' }).click();
+    await page.getByRole('option', { name: 'Mission React', exact: true }).click();
+  }
+  await page.getByRole('button', { name: 'configurer les filtres manuellement', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: /Filtres/ })).toBeVisible();
+  expect(audit.calls.filter(c => c.name === 'sourcing-interview' || c.name === 'generate-search-filters')).toHaveLength(0);
+  expect(audit.searches()).toHaveLength(0);
+  expect(await page.evaluate(() => Object.keys((window as FixtureWindow).qaProjects))).toEqual(mission ? ['mission-a'] : ['mission-a', 'search-guided']);
+  expect(audit.errors).toEqual([]);
 });

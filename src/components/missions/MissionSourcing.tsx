@@ -29,15 +29,16 @@ interface MissionSourcingProps {
 }
 
 export const MissionSourcing = ({ project: serverProject, layout = 'default', initialPhrase, initialSource, startWithFilters }: MissionSourcingProps) => {
-  const [start] = useState({ phrase: initialPhrase, source: initialSource });
+  const location = useLocation();
+  const [start] = useState({ phrase: initialPhrase, source: initialSource,
+    filters: startWithFilters ?? !!(location.state as { filters?: boolean } | null)?.filters });
   const [launch, setLaunch] = useState<{ project: SourcingProject; source: SourcingSource; version: number } | null>(null);
   const project = launch?.project.id === serverProject.id && launch.project.updated_at > serverProject.updated_at ? launch.project : serverProject;
   const [dialog, setDialog] = useState<{ phrase: string; source: SourcingSource; project: SourcingProject } | null>(null);
   const { updateProject } = useSourcingProjects();
-  const location = useLocation();
   const navigate = useNavigate();
   useEffect(() => {
-    if (start.phrase && location.state) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if ((start.phrase || start.filters) && location.state) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
     // Consume the explicit launch once; refreshing or returning never bills another search.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -173,7 +174,7 @@ export const MissionSourcing = ({ project: serverProject, layout = 'default', in
           searchSource={launch?.source ?? start.source ?? (accounts.length ? 'linkedin' : 'database')}
           onOpenSearchAgent={handleOpenSearchAgent}
           onPrepareSearch={isV3 ? (phrase, source) => setDialog({ phrase, source, project }) : undefined}
-          {...(isV3 ? { layout: 'mission-v3' as const, initialPhrase: launch ? 'Chercher selon le cadrage et les critères validés.' : start.phrase, startWithFilters } : {})}
+          {...(isV3 ? { layout: 'mission-v3' as const, initialPhrase: launch ? 'Chercher selon le cadrage et les critères validés.' : start.phrase, startWithFilters: !launch && start.filters } : {})}
         />
       </OutreachSearchProvider>
     </div>

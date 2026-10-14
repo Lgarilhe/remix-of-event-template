@@ -128,9 +128,12 @@ export async function resolveCoresignalCredentials(
   organizationId?: string | null,
   supabaseClient?: SupabaseClient
 ): Promise<CoresignalCredentials | null> {
+  const envKey = Deno.env.get("CORESIGNAL_API_KEY");
+  const fallback = envKey ? { apiKey: envKey } : null;
   if (organizationId) {
     const cached = cacheGet(coresignalCache, organizationId);
-    if (cached !== undefined) return cached;
+    // Le négatif ne concerne que la clé de l’organisation, jamais la clé globale.
+    if (cached !== undefined) return cached ?? fallback;
 
     try {
       const sb = supabaseClient ?? getServiceClient();
@@ -156,9 +159,7 @@ export async function resolveCoresignalCredentials(
     }
   }
 
-  const envKey = Deno.env.get("CORESIGNAL_API_KEY");
-  if (envKey) return { apiKey: envKey };
-  return null;
+  return fallback;
 }
 
 // ─── Anthropic ───────────────────────────────────────────────────────────────

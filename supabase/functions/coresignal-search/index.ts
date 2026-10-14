@@ -164,8 +164,11 @@ function mapCoresignalError(http: CoresignalHttp): Response {
   console.error(
     `[coresignal-search] upstream error status=${http.status} body=${JSON.stringify(http.body ?? null)?.slice(0, 300)}`,
   );
-  if (http.status === 401 || http.status === 403) {
-    return json(500, { success: false, error: "Accès Base Konekt refusé — vérifiez la clé configurée", errorType: "AUTH", retryable: false });
+  if (http.status === 403) {
+    return json(503, { success: false, error: "La Base Konekt n’est pas accessible pour le moment. Contactez l’assistance pour rétablir l’accès, ou utilisez LinkedIn si votre compte est relié.", errorType: "PROVIDER_ACCESS_DENIED", retryable: false });
+  }
+  if (http.status === 401) {
+    return json(503, { success: false, error: "La connexion à la Base Konekt doit être rétablie par l’assistance. Vous pouvez utiliser LinkedIn si votre compte est relié.", errorType: "PROVIDER_AUTH", retryable: false });
   }
   if (http.status === 402) {
     return json(402, { success: false, error: "Quota Base Konekt épuisé", errorType: "CREDITS", retryable: false });
