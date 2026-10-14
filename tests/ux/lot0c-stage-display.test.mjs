@@ -314,6 +314,8 @@ test('0c : useMissionStageCounts, clé stable, 30 s, retour sur l\'onglet, erreu
   assert.equal(opts.staleTime, 30_000);
   assert.equal(MISSION_STAGE_COUNTS_STALE_TIME, 30_000);
   assert.equal(opts.refetchOnWindowFocus, true);
+  assert.equal(opts.refetchInterval, undefined, 'pas de scrutation supplémentaire sans demande');
+  assert.equal(useMissionStageCounts(['a'], { refetchInterval: 30_000 }).refetchInterval, 30_000, 'la barre peut suivre les modifications serveur');
   assert.equal(useMissionStageCounts([]).enabled, false);
 
   const calls = [];

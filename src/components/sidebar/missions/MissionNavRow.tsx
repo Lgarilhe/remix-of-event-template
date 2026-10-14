@@ -1,7 +1,7 @@
 /**
  * Ligne mission de l'onglet Missions (§3.3).
  *
- * - repère personnel (icône ou point de couleur), nom, sous-titre client
+ * - point automatique selon l'étape la plus avancée du pipeline, nom, sous-titre client
  *   ou « Confiée par … », point neutre « nouveaux profils » ;
  * - clic sur le nom : dernière vue de la mission, sauf vue verrouillée (Vue
  *   d'ensemble et message de blocage, comme la page) ;
@@ -38,7 +38,8 @@ import {
 } from '@/lib/sidebarMissions';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
-import { MissionMarker } from '@/components/missions/MissionMarker';
+import { MissionPipelineDot } from './MissionPipelineDot';
+import type { MissionStageCounts } from '@/hooks/useMissionStageCounts';
 import { SIDEBAR_GHOST_CLASS } from '../sidebarButtonClass';
 
 export interface MissionNavRowProps {
@@ -58,6 +59,9 @@ export interface MissionNavRowProps {
   onTogglePin: (item: MissionNavItem, pinned: boolean) => void;
   /** Nouvelle page mission : cible par écran, sans verrou, sans chevron. Défaut : non. */
   beta?: boolean;
+  stageCounts?: MissionStageCounts;
+  pipelineLoading?: boolean;
+  pipelineStale?: boolean;
 }
 
 /** Classes ajoutées au Button du kit (taille icon-xs) : 44 px sur téléphone, 28 px sur ordinateur. */
@@ -75,6 +79,9 @@ export function MissionNavRow({
   canPinMore,
   onTogglePin,
   beta = false,
+  stageCounts,
+  pipelineLoading = false,
+  pipelineStale = false,
 }: MissionNavRowProps) {
   const closeMobile = useCloseMobileSidebar();
   const [expanded, setExpanded] = useState(false);
@@ -123,7 +130,7 @@ export function MissionNavRow({
   return (
     <li className="flex flex-col">
       <div className="group/mission flex items-center gap-0.5">
-        <MissionMarker missionId={item.id} name={item.name} size={24} editable />
+        <MissionPipelineDot name={item.name} counts={stageCounts} loading={pipelineLoading} stale={pipelineStale} />
         <Link
           to={target.path}
           onClick={handleOpen}

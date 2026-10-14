@@ -104,7 +104,10 @@ export const MISSION_STAGE_COUNTS_STALE_TIME = 30_000;
  * (absente = non rendue, jamais zéro) ; isError : lecture en échec, à afficher
  * comme telle.
  */
-export function useMissionStageCounts(projectIds: readonly (string | null | undefined)[]) {
+export function useMissionStageCounts(
+  projectIds: readonly (string | null | undefined)[],
+  options: { refetchInterval?: number | false } = {},
+) {
   const key = missionStageCountIds(projectIds).join(',');
   const ids = useMemo(() => (key ? key.split(',') : []), [key]);
 
@@ -119,5 +122,6 @@ export function useMissionStageCounts(projectIds: readonly (string | null | unde
     staleTime: MISSION_STAGE_COUNTS_STALE_TIME,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: true,
+    refetchInterval: options.refetchInterval,
   });
 }

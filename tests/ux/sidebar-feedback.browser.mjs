@@ -39,11 +39,18 @@ try {
       import { SidebarProvider } from '@/components/ui/sidebar';
       import { SidebarBottomRow } from '@/components/sidebar/SidebarBottomRow';
       import { MissionMarker } from '@/components/missions/MissionMarker';
+      import { MissionPipelineDot } from '@/components/sidebar/missions/MissionPipelineDot';
       import { AppHeader } from '@/components/AppHeader';
       const client = new QueryClient();
       function App() {
         const [collapsed, setCollapsed] = useState(false);
         const [user, setUser] = useState('user-a');
+        const [pipelineCounts, setPipelineCounts] = useState({ toSort: 8, retained: 0, contacted: 0, replied: 0, interviewing: 0, hired: 0, rejected: 0, unopened: 0 });
+        const [pipelineLoading, setPipelineLoading] = useState(false);
+        const [pipelineStale, setPipelineStale] = useState(false);
+        window.__setPipelineCounts = setPipelineCounts;
+        window.__setPipelineLoading = setPipelineLoading;
+        window.__setPipelineStale = setPipelineStale;
         window.__setCollapsed = setCollapsed;
         window.__switchUser = id => { window.__testUserId = id; setUser(id); };
         window.__setUnread = async count => { window.__unreadCount = count; await client.invalidateQueries({queryKey:['sidebar','unread-messages']}); };
@@ -56,6 +63,9 @@ try {
                 style={{display:'flex',alignItems:'center',gap:12,marginBottom:24}}>
                 <MissionMarker missionId="mission-go" name="Développeur Go confirmé" size={40} logoUrl="data:image/png;base64,broken" editable />
                 <span>Développeur Go confirmé</span>
+              </div>
+              <div data-testid="pipeline-dot" style={{marginBottom:24}}>
+                <MissionPipelineDot name="Développeur Go confirmé" counts={pipelineCounts} loading={pipelineLoading} stale={pipelineStale} />
               </div>
               <div data-testid="footer" style={{width:collapsed?48:272,maxWidth:'100%',padding:8,background:'hsl(var(--sidebar-background))',borderRadius:8}}>
                 <SidebarBottomRow collapsed={collapsed} overdueCount={12}
@@ -99,6 +109,35 @@ try {
   await page.evaluate(() => window.__setUnread(0));
   await expect(footer.getByRole('link', { name: 'Messagerie', exact: true })).not.toContainText('9+');
   await page.evaluate(() => window.__setUnread(3));
+
+  // The automatic dot follows current pipeline counts and exposes a read-only legend.
+  const pipeline = page.getByTestId('pipeline-dot');
+  await expect(pipeline.getByRole('button', { name: 'Pipeline de Développeur Go confirmé : À trier' })).toBeVisible();
+  await page.evaluate(() => window.__setPipelineCounts({ toSort: 80, interviewing: 1, hired: 0 }));
+  const pipelineButton = pipeline.getByRole('button', { name: 'Pipeline de Développeur Go confirmé : Entretiens' });
+  await expect(pipelineButton).toBeVisible();
+  await expect(pipelineButton.locator('span')).toHaveClass(/bg-mission-amber/);
+  await pipelineButton.focus();
+  await page.keyboard.press('Enter');
+  const legend = page.getByRole('dialog', { name: 'Avancement du pipeline' });
+  await expect(legend).toContainText('1 candidat dans cette étape.');
+  await expect(legend.getByRole('listitem')).toHaveCount(6);
+  await expect(legend.getByRole('button')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(legend).not.toBeVisible();
+  await expect(pipelineButton).toBeFocused();
+  await page.evaluate(() => window.__setPipelineCounts({ contacted: 2, interviewing: 0, hired: 0, everHired: 10 }));
+  await expect(pipeline.getByRole('button')).toHaveAccessibleName('Pipeline de Développeur Go confirmé : Contactés');
+  await expect(pipeline.getByRole('button').locator('span')).toHaveClass(/bg-mission-blue/);
+  await page.evaluate(() => window.__setPipelineStale(true));
+  await expect(pipeline.getByRole('button')).toHaveAccessibleName(/dernière valeur connue/);
+  await page.evaluate(() => { window.__setPipelineCounts(null); window.__setPipelineStale(false); });
+  await expect(pipeline.getByRole('button')).toHaveAccessibleName(/Avancement indisponible/);
+  await expect(pipeline.getByRole('button').locator('span')).toHaveClass(/bg-transparent/);
+  await page.evaluate(() => window.__setPipelineLoading(true));
+  await expect(pipeline.getByRole('button')).toHaveAccessibleName(/Chargement du pipeline/);
+  await page.evaluate(() => { window.__setPipelineCounts({ hired: 1 }); window.__setPipelineLoading(false); });
+  await expect(pipeline.getByRole('button').locator('span')).toHaveClass(/bg-mission-green/);
 
   // Every optional tool is reachable with its name, without crowding the footer.
   await footer.getByRole('button', { name: 'Plus, 12 tâches en retard' }).click();
@@ -154,6 +193,14 @@ try {
   for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }, { width: 667, height: 375 }]) {
     await page.setViewportSize(viewport);
     await expect(page.locator('header').getByRole('link', { name: 'Messagerie, 3 messages non lus' })).toBeVisible();
+    const dotTarget = await pipeline.getByRole('button').boundingBox();
+    if (dotTarget.width < 44 || dotTarget.height < 44) throw new Error('The pipeline dot needs a 44px mobile touch target');
+    await pipeline.getByRole('button').click();
+    const mobileLegend = page.getByRole('dialog', { name: 'Avancement du pipeline' });
+    await expect(mobileLegend).toBeVisible();
+    await expect(mobileLegend).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(mobileLegend).not.toBeVisible();
     await footer.getByRole('button').click();
     const menu = page.getByRole('menu');
     await expect(menu).toBeVisible();
@@ -176,7 +223,7 @@ try {
   await page.getByRole('button', { name: 'Turquoise', exact: true }).click();
   await page.keyboard.press('Escape');
   if (errors.length) throw new Error(errors.join('\n'));
-  console.log('PASS: unread badges, compact navigation, keyboard, personal markers, persistence, tab synchronization, mobile sizes and light theme.');
+  console.log('PASS: automatic pipeline dots and legend, unread badges, compact navigation, keyboard, personal markers, persistence, tab synchronization, mobile sizes and light theme.');
 } finally {
   await browser?.close();
   if (server) await new Promise(resolve => server.close(resolve));

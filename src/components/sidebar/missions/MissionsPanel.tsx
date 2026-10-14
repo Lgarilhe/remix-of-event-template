@@ -24,6 +24,7 @@ import { SidebarRow } from '@/components/sidebar/SidebarRow';
 import { MissionNavRow } from './MissionNavRow';
 import { NewMissionButton } from './NewMissionButton';
 import { AgentOrb } from '@/components/agent/AgentOrb';
+import { useMissionStageCounts, MISSION_STAGE_COUNTS_STALE_TIME } from '@/hooks/useMissionStageCounts';
 
 export function MissionsPanel() {
   const { pathname, search } = useLocation();
@@ -53,6 +54,12 @@ export function MissionsPanel() {
   const openItem: MissionNavItem | null =
     missions.open ??
     (fiche ? toMissionNavItem(fiche, null, !!organizationId && fiche.organization_id !== organizationId) : null);
+
+  // One batched read for all visible missions, including pinned and partner missions.
+  const stageCounts = useMissionStageCounts(
+    [openItem?.id, ...missions.pinned.map(item => item.id), ...missions.mine.map(item => item.id)],
+    { refetchInterval: MISSION_STAGE_COUNTS_STALE_TIME },
+  );
 
   // Référence des missions jamais relevées : { v: null, n }, sans point.
   // Clé primitive (identifiant et total) pour les dépendances de l'effet.
@@ -84,6 +91,9 @@ export function MissionsPanel() {
       canPinMore={canPinMore}
       onTogglePin={onTogglePin}
       beta={beta}
+      stageCounts={stageCounts.data?.[item.id]}
+      pipelineLoading={stageCounts.isPending}
+      pipelineStale={stageCounts.isError}
     />
   );
 
