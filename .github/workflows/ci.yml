@@ -312,6 +312,13 @@ jobs:
       # carte du niveau au seul propriétaire). Empaquette les modules avec esbuild.
       - name: Lot 5e-2 tests (style et niveau de l'IA, écrans)
         run: node --test tests/ux/lot5e2-style-niveau.test.mjs
+      # Fenêtre d'inscription en séquence (lisibilité du 14/10/2026, lots 5a et
+      # 5a-2) : candidat qui bloque « Inscrire » repérable, puces de canal,
+      # pastille des aperçus, un seul carrousel hors fourche, messages rédigés
+      # par l'IA générés dans l'ordre (hook exécuté avec un faux modèle), case
+      # des destinataires et relecture. Empaquette composants et hook avec esbuild.
+      - name: Fenêtre d'inscription en séquence
+        run: node --test tests/ux/fenetre-inscription.test.mjs tests/ux/lot5a-destinataires.test.mjs tests/ux/lot5a2-relecture-ia.test.mjs
       # Refonte mission, lot 5f-2b : onglet Contactés du panneau Prise de contact
       # (groupes, identités réunies, lectures sous la RLS) et pastille du bouton.
       # Dans ce job, sous Node 22 : le module pur est lu nativement, sous Node 20

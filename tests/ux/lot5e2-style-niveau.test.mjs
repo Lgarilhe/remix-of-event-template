@@ -357,21 +357,29 @@ test('« Demander à l’IA » : style et niveau de l’éditeur ouvert, jamais 
 
 // ─── Corrections après relecture (06/10) ────────────────────────────────
 
-test('préparation, Récapitulatif : la même ligne « Rédaction par l’IA » et le niveau nommé à côté des coûts', () => {
+test('préparation, Résumé : la même bande « Rédaction par l’IA » et le niveau nommé à côté du coût', () => {
   const prep = codeOf('src/components/outreach/EnrollmentPreviewModal.tsx');
-  // Une seule ligne, rendue dans les aperçus et dans le Récapitulatif (ouvert par défaut au-delà de 10 candidats).
+  // Une seule ligne, rendue dans une seule bande (fenêtre d'inscription, 14/10/2026) : la ligne, puis
+  // « Générer tous les aperçus » et son coût, dans les aperçus et dans le Résumé (ouvert par défaut au-delà de 10 candidats).
   assert.equal([...prep.matchAll(/<WritingSettingsLine/g)].length, 1, 'une seule définition de la ligne');
-  assert.match(prep, /\{renderWritingLine\('shrink-0 border-b border-border px-4 py-2\.5 sm:px-6'\)\}/);
-  assert.match(prep, /writingLine=\{renderWritingLine\('rounded-xl border border-border px-3 py-2\.5'\)\}/);
+  assert.equal([...prep.matchAll(/renderWritingLine\(/g)].length, 1, 'rendue par la bande seulement');
+  assert.match(prep, /\{renderGenerationBand\('shrink-0 border-b border-border px-4 py-2\.5 sm:px-6', !isSingle\)\}/);
+  assert.match(prep, /generationBand=\{renderGenerationBand\('rounded-xl border border-border px-3 py-2\.5', true\)\}/);
   const summary = prep.slice(prep.indexOf('function SummaryMode('), prep.indexOf('function SummaryRow('));
-  assert.ok(summary.indexOf('{writingLine}') >= 0 && summary.indexOf('{writingLine}') < summary.indexOf('Coût estimé de la personnalisation par l'), 'ligne avant le coût');
-  // Avant les aperçus du Récapitulatif et leurs « Générer l'aperçu ».
-  assert.ok(summary.indexOf('{writingLine}') < summary.indexOf('title="Aperçu du premier message"'), 'ligne avant le premier « Générer l’aperçu »');
-  assert.ok(summary.indexOf('{writingLine}') < summary.indexOf('title="Messages rédigés par l\'IA"'), 'ligne avant les messages rédigés par l’IA');
-  assert.match(summary, /\{creditsLabel\(estimatedCredits\)\}<\/strong>\n\s*\{estimatedCredits > 0 \? levelSuffix : ''\}\./);
+  // Avant les messages du Résumé.
+  assert.ok(summary.indexOf('{generationBand}') >= 0, 'bande dans le Résumé');
+  assert.ok(summary.indexOf('{generationBand}') < summary.indexOf('title="Aperçu du premier message"'), 'bande avant le premier message');
+  assert.ok(summary.indexOf('{generationBand}') < summary.indexOf('title="Messages rédigés par l\'IA"'), 'bande avant les messages rédigés par l’IA');
+  // Un seul coût total : celui de ce qui reste à générer, au niveau choisi (plus de « Coût estimé » qui ne retirait rien).
+  assert.doesNotMatch(prep, /Coût estimé de la personnalisation par l/);
+  assert.doesNotMatch(summary, /estimatedCredits|levelSuffix/);
   assert.match(prep, /const levelSuffix = writing \? ` en \$\{AI_LEVEL_LABELS\[writing\.level\]\}` : '';/);
-  // Pied : « Générer tous les aperçus · environ 10 crédits en Équilibré ».
-  assert.match(prep, /\{creditsLabel\(bulkMissingAi \* creditsPerMessage\)\}\{bulkMissingAi > 0 \? levelSuffix : ''\}/);
+  // Bande : « Générer tous les aperçus · environ 10 crédits en Équilibré » ; un seul candidat, sa barre :
+  // « Générer les 2 aperçus · environ 10 crédits en Équilibré ». Chaque total nomme le niveau, une seule fois par onglet.
+  assert.equal([...prep.matchAll(/\{creditsLabel\(bulkMissingAi \* creditsPerMessage\)\}\{bulkMissingAi > 0 \? levelSuffix : ''\}/g)].length, 1);
+  const bar = prep.slice(prep.indexOf('function CandidatePreviewsBar('), prep.indexOf('function MessageStepCard('));
+  assert.match(bar, /\{creditsLabel\(missingAi \* creditsPerMessage\)\}\{levelSuffix\}/);
+  assert.match(prep, /<CandidatePreviewsBar[\s\S]*?levelSuffix=\{levelSuffix\}/);
 });
 
 test('« Demander à l’IA » › Réglages : focus rendu au bouton, fenêtre et groupe nommés, coûts « par retouche »', () => {

@@ -255,6 +255,46 @@ function isSentReachStep(step: SequenceStepPreview): boolean {
   return MESSAGE_ACTION_TYPES.includes(step.actionType) && !isClosedChannelStep(step.actionType);
 }
 
+/**
+ * Étapes déjà parties quand `step` part, dans l'ordre : l'historique simulé
+ * donné à l'IA (prevSentSteps). Étapes de contact d'avant, sur sa branche
+ * (séquence à embranchements : l'autre chemin n'est jamais parti pour ce
+ * candidat). InMail de repli (dernier InMail après une attente
+ * d'acceptation) : la connexion n'a pas été acceptée, les messages « si
+ * accepté » ne sont jamais partis, seules les étapes d'avant l'attente comptent.
+ */
+export function sentHistoryOf(steps: readonly SequenceStepPreview[], step: SequenceStepPreview): SequenceStepPreview[] {
+  const isLastInmail = step.actionType === 'inmail'
+    && !steps.some(s => s.actionType === 'inmail' && s.stepOrder > step.stepOrder);
+  const waitConnectionBefore = steps.find(s => s.actionType === 'wait_connection' && s.stepOrder < step.stepOrder);
+  const upperBound = isLastInmail && waitConnectionBefore ? waitConnectionBefore.stepOrder : step.stepOrder;
+  const otherBranch = otherBranchStepIds(steps, step.stepId);
+  return steps
+    .filter(s => s.stepOrder < upperBound && isSentReachStep(s) && !otherBranch.has(s.stepId))
+    .sort((a, b) => a.stepOrder - b.stepOrder);
+}
+
+/**
+ * Messages rédigés par l'IA que `step` suppose déjà partis : ils se rédigent
+ * avant lui (fenêtre d'inscription, 14/10/2026), sinon l'IA écrirait une
+ * relance sans connaître le message qu'elle relance. Seules comptent les
+ * étapes dont le texte IA est exigé avant l'inscription (requiresAiReview) :
+ * une note d'invitation non générée part sur son modèle, que l'historique
+ * donne déjà.
+ */
+export function aiPredecessorsOf(steps: readonly SequenceStepPreview[], step: SequenceStepPreview): SequenceStepPreview[] {
+  return sentHistoryOf(steps, step).filter(requiresAiReview);
+}
+
+/**
+ * Étapes rédigées par l'IA dont l'historique contient `stepId` : écrites
+ * d'après son texte, elles sont à refaire quand il change (régénération).
+ */
+export function aiDependentsOf(steps: readonly SequenceStepPreview[], stepId: string): SequenceStepPreview[] {
+  return steps.filter(d => d.useAiPersonalization && hasMessage(d)
+    && sentHistoryOf(steps, d).some(s => s.stepId === stepId));
+}
+
 // ── Aperçus conservés pendant la session (revue design D-46) ──
 // Fermer la préparation ne jette plus les messages déjà générés (facturés) ni
 // les retouches : ils sont gardés en mémoire, par séquence, mission et compte
@@ -277,6 +317,11 @@ function stepSignature(step: SequenceStepPreview): string {
 
 function isWorthKeeping(msg: GeneratedMessage): boolean {
   return !msg.isGenerating && (msg.isGenerated || msg.isEdited);
+}
+
+/** Message prêt : généré ou retouché, pas en cours (un texte de secours après un échec ne l'est pas). */
+function isReadyMessage(msg: GeneratedMessage | undefined): boolean {
+  return !!msg && isWorthKeeping(msg);
 }
 
 function keepInSession(key: string | undefined, step: SequenceStepPreview | undefined, candidateId: string, msg: GeneratedMessage) {
@@ -701,43 +746,20 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
       // suivent (buildPrevSentSteps).
       if (!step.useAiPersonalization) continue;
 
+      // Fenêtre d'inscription (14/10/2026) : jamais une relance avant le
+      // message qu'elle relance. Un message IA d'avant, en échec, en cours
+      // ailleurs ou pas encore rédigé, laisse cette étape à générer : son
+      // texte de secours n'est jamais parti et ne sert pas d'historique.
+      if (aiPredecessorsOf(steps, step).some(p => !isReadyMessage(localPreviews.get(p.stepId)))) continue;
+
       setPreview(profile.id, step.stepId, { isGenerating: true, error: undefined });
 
-      // Détecte si ce step est l'InMail FALLBACK (= dernier inmail de la
-      // séquence + il y a un wait_connection avant lui). Dans ce cas, le
-      // candidat n'a accepté NI la connexion NI reçu de message direct
-      // (les messages dans le linéaire de la séquence appartiennent à la
-      // branche "si accepté" et n'ont jamais été envoyés).
-      // → prevSentSteps doit refléter la VRAIE histoire : seulement le
-      // connection_request (qui n'a pas été accepté).
-      const isLastInmail =
-        step.actionType === 'inmail' &&
-        !steps.some(s => s.actionType === 'inmail' && s.stepOrder > step.stepOrder);
-      const waitConnectionBefore = steps.find(s =>
-        s.actionType === 'wait_connection' && s.stepOrder < step.stepOrder
-      );
-      const isInmailFallback = isLastInmail && !!waitConnectionBefore;
-
-      // Construit prevSentSteps simulés pour ce step :
-      // - Cas normal : tous les steps "reach" linéairement avant
-      // - Cas InMail FALLBACK : SEULEMENT les steps avant le wait_connection
-      //   (= profile_visit + connection_request) car les messages "if accepted"
-      //   n'ont jamais été envoyés
-      const upperBound = isInmailFallback
-        ? waitConnectionBefore!.stepOrder
-        : step.stepOrder;
-      // Séquence à embranchements : les étapes de l'autre chemin ne sont
-      // jamais parties pour ce candidat.
-      const otherBranch = otherBranchStepIds(steps, step.stepId);
+      // Historique simulé (prevSentSteps) : étapes de sa branche déjà
+      // parties ; pour l'InMail de repli, seulement celles d'avant l'attente
+      // d'acceptation (sentHistoryOf).
       const prevSentSteps = await buildPrevSentSteps(
         profile,
-        steps
-          .filter(s =>
-            s.stepOrder < upperBound &&
-            isSentReachStep(s) &&
-            !otherBranch.has(s.stepId)
-          )
-          .sort((a, b) => a.stepOrder - b.stepOrder),
+        sentHistoryOf(steps, step),
         stepId => localPreviews.get(stepId),
       );
 
@@ -891,7 +913,9 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     await generateForCandidate(profile, { ignoreBulkAbort: true });
   }, [profiles, generateForCandidate]);
 
-  const regenerateStep = useCallback(async (candidateId: string, stepId: string) => {
+  // Rend 'previous_missing' sans rien générer quand un message IA que cette
+  // étape suppose parti n'est pas encore prêt (l'écran le dit).
+  const regenerateStep = useCallback(async (candidateId: string, stepId: string): Promise<'previous_missing' | undefined> => {
     const profile = profiles.find(p => p.id === candidateId);
     const step = messageSteps.find(s => s.stepId === stepId);
     if (!profile || !step) return;
@@ -901,6 +925,22 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
     if (!step.useAiPersonalization) {
       removePreview(candidateId, stepId);
       return;
+    }
+
+    // Fenêtre d'inscription (14/10/2026) : une relance ne se rédige qu'après
+    // le message qu'elle relance (« Générer les N aperçus » du candidat les
+    // prend dans l'ordre), jamais d'après un texte qui ne partira pas.
+    const candidatePreviews = previewsRef.current.get(candidateId);
+    if (aiPredecessorsOf(steps, step).some(p => !isReadyMessage(candidatePreviews?.get(p.stepId)))) {
+      return 'previous_missing';
+    }
+    // Les messages IA qui supposent celui-ci parti ont été rédigés d'après
+    // son ancien texte : ils repassent à générer (sans crédit débité tant
+    // qu'on ne les relance pas). Une retouche reste : c'est le texte de la
+    // personne.
+    for (const dependent of aiDependentsOf(steps, stepId)) {
+      const kept = candidatePreviews?.get(dependent.stepId);
+      if (kept && !kept.isEdited && !kept.isGenerating) removePreview(candidateId, dependent.stepId);
     }
 
     // Clear edited state to allow regeneration
@@ -955,31 +995,11 @@ export function useEnrollmentPreview({ steps, profiles, targetProfiles, job, acc
           premium: !!(profile as any).premium,
         };
 
-        // Idem qu'au-dessus : on simule prevSentSteps + détection
-        // InMail fallback (cas où la connexion n'a pas été acceptée,
-        // donc les messages de la branche "accepté" n'ont pas été
-        // envoyés en réalité — l'IA ne doit pas les inclure).
-        const isLastInmail =
-          step.actionType === 'inmail' &&
-          !steps.some(s => s.actionType === 'inmail' && s.stepOrder > step.stepOrder);
-        const waitConnectionBefore = steps.find(s =>
-          s.actionType === 'wait_connection' && s.stepOrder < step.stepOrder
-        );
-        const isInmailFallback = isLastInmail && !!waitConnectionBefore;
-        const upperBound = isInmailFallback
-          ? waitConnectionBefore!.stepOrder
-          : step.stepOrder;
-
-        const otherBranch = otherBranchStepIds(steps, step.stepId);
+        // Même historique simulé que la génération (sentHistoryOf : branche
+        // du candidat, InMail de repli sans les messages « si accepté »).
         const prevSentSteps = await buildPrevSentSteps(
           profile,
-          steps
-            .filter(s =>
-              s.stepOrder < upperBound &&
-              isSentReachStep(s) &&
-              !otherBranch.has(s.stepId)
-            )
-            .sort((a, b) => a.stepOrder - b.stepOrder),
+          sentHistoryOf(steps, step),
           stepId => previewsRef.current.get(candidateId)?.get(stepId),
         );
 

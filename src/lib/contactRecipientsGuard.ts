@@ -76,11 +76,17 @@ export function sendConfirmSignature(ids: readonly string[], aiReview: boolean, 
 }
 
 /**
- * « Générez et relisez les messages rédigés par l'IA avant d'inscrire : 3
- * candidats sur 5 n'en ont pas encore. » `missing` : candidats à inscrire
- * dont un message IA n'est pas encore généré ni écrit à la main.
+ * « Il manque des messages rédigés par l'IA à 3 candidats sur 5 : générez-les
+ * et relisez-les avant d'inscrire. » `missing` : candidats à inscrire à qui il
+ * manque au moins un message IA (ni généré ni écrit à la main) ; un candidat
+ * qui en a déjà une partie y est compté (fenêtre d'inscription, 14/10/2026).
+ * `missingMessages` : messages qui manquent, tous candidats confondus ; un
+ * seul, la phrase est au singulier (« un message… générez-le »). Accord écrit
+ * ici : le module reste sans import.
  */
-export function aiReviewMissingMessage(missing: number, total: number): string {
-  const many = missing > 1;
-  return `Générez et relisez les messages rédigés par l'IA avant d'inscrire : ${missing} candidat${many ? 's' : ''} sur ${total} n'en ${many ? 'ont' : 'a'} pas encore.`;
+export function aiReviewMissingMessage(missing: number, total: number, missingMessages: number): string {
+  const who = `${missing} candidat${missing > 1 ? 's' : ''} sur ${total}`;
+  return missingMessages === 1
+    ? `Il manque un message rédigé par l'IA à ${who} : générez-le et relisez-le avant d'inscrire.`
+    : `Il manque des messages rédigés par l'IA à ${who} : générez-les et relisez-les avant d'inscrire.`;
 }

@@ -3,6 +3,7 @@ import { LinkedInProfile } from '@/components/outreach/types';
 import { CandidateStatesMap } from './types';
 import { Check, MailX, PhoneOff, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { plural } from '@/lib/plural';
 
 interface Props {
   profiles: LinkedInProfile[];
@@ -17,19 +18,33 @@ interface Props {
   duplicateExcludedCount?: number;
   /** Exclus car incompatibles avec la séquence (détail du compteur). */
   incompatibleExcludedCount?: number;
-  /** Candidats qui seront inscrits dont tous les aperçus sont prêts. */
+  /**
+   * Candidats qui seront inscrits dont tous les aperçus sont prêts (étape
+   * écrite avec ses valeurs, étape IA générée ou retouchée). Une étape écrite
+   * n'est préparée que pour les candidats de l'écran : ce compte décrit les
+   * aperçus, pas ce qui bloque l'inscription (la phrase du pied le dit).
+   */
   readyCount: number;
+  /**
+   * La séquence a une étape e-mail, ou WhatsApp, qui part (canal ouvert, même
+   * filtre que le Résumé) : sans elle, un manque d'adresse ou de numéro ne
+   * change rien à l'envoi et n'est pas signalé.
+   */
+  emailStepOpen?: boolean;
+  whatsappStepOpen?: boolean;
 }
 
 /**
  * Bandeau de la préparation : combien de candidats seront inscrits, qui
- * manque d'un moyen de contact, où en sont les aperçus. Badges du kit, sans
+ * manque d'un moyen de contact utile à la séquence, pour combien de candidats
+ * les aperçus sont prêts. Badges du kit, sans
  * mouvement ni dégradé (revue design D-50) ; le coût est annoncé à côté du
  * bouton de génération, avant l'action. Masqué sur téléphone : l'en-tête, la
  * liste et le résumé y portent les mêmes informations.
  */
 export function DynamicSummaryBanner({
   profiles, states, activeProfiles, duplicateExcludedCount, incompatibleExcludedCount, readyCount,
+  emailStepOpen = false, whatsappStepOpen = false,
 }: Props) {
   const removed = profiles.filter(p => states.get(p.id)?.removed).length;
   const skipped = profiles.filter(p => !states.get(p.id)?.removed && states.get(p.id)?.skipped).length;
@@ -64,14 +79,14 @@ export function DynamicSummaryBanner({
         {details && <span className="font-normal">({details})</span>}
       </Badge>
 
-      {active > 0 && withoutEmail > 0 && (
+      {emailStepOpen && active > 0 && withoutEmail > 0 && (
         <Badge variant="warning" className="tabular-nums">
           <MailX className="h-3 w-3" aria-hidden="true" />
           {withoutEmail} sans e-mail
         </Badge>
       )}
 
-      {withoutPhone > 0 && (
+      {whatsappStepOpen && withoutPhone > 0 && (
         <Badge variant="warning" className="tabular-nums">
           <PhoneOff className="h-3 w-3" aria-hidden="true" />
           {withoutPhone} sans téléphone
@@ -80,7 +95,7 @@ export function DynamicSummaryBanner({
 
       <Badge variant={allReady ? 'success' : 'muted'} className="tabular-nums sm:ml-auto">
         {allReady && <Check className="h-3 w-3" aria-hidden="true" />}
-        Aperçus prêts : {readyCount} sur {active}
+        Aperçus prêts pour {plural(readyCount, 'candidat')} sur {active}
       </Badge>
     </div>
   );

@@ -2,7 +2,7 @@ import React, { useId, useMemo, useRef } from 'react';
 import { LinkedInProfile } from '@/components/outreach/types';
 import { CandidateState, computeYearsOfExperience, getChannelAvailability } from './types';
 import { cn } from '@/lib/utils';
-import { Check, ExternalLink, History, MailX, MoreHorizontal, PhoneOff, Pencil, SkipForward, BarChart3, X as XIcon } from 'lucide-react';
+import { AlertTriangle, Check, CircleDashed, ExternalLink, History, MailX, MoreHorizontal, PhoneOff, Pencil, SkipForward, BarChart3, X as XIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +22,18 @@ interface Props {
   isSelected: boolean;
   allGenerated: boolean;
   hasEdits: boolean;
+  /**
+   * Candidat à inscrire qui bloque « Inscrire » : un message rédigé par l'IA
+   * manque encore (`missing`) ou sa génération a échoué (`failed`). Écrit en
+   * toutes lettres, jamais par la couleur seule.
+   */
+  aiStatus?: 'missing' | 'failed' | null;
+  /**
+   * La séquence a une étape e-mail, ou WhatsApp, qui part (canal ouvert) :
+   * sans elle, le canal n'est pas montré sur la ligne (ni présent ni manquant).
+   */
+  emailStepOpen?: boolean;
+  whatsappStepOpen?: boolean;
   state: CandidateState;
   /** Candidat affiché mais exclu de l'inscription (déjà contacté, incompatible) : pastille et raison. */
   exclusion?: { label: string; title: string } | null;
@@ -43,7 +55,8 @@ interface Props {
  * reste listé, nom atténué, avec sa pastille et sa raison.
  */
 export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
-  profile, isSelected, allGenerated, hasEdits, state, exclusion, score, shortcutsHelpId,
+  profile, isSelected, allGenerated, hasEdits, aiStatus = null, emailStepOpen = false, whatsappStepOpen = false,
+  state, exclusion, score, shortcutsHelpId,
   onSelect, onRemove, onSkip, onViewScoring, onViewHistory,
 }: Props) {
   const yearsXP = useMemo(() => computeYearsOfExperience(profile), [profile]);
@@ -113,12 +126,22 @@ export const CandidateSidebarCard = React.memo(function CandidateSidebarCard({
             )}
 
             {/* Canaux : logo ou icône quand le candidat est joignable, le manque
-                écrit en toutes lettres (jamais la couleur ni l'opacité seules). */}
+                écrit en toutes lettres (jamais la couleur ni l'opacité seules).
+                E-mail et WhatsApp seulement si la séquence a une étape de ce
+                canal qui part. */}
             <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
               <ChannelAvailability available={channels.linkedin} channel="linkedin" />
-              <ChannelAvailability available={channels.email} channel="email" />
-              <ChannelAvailability available={channels.whatsapp} channel="whatsapp" />
-              {(allGenerated || hasEdits) && (
+              {emailStepOpen && <ChannelAvailability available={channels.email} channel="email" />}
+              {whatsappStepOpen && <ChannelAvailability available={channels.whatsapp} channel="whatsapp" />}
+              {/* Ce qui bloque « Inscrire » passe avant « Retouché ». */}
+              {aiStatus ? (
+                <span className="ml-auto inline-flex items-center gap-1 font-medium text-foreground">
+                  {aiStatus === 'failed'
+                    ? <AlertTriangle className="text-warning" aria-hidden="true" />
+                    : <CircleDashed aria-hidden="true" />}
+                  {aiStatus === 'failed' ? 'Génération en échec' : 'Message IA à générer'}
+                </span>
+              ) : (allGenerated || hasEdits) && (
                 <span className="ml-auto inline-flex items-center gap-1">
                   {hasEdits ? <Pencil aria-hidden="true" /> : <Check aria-hidden="true" />}
                   {hasEdits ? 'Retouché' : 'Aperçus prêts'}

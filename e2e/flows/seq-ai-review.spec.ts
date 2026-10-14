@@ -397,13 +397,18 @@ test.describe('Relire les messages avant l\'inscription', () => {
 
     const enroll = dialog.getByRole('button', { name: 'Inscrire 2 candidats' });
     const review = dialog.getByRole('checkbox', { name: AI_REVIEW_CHECKBOX });
-    const missingNotice = (missing: string) =>
-      dialog.getByText(`Générez et relisez les messages rédigés par l'IA avant d'inscrire : ${missing}`, { exact: true });
+    // La phrase s'accorde au nombre de messages qui manquent (un seul : « un message… générez-le »).
+    const missingNotice = (missing: string, oneMessage = false) => dialog.getByText(oneMessage
+      ? `Il manque un message rédigé par l'IA à ${missing} : générez-le et relisez-le avant d'inscrire.`
+      : `Il manque des messages rédigés par l'IA à ${missing} : générez-les et relisez-les avant d'inscrire.`, { exact: true });
+    // Fenêtre d'inscription (14/10/2026) : la ligne d'un candidat qui bloque « Inscrire » le dit.
+    const row = (p: SearchProfile) => dialog.locator(`[data-candidate-id="${p.id}"]`);
 
-    // 1. Aucun texte IA : bouton et case grisés, raison chiffrée.
-    await expect(missingNotice("2 candidats sur 2 n'en ont pas encore.")).toBeVisible();
+    // 1. Aucun texte IA : bouton et case grisés, raison chiffrée, les deux lignes signalées.
+    await expect(missingNotice('2 candidats sur 2')).toBeVisible();
     await expect(enroll).toBeDisabled();
     await expect(review).toBeDisabled();
+    for (const p of [jeanne, paul]) await expect(row(p)).toContainText('Message IA à générer');
     expect(generateCalls, 'aucune génération sans clic').toHaveLength(0);
 
     // 2. Aperçus du seul candidat affiché : l'autre n'a toujours pas son texte.
@@ -413,15 +418,20 @@ test.describe('Relire les messages avant l\'inscription', () => {
     const first = [jeanne, paul].find((p) => p.name === firstName);
     expect(first, `génération pour un des deux candidats (reçu : ${firstName})`).toBeTruthy();
     await expect(dialog.getByText(textByProfile[first!.id], { exact: true }).first()).toBeVisible({ timeout: 30_000 });
-    await expect(missingNotice("1 candidat sur 2 n'en a pas encore.")).toBeVisible();
+    await expect(missingNotice('1 candidat sur 2', true)).toBeVisible();
     await expect(enroll, 'un candidat sans texte IA : toujours grisé').toBeDisabled();
     await expect(review).toBeDisabled();
+    // Seule la ligne du candidat sans texte reste signalée.
+    const other = first === jeanne ? paul : jeanne;
+    await expect(row(first!)).not.toContainText('Message IA à générer');
+    await expect(row(other)).toContainText('Message IA à générer');
 
     // 3. « Générer tous les aperçus » : le faux modèle répond pour l'autre candidat.
     await dialog.getByRole('button', { name: 'Générer tous les aperçus' }).click();
     await expect.poll(() => generateCalls.length, { timeout: 30_000 }).toBe(2);
     await expect(dialog.getByText('Les aperçus de tous les candidats à inscrire sont prêts.')).toBeVisible({ timeout: 30_000 });
-    await expect(dialog.getByText("Générez et relisez les messages rédigés par l'IA avant d'inscrire", { exact: false })).toHaveCount(0);
+    await expect(dialog.getByText(/Il manque (?:un message rédigé|des messages rédigés) par l'IA/)).toHaveCount(0);
+    await expect(dialog.getByText('Message IA à générer')).toHaveCount(0);
     await expect(review).toBeEnabled();
     await expect(review).not.toBeChecked();
     await expect(enroll, 'textes prêts, case pas encore cochée').toBeDisabled();
@@ -438,7 +448,7 @@ test.describe('Relire les messages avant l\'inscription', () => {
     });
     await dialog.getByRole('article', { name: /^Étape 1 :/ }).getByRole('button', { name: /^Régénérer ce message/ }).click();
     await expect.poll(() => generateCalls.length, { timeout: 30_000 }).toBe(3);
-    await expect(missingNotice("1 candidat sur 2 n'en a pas encore.")).toBeVisible();
+    await expect(missingNotice('1 candidat sur 2', true)).toBeVisible();
     expect(await enroll.isDisabled(), 'grisé tant que la régénération n\'a pas répondu').toBe(true);
     release();
     await expect(review, 'une régénération décoche la case de relecture').not.toBeChecked({ timeout: 30_000 });
