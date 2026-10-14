@@ -355,8 +355,16 @@ test('SEQ-136 — embranchements : cibles mappées, bandeau, l’IA n’a pas le
   assert.deepEqual([...previewHook.otherBranchStepIds(tree, 'non')], ['oui']);
   assert.match(previewModal, /ifTrueGotoStep: s\.if_true_goto_step \|\| s\.ifTrueGotoStep \|\| null,/);
   assert.match(treeView, /Cette séquence contient des embranchements\. L'aperçu les montre à la suite, un seul chemin sera suivi pour chaque candidat\./);
+  // Historique simulé commun à la génération et à la régénération (sentHistoryOf) : jamais l'autre chemin.
   const generate = slice(previewHookSrc, 'const generateForCandidate = useCallback(', 'const generateForCandidateById');
-  assert.match(generate, /!otherBranch\.has\(s\.stepId\)/);
+  assert.match(generate, /sentHistoryOf\(steps, step\)/);
+  const regenerate = slice(previewHookSrc, 'const regenerateStep = useCallback(', 'const editMessage = useCallback(');
+  assert.match(regenerate, /sentHistoryOf\(steps, step\)/);
+  const full = steps.map((s) => ({ messageTemplate: 'x', subjectTemplate: '', useAiPersonalization: false, ...s }));
+  const byId = (id) => full.find((s) => s.stepId === id);
+  const history = (id) => previewHook.sentHistoryOf(full, byId(id)).map((s) => s.stepId);
+  assert.deepEqual(history('inmail'), ['invite'], 'l’InMail du chemin « non » ignore les messages du chemin « oui »');
+  assert.deepEqual(history('relance'), ['invite', 'msg']);
 });
 
 // ---------------------------------------------------------------- SEQ-137
@@ -548,7 +556,11 @@ test('SEQ-225 — crédits affichés seulement pour une étape IA, compteur d’
   // calculé une fois par le hook, affiché pour une étape IA seulement.
   assert.match(previewModal, /return n > 0 \? `environ \$\{plural\(n, 'crédit'\)\}` : 'aucun crédit';/);
   assert.match(card, /const cost = step\.useAiPersonalization \? creditsLabel\(creditsPerMessage\) : 'aucun crédit';/);
-  assert.match(card, /\{step\.useAiPersonalization && <p className="text-xs text-muted-foreground">\{cost\}<\/p>\}/);
+  // Fenêtre d'inscription (14/10/2026) : plus de génération message par message, la carte vide
+  // n'a ni bouton ni coût ; le coût reste dans « Régénérer ce message » d'un message prêt.
+  assert.match(card, /aria-label=\{isWrittenStep \? 'Revenir au modèle' : `Régénérer ce message \(\$\{cost\}\)`\}/);
+  assert.match(card, /<p className="text-sm text-muted-foreground">Pas encore rédigé\.<\/p>/);
+  assert.doesNotMatch(card, /onGenerate|Générer l'aperçu de ce message/);
   // Lot 5e-2 : coût au niveau choisi, par la formule du garde serveur.
   assert.match(previewHookSrc, /const creditsPerMessage = levelCredits\('outreach_message', writing\?\.level \?\? DEFAULT_AI_LEVEL\);/);
   // Lot 5d-1 : une étape écrite est rendue d'office avec les valeurs du serveur

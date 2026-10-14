@@ -156,8 +156,12 @@ test('5a-2 — règles de la case : relecture quel que soit N, une seule case d�
   assert.notEqual(guard.sendConfirmSignature(ids, true, 1), guard.sendConfirmSignature(ids, true, 2), 'une génération décoche');
   assert.notEqual(guard.sendConfirmSignature(ids, true, 1), guard.sendConfirmSignature(['a'], true, 1), 'un retrait décoche');
   assert.equal(guard.sendConfirmSignature(ids, false, 7), guard.recipientsSignature(ids), 'sans IA : la signature du lot 5a');
-  assert.equal(guard.aiReviewMissingMessage(3, 5), "Générez et relisez les messages rédigés par l'IA avant d'inscrire : 3 candidats sur 5 n'en ont pas encore.");
-  assert.equal(guard.aiReviewMissingMessage(1, 1), "Générez et relisez les messages rédigés par l'IA avant d'inscrire : 1 candidat sur 1 n'en a pas encore.");
+  // Fenêtre d'inscription (14/10/2026) : le compte est celui des candidats à qui il manque au moins un message ;
+  // la phrase s'accorde au nombre de messages qui manquent.
+  assert.equal(guard.aiReviewMissingMessage(3, 5, 6), "Il manque des messages rédigés par l'IA à 3 candidats sur 5 : générez-les et relisez-les avant d'inscrire.");
+  assert.equal(guard.aiReviewMissingMessage(1, 2, 2), "Il manque des messages rédigés par l'IA à 1 candidat sur 2 : générez-les et relisez-les avant d'inscrire.");
+  assert.equal(guard.aiReviewMissingMessage(1, 1, 1), "Il manque un message rédigé par l'IA à 1 candidat sur 1 : générez-le et relisez-le avant d'inscrire.");
+  assert.doesNotMatch(guardSrc, /n'en ont pas encore|n'en a pas encore/);
   assert.equal(guard.requiresAiReview({ actionType: 'message', useAiPersonalization: true }), true);
   assert.equal(guard.requiresAiReview({ actionType: 'connection_request', useAiPersonalization: true }), false, 'une invitation n’est jamais rédigée par l’IA à l’envoi');
   assert.equal(guard.requiresAiReview({ actionType: 'message', useAiPersonalization: false }), false);
@@ -185,11 +189,23 @@ test('5a-2 — préparation : bouton grisé tant qu’un texte IA manque, « Gé
   const enroll = between(previewModal, 'const handleEnroll = async () => {', 'setIsEnrolling(true);');
   assert.match(enroll, /if \(recipients\.blocked \|\| aiReviewMissingCount > 0\) return;/);
   const footer = between(previewModal, '<SendingAccountNotice state={sendingAccount} />', 'Présélectionner sans message');
-  assert.match(footer, /\{aiReviewMissingMessage\(aiReviewMissingCount, activeProfiles\.length\)\}/);
-  assert.match(footer, /onClick=\{\(\) => generateAll\(3\)\}[\s\S]*?Générer tous les aperçus/);
+  assert.match(footer, /\{aiReviewMissingMessage\(aiReviewMissingCount, activeProfiles\.length, aiReviewMissingMessages\)\}/);
+  assert.match(previewModal, /const aiReviewMissingMessages = activeProfiles\.reduce\(\s*\(sum, p\) => sum \+ aiReviewSteps\.filter\(s => !isReady\(p\.id, s\.stepId\)\)\.length,/);
   assert.match(footer, /aiReview=\{hasAiReview\}\s+disabled=\{aiReviewMissingCount > 0\}/);
-  // Un seul bouton « Générer tous les aperçus » à l'écran : celui du pied quand la barre du haut est absente.
-  assert.match(footer, /\{\(mode === 'summary' \|\| isSingle\) && \(/);
+  // Fenêtre d'inscription (14/10/2026) : « Générer tous les aperçus » est dans la bande de rédaction,
+  // la même dans les deux onglets ; le pied n'a plus qu'une phrase (et le lien vers le candidat qui
+  // bloque), même pour un seul candidat : sa barre « Générer les N aperçus » porte la génération.
+  assert.doesNotMatch(footer, /generateAll|Générer tous les aperçus/);
+  assert.equal(previewModal.split('Générer tous les aperçus\n').length - 1, 1, 'un seul bouton dans le code : la bande');
+  const band = between(previewModal, 'const renderGenerationBand = (className: string, withBulk: boolean) => {', '\n  };\n');
+  assert.match(band, /const line = renderWritingLine\(\);/);
+  // Jamais pendant qu'une étape d'un candidat à inscrire s'écrit (sa barre, « Régénérer ») :
+  // ses relances seraient rédigées sans le message qu'elles relancent.
+  assert.match(band, /onClick=\{\(\) => generateAll\(3\)\} disabled=\{isBusy \|\| candidateGenerationRunning\}/);
+  assert.match(previewModal, /const candidateGenerationRunning = activeProfiles\.some\(p => messageSteps\.some\(s => !!getPreview\(p\.id, s\.stepId\)\?\.isGenerating\)\);/);
+  assert.ok(band.indexOf('{line}') < band.indexOf('Générer tous les aperçus'), 'la ligne de rédaction, puis le bouton');
+  assert.match(previewModal, /\{renderGenerationBand\('shrink-0 border-b border-border px-4 py-2\.5 sm:px-6', !isSingle\)\}/);
+  assert.match(previewModal, /generationBand=\{renderGenerationBand\('rounded-xl border border-border px-3 py-2\.5', true\)\}/);
   // Récapitulatif : messages IA candidat par candidat.
   assert.match(previewModal, /title="Messages rédigés par l'IA"/);
   assert.match(previewModal, /aiMessages=\{aiSummaryProfile \? aiMessagesFor\(aiSummaryProfile\) : null\}/);

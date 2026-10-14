@@ -158,14 +158,17 @@ test('5a — RecipientsConfirm : case, aide reliée par aria-describedby, rien s
   assert.match(hook, /blocked: required && confirmedFor !== signature,/);
 });
 
-test('5a — premier message en entier, dans un bloc qui défile ; IA annoncée avec sa génération', () => {
+test('5a — premier message en entier, dans un bloc qui défile ; IA annoncée, générée avec les autres messages du candidat', () => {
   const block = between(confirm, 'export function FirstMessagePreviewBlock(', '\n}\n');
   assert.match(block, /max-h-40 space-y-2 overflow-y-auto/);
   assert.match(block, /whitespace-pre-wrap break-words/);
   assert.doesNotMatch(block, /\.slice\(|line-clamp/, 'texte tronqué');
   assert.match(block, /Premier message, pour \$\{preview\.candidateName\}/);
   assert.match(block, /Message rédigé par l'IA Konekt pour ce candidat : générez-le pour le relire\./);
-  assert.match(block, /Générer l'aperçu/);
+  // Fenêtre d'inscription (14/10/2026) : plus de génération message par message dans ce bloc.
+  assert.doesNotMatch(block, /Générer l'aperçu|onGenerate|generateCost/);
+  assert.doesNotMatch(confirm, /onGenerate\?:|generateCost\?:/, 'champs retirés du type');
+  assert.match(block, /\? 'Génération du message en cours\.'/);
   assert.match(block, /aria-label="Candidat précédent"/);
   assert.match(block, /aria-label="Candidat suivant"/);
 });
@@ -223,9 +226,16 @@ test('5a — Récapitulatif : « Aperçu du premier message » avec ‹ ›, pre
   assert.match(previewModal, /return messages\.length > 0 && messages\.every\(m => stepReady\(p\.id, m\.step\)\);/);
   assert.match(previewModal, /: previewEntryOf\(candidateId\)\?\.status === 'ready' \|\| !!getPreview\(candidateId, step\.stepId\)\?\.isEdited\),/);
   assert.match(previewModal, /onNext: \(\) => setSummaryCandidateIndex\(Math\.min\(activeProfiles\.length - 1, summaryIndex \+ 1\)\),/);
-  // Étape rédigée par l'IA non générée : annoncée, jamais inventée, avec sa génération.
+  // Étape rédigée par l'IA non générée : annoncée, jamais inventée, sans bouton
+  // (elle se génère avec les autres messages du candidat, dans l'ordre).
   const firstFor = between(previewModal, 'const firstMessageFor = (profile: LinkedInProfile): FirstMessagePreview => {', '// Pied :');
-  assert.match(firstFor, /if \(step\.useAiPersonalization && step\.actionType !== 'connection_request'\) \{[\s\S]*?aiPending: true,\s*onGenerate: \(\) => regenerateStep\(profile\.id, step\.stepId\),/);
+  assert.match(firstFor, /if \(step\.useAiPersonalization && step\.actionType !== 'connection_request'\) \{[\s\S]*?aiPending: true,\s*isGenerating: !!preview\?\.isGenerating,/);
+  assert.doesNotMatch(firstFor, /onGenerate|regenerateStep|generateCost/);
+  // Un seul carrousel : la séquence ouvre par un seul message rédigé par l'IA, commun à tous (jugé
+  // relation inconnue, commonFirstMessage) → « Messages rédigés par l'IA » seul. Comportement : test suivant.
+  assert.match(previewModal, /const commonFirstStep = commonFirstMessage\(steps, isPreviewedMessageStep\);/);
+  assert.match(previewModal, /const firstMessageInAiMessages = hasAiReview && !!commonFirstStep && requiresAiReview\(commonFirstStep\);/);
+  assert.match(previewModal, /firstMessage=\{summaryProfile && !firstMessageInAiMessages \? firstMessageFor\(summaryProfile\) : null\}/);
   // Premier message choisi sur le parcours de la séquence, jamais sur la liste des messages écrits.
   assert.match(previewModal, /return firstMessagePath\(steps, isPreviewedMessageStep, connected\);/);
   assert.doesNotMatch(previewModal, /messageSteps\[0\]/);
@@ -350,6 +360,51 @@ test('5a — parcours : test A/B, chaque version avec sa condition ; séquence s
   assert.equal(none.firstAction.stepId, 'visit');
   // Module pur, sans import.
   assert.doesNotMatch(firstMessagePathSrc, /^import /m);
+});
+
+test('5a, Résumé : un seul carrousel seulement si le premier message est commun à tous, fourche et A/B gardent les deux blocs', () => {
+  // Règle de la fenêtre : premier message commun (commonFirstMessage) ET rédigé par l'IA à relire.
+  const singleCarousel = (steps) => {
+    const first = path5a.commonFirstMessage(steps, previewHook.hasMessage);
+    return !!first && guard.requiresAiReview(first);
+  };
+  // Parcours linéaire, premier message IA : un seul carrousel.
+  const linear = [
+    st('visit', 0, 'profile_visit'),
+    st('ai', 1, 'message', { useAiPersonalization: true }),
+    st('relance', 2, 'message', { useAiPersonalization: true }),
+  ];
+  assert.equal(path5a.commonFirstMessage(linear, previewHook.hasMessage).stepId, 'ai');
+  assert.equal(singleCarousel(linear), true);
+  // Premier message écrit : les deux blocs.
+  assert.equal(singleCarousel([st('w', 0, 'message', { messageTemplate: 'Bonjour' }), st('ai', 1, 'message', { useAiPersonalization: true })]), false);
+  // Fourche « Vérifier la relation », message IA de chaque côté : même quand la relation de chaque
+  // candidat est connue (le parcours du candidat n'a alors qu'une branche, sans condition), la
+  // séquence garde les deux blocs, car « Messages rédigés par l'IA » montre aussi l'autre branche.
+  const fork = [
+    st('check', 0, 'check_connection'),
+    st('yes-ai', 1, 'message', { parentStepId: 'check', branch: 'yes', useAiPersonalization: true }),
+    st('yes-relance', 2, 'message', { parentStepId: 'check', branch: 'yes', useAiPersonalization: true }),
+    st('no-inmail', 1, 'inmail', { parentStepId: 'check', branch: 'no', useAiPersonalization: true }),
+  ];
+  assert.deepEqual(ids5a(path5a.firstMessagePath(fork, previewHook.hasMessage, true)), [['yes-ai', null]], 'en relation : une branche, sans condition');
+  assert.deepEqual(ids5a(path5a.firstMessagePath(fork, previewHook.hasMessage, false)), [['no-inmail', null]], 'hors relation : l’autre');
+  assert.equal(path5a.commonFirstMessage(fork, previewHook.hasMessage), null);
+  assert.equal(singleCarousel(fork), false);
+  // Les deux branches mènent au même message : il est commun, un seul carrousel.
+  const sameTarget = [
+    st('check', 0, 'check_connection', { ifTrueGotoStep: 'ai', ifFalseGotoStep: 'ai' }),
+    st('ai', 1, 'message', { useAiPersonalization: true }),
+  ];
+  assert.equal(singleCarousel(sameTarget), true);
+  // Test A/B : deux versions, chacune avec sa condition, les deux blocs.
+  const ab = [
+    st('b', 0, 'message', { variantGroup: 'B', useAiPersonalization: true }),
+    st('a', 0, 'message', { variantGroup: 'A', useAiPersonalization: true }),
+  ];
+  assert.equal(singleCarousel(ab), false);
+  // Séquence sans message : rien à fusionner.
+  assert.equal(path5a.commonFirstMessage([st('visit', 0, 'profile_visit')], previewHook.hasMessage), null);
 });
 
 // ─── Textes ─────────────────────────────────────────────────────────────

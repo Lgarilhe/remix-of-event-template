@@ -162,3 +162,17 @@ export function firstMessagePath<T extends PathStep>(
   const start = [...pool].sort(byOrder)[0] ?? null;
   return collect(steps, start, isMessage, connected, new Set<string>(), 0);
 }
+
+/**
+ * Premier message commun à tous les candidats, quelle que soit leur relation
+ * (parcours jugé relation inconnue), sinon null : une fourche aux branches
+ * différentes ou une étape A/B rend plusieurs messages, chacun avec sa
+ * condition ; une séquence sans message n'en a pas.
+ */
+export function commonFirstMessage<T extends PathStep>(
+  steps: readonly T[],
+  isMessage: (step: T) => boolean,
+): T | null {
+  const { messages } = firstMessagePath(steps, isMessage, null);
+  return messages.length === 1 && !messages[0].condition ? messages[0].step : null;
+}

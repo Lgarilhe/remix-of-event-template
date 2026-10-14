@@ -14,7 +14,7 @@
  * 5 candidats une seule case pour les deux (sendConfirmation).
  */
 import React, { useId } from 'react';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -31,11 +31,16 @@ export interface FirstMessagePreviewItem {
   subject?: string | null;
   /** Texte entier, tel qu'il partira. */
   text: string;
-  /** Message rédigé par l'IA pas encore généré pour ce candidat. */
+  /**
+   * Message rédigé par l'IA pas encore généré pour ce candidat. Annoncé sans
+   * bouton : il se génère avec les autres messages du candidat, dans l'ordre
+   * (fenêtre d'inscription, 14/10/2026).
+   */
   aiPending?: boolean;
-  /** Génère l'aperçu de ce message rédigé par l'IA (génération existante). */
-  onGenerate?: () => void;
+  /** Génération de ce message en cours : annoncée à la place de l'invitation à le générer. */
   isGenerating?: boolean;
+  /** Génération de ce message en échec : sa raison, à la place de l'invitation à le générer. */
+  error?: string | null;
   /** Lot 5d-1 : message écrit en préparation (valeurs du serveur) : squelette, jamais un texte faux. */
   loading?: boolean;
   /** Lot 5d-1 : aucun aperçu pour ce candidat, la raison à la place du texte. */
@@ -49,8 +54,6 @@ export interface FirstMessagePreview {
   items: FirstMessagePreviewItem[];
   /** Séquence sans message : « Aucun message écrit. Première action : visite de profil. » */
   emptyLabel?: string | null;
-  /** Coût annoncé de la génération, « 3 crédits ». */
-  generateCost?: string;
 }
 
 /** Premier message d'un candidat, en entier, dans un bloc qui défile. */
@@ -131,27 +134,17 @@ export function FirstMessagePreviewBlock({
                     </Button>
                   )}
                 </div>
+              ) : item.aiPending && item.error && !item.isGenerating ? (
+                <p className="flex items-start gap-1.5 text-xs text-foreground">
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-warning" aria-hidden="true" />
+                  <span>{item.error}</span>
+                </p>
               ) : item.aiPending ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs text-muted-foreground">
-                    Message rédigé par l'IA Konekt pour ce candidat : générez-le pour le relire.
-                  </p>
-                  {item.onGenerate && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="xs"
-                      onClick={item.onGenerate}
-                      loading={item.isGenerating}
-                      className="max-md:h-11"
-                    >
-                      Générer l'aperçu
-                    </Button>
-                  )}
-                  {item.onGenerate && preview.generateCost && (
-                    <span className="text-2xs tabular-nums text-muted-foreground">{preview.generateCost}</span>
-                  )}
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  {item.isGenerating
+                    ? 'Génération du message en cours.'
+                    : "Message rédigé par l'IA Konekt pour ce candidat : générez-le pour le relire."}
+                </p>
               ) : (
                 <>
                   {item.subject && (

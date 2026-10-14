@@ -1041,7 +1041,7 @@ test.describe('Préparation d\'inscription', () => {
   });
 
   // lot5a-case-destinataires : message rédigé par l'IA sans modèle (l'éditeur l'accepte)
-  test('lot 5a : séquence IA sans modèle, 5 candidats : préparation avec aperçu, premier message annoncé comme rédigé par l\'IA, jamais « Aucun message écrit »', async ({ browser, org }) => {
+  test('@critical lot 5a : séquence IA sans modèle, 5 candidats : préparation avec aperçu, premier message annoncé comme rédigé par l\'IA, jamais « Aucun message écrit »', async ({ browser, org }) => {
     const { missionId, accountId } = await workspace(org);
     const seq = await seedSeq(org.orgId, org.owner.userId, {
       name: `IA sans modèle ui-1 ${rand()}`,
@@ -1062,7 +1062,10 @@ test.describe('Préparation d\'inscription', () => {
 
     const firstMessage = dialog.getByRole('region', { name: /^Premier message, pour / });
     await expect(firstMessage).toContainText("Message rédigé par l'IA Konekt pour ce candidat : générez-le pour le relire.");
-    await expect(firstMessage.getByRole('button', { name: "Générer l'aperçu" })).toBeVisible();
+    // Fenêtre d'inscription (14/10/2026) : plus de génération message par message, le pied annonce sans bouton.
+    await expect(firstMessage.getByRole('button', { name: /^Générer/ })).toHaveCount(0);
+    await expect(dialog.getByRole('article', { name: /^Étape 2 :/ })).toContainText('Pas encore rédigé.');
+    await expect(dialog.getByRole('button', { name: "Générer l'aperçu de ce message" })).toHaveCount(0);
     // La relance écrite n'est pas présentée comme premier message.
     await expect(firstMessage).not.toContainText('Relance Alice');
     await expect(dialog.getByText('Aucun message écrit', { exact: false })).toHaveCount(0);
@@ -1071,9 +1074,9 @@ test.describe('Préparation d\'inscription', () => {
     // relecture, grisée tant qu'un message IA reste à générer.
     const box = dialog.getByRole('checkbox', { name: "Je confirme les destinataires et j'ai relu les messages rédigés par l'IA" });
     await expect(box).toBeDisabled();
-    await expect(dialog.getByText("Générez et relisez les messages rédigés par l'IA avant d'inscrire : 5 candidats sur 5 n'en ont pas encore.")).toBeVisible();
+    await expect(dialog.getByText("Il manque des messages rédigés par l'IA à 5 candidats sur 5 : générez-les et relisez-les avant d'inscrire.")).toBeVisible();
     await dialog.getByRole('button', { name: 'Générer tous les aperçus' }).click();
-    await expect(dialog.getByText(/Générez et relisez les messages rédigés par l'IA avant d'inscrire/)).toHaveCount(0, { timeout: 20_000 });
+    await expect(dialog.getByText(/Il manque (?:un message rédigé|des messages rédigés) par l'IA/)).toHaveCount(0, { timeout: 20_000 });
     await box.check();
     await expect(dialog.getByRole('button', { name: 'Inscrire 5 candidats', exact: true })).toBeEnabled();
   });
@@ -1124,7 +1127,7 @@ test.describe('Préparation d\'inscription', () => {
   });
 
   // lot5e2-recapitulatif-redaction (plus de 10 candidats, étape rédigée par l'IA)
-  test('lot 5e-2 : 11 candidats, le Récapitulatif montre la ligne « Rédaction par l’IA », le niveau se change sur place et nomme chaque coût', async ({ browser, org }) => {
+  test('@critical lot 5e-2 : 11 candidats, le Récapitulatif montre la ligne « Rédaction par l’IA », le niveau se change sur place et nomme chaque coût', async ({ browser, org }) => {
     const { missionId, accountId } = await workspace(org);
     const seq = await seedSeq(org.orgId, org.owner.userId, {
       name: `Récapitulatif IA ui-1 ${rand()}`,
@@ -1137,13 +1140,23 @@ test.describe('Préparation d\'inscription', () => {
     await searchProfiles(page, missionId, people);
     const dialog = await openEnrollPreview(page, people, seq.name);
 
-    // Récapitulatif (ouvert par défaut au-delà de 10 candidats) : style, niveau, coût par message, « Modifier ».
+    // Résumé (ouvert par défaut au-delà de 10 candidats) : une seule bande de rédaction (style, niveau,
+    // coût par message, « Modifier », puis « Générer tous les aperçus » et le coût de ce qui reste à générer).
     await expect(dialog.getByText('Avant l\'inscription', { exact: true })).toBeVisible();
     await expect(dialog.getByText(/Rédaction par l’IA : .*Niveau Équilibré, environ 5 crédits par message\./)).toBeVisible();
-    await expect(dialog.getByText(/Coût estimé de la personnalisation par l'IA : environ 55 crédits en Équilibré\./)).toBeVisible();
-    await expect(dialog.getByText('environ 55 crédits en Équilibré', { exact: true })).toBeVisible();
+    const bulkCost = dialog.getByRole('button', { name: 'Générer tous les aperçus' }).locator('xpath=following-sibling::span[1]');
+    await expect(bulkCost).toHaveText('environ 55 crédits en Équilibré');
+    await expect(dialog.getByText('environ 55 crédits en Équilibré', { exact: true })).toHaveCount(1);
+    // Plus de second total ni de doublons dans le Résumé (fenêtre d'inscription, 14/10/2026).
+    await expect(dialog.getByText(/Coût estimé de la personnalisation par l'IA/)).toHaveCount(0);
+    await expect(dialog.getByText('Récapitulatif', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText('Joignables sur LinkedIn')).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Voir les aperçus des messages' })).toHaveCount(0);
+    // Premier message rédigé par l'IA : un seul carrousel, « Messages rédigés par l'IA ».
+    await expect(dialog.getByRole('region', { name: "Messages rédigés par l'IA" })).toBeVisible();
+    await expect(dialog.getByRole('region', { name: 'Aperçu du premier message' })).toHaveCount(0);
 
-    // Niveau changé sur place : la ligne, le coût estimé et le pied le nomment aussitôt.
+    // Niveau changé sur place : la ligne et le coût de la bande le nomment aussitôt.
     const modify = dialog.getByRole('button', { name: 'Modifier les réglages de rédaction' });
     await modify.click();
     const settings = page.getByRole('dialog', { name: 'Réglages de cette rédaction' });
@@ -1152,8 +1165,7 @@ test.describe('Préparation d\'inscription', () => {
     await page.keyboard.press('Escape');
     await expect(modify, 'focus rendu à « Modifier »').toBeFocused();
     await expect(dialog.getByText(/Niveau Rapide, environ 2 crédits par message\./)).toBeVisible();
-    await expect(dialog.getByText(/Coût estimé de la personnalisation par l'IA : environ 22 crédits en Rapide\./)).toBeVisible();
-    await expect(dialog.getByText('environ 22 crédits en Rapide', { exact: true })).toBeVisible();
+    await expect(bulkCost).toHaveText('environ 22 crédits en Rapide');
 
     // « Générer tous les aperçus » envoie le niveau choisi.
     const request = page.waitForRequest((r) => r.url().includes('/functions/v1/generate-outreach-message') && r.method() === 'POST');
@@ -1243,8 +1255,8 @@ test.describe('Préparation d\'inscription', () => {
     // Effacée : la raison à la place du texte, et jamais comptée prête.
     await dialog.locator(`[data-candidate-id="${eve.id}"]`).click();
     await expect(card).toContainText("Ce candidat a demandé l'effacement de ses données : aucun aperçu.", { timeout: 30_000 });
-    await expect(dialog.getByText('Aperçus prêts : 2 sur 3')).toBeVisible({ timeout: 30_000 });
-    await expect(dialog.getByText('Aperçus prêts : 3 sur 3')).toHaveCount(0);
+    await expect(dialog.getByText('Aperçus prêts pour 2 candidats sur 3')).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.getByText('Aperçus prêts pour 3 candidats sur 3')).toHaveCount(0);
 
     // Julie : retouche, puis « Revenir au modèle » (une étape écrite ne se régénère pas).
     await dialog.locator(`[data-candidate-id="${julie.id}"]`).click();
